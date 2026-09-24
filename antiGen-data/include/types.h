@@ -25,6 +25,12 @@ struct Node {
     std::vector<Node*> children;
     std::vector<Mutation> spike_mutations;
     std::vector<double> leaf_times;
+    long long subtree_samples = 0; // samples at or below this node; set by set_subtree_samples()
+    // Scratch for --intervals, rewritten once per time interval (see mark_interval).
+    bool in_window = false;        // subtree holds a sample collected in interval i
+    bool own_in_window = false;    // ...at this node itself
+    long long cur_count = 0;       // samples at or below, collected in interval i
+    long long next_count = 0;      // samples at or below, collected in interval i+1
     std::string name;
     std::vector<char> seq;
     int idx = -1;

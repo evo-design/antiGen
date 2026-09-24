@@ -14,25 +14,64 @@ from datetime import datetime
 import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from antiGen.config import ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config, EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, GatedFitnessConfig
+from antiGen.config import ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config, EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, GatedFitnessConfig, ResidualConfig
 from antiGen.models.factory import create_model
-from antiGen.load import load_examples
-from antiGen.eval_utils import compute_probs, compute_loss_batch
+from antiGen.load import load_examples, split_by_window
+from antiGen.eval_utils import (compute_probs, compute_loss_batch, compute_conditional_loss_batch,
+                                compute_unconditional_loss_batch, compute_kl_loss_batch)
 from antiGen import datasets
 
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
+# How the descendant counts are weighted before they reach a count-based loss. The raw
+# counts span five orders of magnitude, so under the plain conditional loss the ~100
+# largest examples carry almost all the gradient (Kish effective sample size ~22 of 3,092
+# test examples with two or more substitutions). A sublinear transform sits between that
+# and weighting every mutation equally: log1p takes the effective sample size to ~123,
+# sqrt to ~116. Note it flattens the target split within an example as well as the weight
+# across examples, so the model is fitting a compressed version of the observed split --
+# evaluation stays on raw counts.
+COUNT_TRANSFORMS = {
+    'none': lambda n: n,
+    'log1p': torch.log1p,
+    'sqrt': torch.sqrt,
+}
+
+
 class MutationDataset(Dataset):
-    def __init__(self, training_examples):
+    """Yields ``(aa_idx, mat, n_mat, cur_mat)``.
+
+    ``n_mat`` holds the descendants behind each child substitution -- the training target
+    -- put through ``count_transform``. It is all-zero for examples files written before
+    that field existed; only the count-based losses read it.
+
+    ``cur_mat`` holds the same counts one time window earlier, i.e. descendants collected
+    in the example's *own* window rather than the next one. Only interval files carry it
+    and only the residual model reads it, so it is all-zero otherwise. It is deliberately
+    NOT put through ``count_transform``: that transform reweights the training target, and
+    this is a model input.
+    """
+
+    def __init__(self, training_examples, count_transform='none'):
+        fn = COUNT_TRANSFORMS[count_transform]
         self.aa_indices_list = [e.aa_idx for e in training_examples]
         self.mutation_matrices = [e.mat for e in training_examples]
+        self.count_matrices = [
+            fn(e.n_mat) if e.n_mat is not None else torch.zeros_like(e.mat)
+            for e in training_examples
+        ]
+        self.own_window_matrices = [
+            e.cur_mat if e.cur_mat is not None else torch.zeros_like(e.mat)
+            for e in training_examples
+        ]
 
     def __len__(self):
         return len(self.aa_indices_list)
 
     def __getitem__(self, idx):
-        return self.aa_indices_list[idx], self.mutation_matrices[idx]
+        return (self.aa_indices_list[idx], self.mutation_matrices[idx],
+                self.count_matrices[idx], self.own_window_matrices[idx])
 
 
 # ── Args ──────────────────────────────────────────────────────────────────────
@@ -41,9 +80,28 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train fitness model on observed mutations')
     parser.add_argument('--cutoff', type=float, default=1.0, help='Train/test cutoff (years since MRCA)')
     parser.add_argument('--ignore-dead-ends', action='store_true', default=False, help='Do not make examples for sequences with no downstream mutants')
+    parser.add_argument('--loss', type=str, default='multinomial',
+                        choices=['multinomial', 'conditional', 'unconditional', 'kl'],
+                        help="Training objective; the architecture and forward pass are the same "
+                             "for all three. 'multinomial' (default, unchanged): each observed "
+                             "child substitution is a draw over the whole position x AA grid with "
+                             "wild-type masked out, so the model learns which substitutions occur. "
+                             "'conditional': condition on the substitutions that did occur and learn "
+                             "only how their descendants divide between them -- each of the n_i "
+                             "sequences below mutation m_i is an i.i.d. categorical draw over "
+                             "m_1..m_k, renormalized over those k cells. 'unconditional': the same "
+                             "descendant counts but drawn over the whole grid, i.e. the multinomial "
+                             "loss reweighted from child counts to descendant counts. 'kl': the "
+                             "conditional split again, but with the counts normalized per example "
+                             "first -- KL(n_i/sum(n) || predicted), averaged over the examples with "
+                             "at least two substitutions. Same gradients as 'conditional' except "
+                             "every example counts once instead of once per descendant. All three "
+                             "count-based losses need an examples file carrying descendant counts, "
+                             "and under 'conditional'/'kl' an example with one child substitution "
+                             "gives no gradient at all.")
 
-    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
-                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors')
+    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated', 'residual'],
+                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, gated blend of two predictors, or residual (persistence counts + learned sequence residual; needs an --intervals examples file)')
     parser.add_argument('--d-model', type=int, default=512, help='Model dimension (transformer only)')
     parser.add_argument('--num-layers', type=int, default=4, help='Number of transformer layers (transformer only)')
     parser.add_argument('--esm2-model-name', type=str, default='facebook/esm2_t12_35M_UR50D',
@@ -57,10 +115,53 @@ def parse_args():
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--max-batches', type=int, default=None, help='Stop after N batches total')
     parser.add_argument('--warmup-steps', type=int, default=0, help='LR warmup steps')
+    parser.add_argument('--count-transform', type=str, default='none',
+                        choices=['none', 'log1p', 'sqrt'],
+                        help="Transform applied to the descendant counts before they enter a "
+                             "count-based loss (no effect on --loss multinomial). 'none' keeps "
+                             "the raw counts, which means the handful of examples with the most "
+                             "descendants carry nearly all the gradient. 'log1p' and 'sqrt' "
+                             "compress that: they sit between raw counts and weighting every "
+                             "mutation equally. The transform also flattens the target split "
+                             "inside an example, so the model fits a compressed version of the "
+                             "observed proportions -- evaluation is still on raw counts.")
+    parser.add_argument('--residual-alpha', type=float, default=1.0,
+                        help="Pseudocount in the persistence term of --model-type residual: "
+                             "s = beta*log(c + alpha) + lam*f(seq). Keeps log(c + alpha) "
+                             "finite for the c = 0 cells, which are common. Small alpha makes "
+                             "the prevalence term near-deterministic on this window's winner, "
+                             "large alpha collapses it toward uniform. Swept, not learned.")
+    parser.add_argument('--residual-beta-init', type=float, default=1.0,
+                        help="Initial prevalence exponent. 1.0 is pure replicator dynamics; a "
+                             "trained value below 1 means large lineages saturate.")
+    parser.add_argument('--residual-lambda-init', type=float, default=0.0,
+                        help="Initial sequence-residual gate. 0.0 starts the model exactly at "
+                             "the persistence baseline, so any improvement is attributable to "
+                             "sequence -- at the cost of the inner network seeing no gradient "
+                             "until lam moves off zero. Set small-but-nonzero to skip that.")
+    parser.add_argument('--freeze-beta', action='store_true', default=False,
+                        help='Hold the prevalence exponent at its initial value (residual only).')
+    parser.add_argument('--freeze-lambda', action='store_true', default=False,
+                        help='Hold the sequence-residual gate at its initial value (residual '
+                             'only). With --residual-lambda-init 0 this is the pure persistence '
+                             'baseline with a learned beta and nothing else -- the ablation that '
+                             'isolates saturation from sequence.')
+    parser.add_argument('--checkpoint-every-epoch', action='store_true', default=False,
+                        help='Also write <output-dir>/epochs/epoch<NNN>.pt after every epoch. '
+                             'Lets an evaluator walk the whole training curve (e.g. to find '
+                             'where a held-out metric bottoms out) instead of only seeing the '
+                             'final weights. Costs one file per epoch.')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory')
     parser.add_argument('--examples', type=str, default=None,
                         help='Path to an examples_cutoff_*.txt file. Overrides dataset routing '
                              '(use this to train on any protein/pathogen without code edits).')
+    parser.add_argument('--test-window', type=int, default=None, metavar='YEAR',
+                        help="Split an --intervals examples file on its time windows instead "
+                             "of on the TRAINING/TESTING label (which is TRAINING for every "
+                             "example in such a file). Window YEAR is held out for testing and "
+                             "every earlier window trains; later windows are dropped, since the "
+                             "generator emits the most recent window against a partially "
+                             "observed successor year and its counts are undercounts.")
     parser.add_argument('--data-dir', type=str, default=None,
                         help='Directory containing examples_cutoff_{cutoff}.txt for a named '
                              'dataset (else resolved from $FITNESS_DATA_ROOT).')
@@ -160,6 +261,13 @@ def write_manifest(args, model_config, output_dir, run_prefix) -> None:
             "lr": args.lr,
             "max_batches": args.max_batches,
             "warmup_steps": args.warmup_steps,
+            "loss": args.loss,
+            "count_transform": args.count_transform,
+            "residual_alpha": args.residual_alpha,
+            "residual_beta_init": args.residual_beta_init,
+            "residual_lambda_init": args.residual_lambda_init,
+            "freeze_beta": args.freeze_beta,
+            "freeze_lambda": args.freeze_lambda,
             "freeze_backbone": args.freeze_backbone,
             "finetune_layers": args.finetune_layers,
         },
@@ -167,6 +275,7 @@ def write_manifest(args, model_config, output_dir, run_prefix) -> None:
             "cutoff_years": args.cutoff,
             "data_dir": args.data_dir,
             "examples": args.examples,
+            "test_window": args.test_window,
             "ignore_dead_ends": args.ignore_dead_ends,
             "variant": args.variant,
             "dataset_mode": (
@@ -238,23 +347,28 @@ def main():
     testing_examples = []
     total_mutations_train = 0.0
 
-    for i, example in enumerate(all_examples):
-        if args.ignore_dead_ends:
-            if example.mat.sum() < 0.5:
-                continue
+    if args.test_window is not None:
+        train_pool, test_pool, _ = split_by_window(all_examples, args.test_window)
+    else:
+        train_pool = [e for e in all_examples if e.is_training]
+        test_pool = [e for e in all_examples if not e.is_training]
 
-        if example.is_training:
-            training_examples.append(example)
-            total_mutations_train += example.mat.sum()
-        else:
-            testing_examples.append(example)
+    for example in train_pool:
+        if args.ignore_dead_ends and example.mat.sum() < 0.5:
+            continue
+        training_examples.append(example)
+        total_mutations_train += example.mat.sum()
+    for example in test_pool:
+        if args.ignore_dead_ends and example.mat.sum() < 0.5:
+            continue
+        testing_examples.append(example)
 
     print(f"Training examples: {len(training_examples)}, Testing examples: {len(testing_examples)}")
     print(f"Total mutations in training set: {total_mutations_train:.0f}")
 
 
-    train_dataset = MutationDataset(training_examples)
-    test_dataset = MutationDataset(testing_examples)
+    train_dataset = MutationDataset(training_examples, args.count_transform)
+    test_dataset = MutationDataset(testing_examples, args.count_transform)
 
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
@@ -395,6 +509,34 @@ def main():
         model = create_model(model_config, device)
         print(f"Model: Gated[{args.gate_partner_a} + {args.gate_partner_b}, gate={args.gate_variant}], "
               f"freeze_backbone={args.freeze_backbone}, finetune_layers={args.finetune_layers}")
+    elif args.model_type == 'residual':
+        if all_examples[0].cur_mat is None:
+            raise ValueError(
+                f"--model-type residual needs the own-window counts, and {examples_path} has "
+                f"none. Regenerate with a build of antiGen-data that writes the fifth "
+                f"'<pos>,<alt>,<next>,<all-time>,<own-window>' field.")
+        model_config = ModelConfig(
+            model_type=ModelType.RESIDUAL_FITNESS_PREDICTOR,
+            seq_len=seq_len_aa,
+            alphabet=alphabet_config,
+            transformer=TransformerConfig(
+                d_model=args.d_model, nhead=4,
+                dim_feedforward=4 * args.d_model, num_layers=args.num_layers,
+            ),
+            residual=ResidualConfig(
+                alpha=args.residual_alpha,
+                beta_init=args.residual_beta_init,
+                lambda_init=args.residual_lambda_init,
+                learn_beta=not args.freeze_beta,
+                learn_lambda=not args.freeze_lambda,
+            ),
+        )
+        model = create_model(model_config, device)
+        print(f"Model: Residual[persistence(alpha={args.residual_alpha}) + sequence], "
+              f"beta init {args.residual_beta_init}"
+              f"{' (frozen)' if args.freeze_beta else ''}, "
+              f"lambda init {args.residual_lambda_init}"
+              f"{' (frozen)' if args.freeze_lambda else ''}")
     else:
         model_config = ModelConfig(
             model_type=ModelType.FITNESS_PREDICTOR,
@@ -409,6 +551,39 @@ def main():
         )
         model = create_model(model_config, device)
     print(f"Model: {model.get_num_parameters(trainable_only=True):,} trainable params")
+
+    # The objective. Same architecture and same forward pass either way -- only how the
+    # logits are turned into a number changes.
+    if args.loss in ('conditional', 'unconditional', 'kl'):
+        if all_examples[0].n_mat is None:
+            raise ValueError(
+                f"--loss {args.loss} needs descendant counts, and {examples_path} has none. "
+                f"Regenerate the examples with a build of antiGen-data that writes "
+                f"'<pos>,<alt>,<descendants>' rows.")
+
+        if args.loss == 'conditional':
+            def batch_loss(logits, aa_batch, target_batch, count_batch):
+                return compute_conditional_loss_batch(logits, target_batch, count_batch)
+        elif args.loss == 'kl':
+            def batch_loss(logits, aa_batch, target_batch, count_batch):
+                return compute_kl_loss_batch(logits, target_batch, count_batch)
+        else:
+            def batch_loss(logits, aa_batch, target_batch, count_batch):
+                return compute_unconditional_loss_batch(logits, aa_batch, count_batch)
+    else:
+        def batch_loss(logits, aa_batch, target_batch, count_batch):
+            return compute_loss_batch(compute_probs(logits, target_batch, aa_batch), target_batch)
+    if args.count_transform != 'none' and args.loss == 'multinomial':
+        raise ValueError("--count-transform applies to the descendant counts, which "
+                         "--loss multinomial does not read. Pick a count-based loss.")
+    print(f"Loss: {args.loss} (count transform: {args.count_transform})")
+
+    # Only the residual model takes the own-window counts; every other architecture keeps
+    # the one-argument forward contract.
+    takes_counts = args.model_type == 'residual'
+
+    def forward(aa_batch, cur_batch):
+        return (model(aa_batch, cur_batch) if takes_counts else model(aa_batch)).float()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -442,16 +617,17 @@ def main():
             total_train_loss = 0.0
             n_batches = 0
 
-            for batch_num, (aa_batch, target_batch) in enumerate(train_loader):
+            for batch_num, (aa_batch, target_batch, count_batch, cur_batch) in enumerate(train_loader):
                 model.train()
                 optimizer.zero_grad()
 
                 aa_batch = aa_batch.to(device)
                 target_batch = target_batch.to(device)
+                count_batch = count_batch.to(device)
+                cur_batch = cur_batch.to(device)
 
-                logits = model(aa_batch).float()
-                probs = compute_probs(logits, target_batch, aa_batch)
-                loss = compute_loss_batch(probs, target_batch)
+                logits = forward(aa_batch, cur_batch)
+                loss = batch_loss(logits, aa_batch, target_batch, count_batch)
                 loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -467,14 +643,16 @@ def main():
                 # Test minibatch loss (cheap, per-batch monitoring; skipped if no test set)
                 test_batch_loss_val = None
                 if test_iter is not None:
-                    test_aa, test_target = next(test_iter)
+                    test_aa, test_target, test_count, test_cur = next(test_iter)
                     with torch.no_grad():
                         model.eval()
                         test_aa = test_aa.to(device)
                         test_target = test_target.to(device)
-                        test_logits = model(test_aa).float()
-                        test_probs = compute_probs(test_logits, test_target, test_aa)
-                        test_batch_loss_val = compute_loss_batch(test_probs, test_target).item()
+                        test_count = test_count.to(device)
+                        test_cur = test_cur.to(device)
+                        test_logits = forward(test_aa, test_cur)
+                        test_batch_loss_val = batch_loss(
+                            test_logits, test_aa, test_target, test_count).item()
 
                 if batch_num % 10 == 0:
                     if test_batch_loss_val is not None:
@@ -488,6 +666,20 @@ def main():
 
             avg_train_loss = total_train_loss / max(n_batches, 1)
             print(f"Epoch {epoch}: avg_train_loss={avg_train_loss:.8f}")
+
+            if args.checkpoint_every_epoch:
+                epoch_dir = os.path.join(args.output_dir, "epochs")
+                os.makedirs(epoch_dir, exist_ok=True)
+                epoch_path = os.path.join(epoch_dir, f"epoch{epoch:03d}.pt")
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                    'epoch': epoch,
+                    'global_step': global_step,
+                    'loss': avg_train_loss,
+                    'config': model_config.to_dict(),
+                    'train_args': vars(args),
+                }, epoch_path)
+                print(f"  wrote {epoch_path}")
 
             if args.max_batches is not None and global_step >= args.max_batches:
                 break
@@ -523,8 +715,19 @@ def main():
         a = _PARTNER_SHORT.get(args.gate_partner_a, args.gate_partner_a)
         b = _PARTNER_SHORT.get(args.gate_partner_b, args.gate_partner_b)
         run_prefix = f"gated_{args.gate_variant}_{a}_{b}_lr{args.lr}_{timestamp}"
+    elif args.model_type == 'residual':
+        tag = f"a{args.residual_alpha:g}_l{args.residual_lambda_init:g}"
+        if args.freeze_lambda:
+            tag += "_fixlam"
+        if args.freeze_beta:
+            tag += "_fixbeta"
+        run_prefix = (f"residual_d{args.d_model}_n{args.num_layers}_{tag}_{args.loss}"
+                      f"_lr{args.lr}_{timestamp}")
     else:
-        run_prefix = f"simple_d{args.d_model}_n{args.num_layers}_lr{args.lr}_{timestamp}"
+        loss_tag = "" if args.loss == 'multinomial' else f"_{args.loss}"
+        if args.count_transform != 'none':
+            loss_tag += f"_{args.count_transform}"
+        run_prefix = f"simple_d{args.d_model}_n{args.num_layers}_lr{args.lr}{loss_tag}_{timestamp}"
 
     write_manifest(args, model_config, args.output_dir, run_prefix)
 

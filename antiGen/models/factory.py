@@ -60,6 +60,9 @@ def create_model(
     elif config.model_type == ModelType.GATED_FITNESS_PREDICTOR:
         from antiGen.models.gated_fitness_predictor import GatedFitnessPredictor
         model = GatedFitnessPredictor(config)
+    elif config.model_type == ModelType.RESIDUAL_FITNESS_PREDICTOR:
+        from antiGen.models.residual_fitness_predictor import ResidualFitnessPredictor
+        model = ResidualFitnessPredictor(config)
     else:
         raise ValueError(f"Unknown model type: {config.model_type}")
 

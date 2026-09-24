@@ -54,6 +54,144 @@ def compute_loss_full(probs, target_batch):
     return loss.sum(), n_mutations
 
 
+
+# ── Conditional loss over the mutations that occurred ──────────────────────────
+#
+# A different question from the multinomial loss above. There, each observed child
+# substitution is a draw over the whole (seq_len, E) grid, and the model is asked which
+# substitutions happen at all. Here we condition on the set that did happen and ask how
+# the descendants divide between them: the n_i sequences below mutation m_i are treated
+# as i.i.d. categorical draws over m_1..m_k with probabilities renormalized to sum to 1
+# over those k cells. Any model that emits a score map can be scored this way -- for a
+# model trained on the multinomial loss it is simply its own probabilities restricted to
+# the k cells and renormalized.
+#
+# Two properties to keep in mind when reading the numbers:
+#   * an example with k == 1 has q = 1 by construction and contributes exactly zero loss,
+#     whatever the model says. Most examples are like that, so the headline average is
+#     mostly a statement about how many observations sit under branched genotypes;
+#   * weighting by n_i is what "i.i.d. draws" means, but the counts span five orders of
+#     magnitude, so a handful of examples dominate. Report the per-example (macro) average
+#     next to it.
+
+def conditional_log_probs(scores, mat):
+    """``(log q, occupied)`` for the mutations an example actually made.
+
+    ``scores`` is anything monotone in probability on a log scale: the raw logits of a
+    linear head, or ``log p`` for a model that only exposes probabilities. Cells outside
+    the occupied set are dropped before the softmax, which is exactly "normalize the
+    output probabilities over the mutations that occur". Non-finite scores (the NaN a
+    baseline uses for wild-type, or a -inf sentinel) are treated as excluded.
+
+    Rows with no occupied cell yield all-NaN log q; callers mask them via ``occupied``.
+    """
+    B = scores.shape[0]
+    occupied = (mat > 0).reshape(B, -1)
+    z = scores.reshape(B, -1).float()
+    z = torch.where(occupied & torch.isfinite(z), z, torch.full_like(z, float("-inf")))
+    return torch.log_softmax(z, dim=1), occupied
+
+
+def conditional_nll(scores, mat, n_mat):
+    """``(total NLL, n observations, n examples)`` summed over a batch.
+
+    Only examples with at least one occupied cell count. Divide the first by the second
+    for the loss as specified (every descendant an equal draw).
+    """
+    log_q, occupied = conditional_log_probs(scores, mat)
+    keep = occupied & torch.isfinite(log_q)
+    n = n_mat.reshape(log_q.shape[0], -1).float().to(log_q.device)
+    nll = -(n * torch.where(keep, log_q, torch.zeros_like(log_q))).sum()
+    return nll, (n * keep).sum(), occupied.any(dim=1).sum()
+
+
+def compute_conditional_loss_batch(scores, mat, n_mat):
+    """Mean conditional NLL per descendant, for use as a training objective."""
+    nll, n_obs, _ = conditional_nll(scores, mat, n_mat)
+    return nll / n_obs.clamp(min=1.0)
+
+
+# ── The conditional split as a distribution-matching problem ──────────────────
+#
+# Same conditioning as above, but normalize the counts first: p_hat_i = n_i / sum(n) is the
+# empirical distribution over m_1..m_k, and the loss is KL(p_hat || q) -- the idiomatic
+# choice for fitting a predicted distribution to an observed one, and the same thing as
+# maximum likelihood since
+#
+#     KL(p_hat || q) = -sum_i p_hat_i log q_i - H(p_hat)
+#
+# differs from the cross-entropy only by a per-example constant. So the gradients are those
+# of the conditional loss with every example weighted equally instead of by its descendant
+# count -- which is the point: it takes the objective back from the ~100 examples that hold
+# almost all the descendants. Reporting KL rather than cross-entropy also puts the floor at
+# a flat 0 instead of at each example's entropy.
+
+def kl_to_empirical(scores, mat, n_mat, min_k=2):
+    """``(total KL, n examples)`` over the examples with at least ``min_k`` substitutions.
+
+    An example with one substitution has p_hat = q = 1 and KL = 0 no matter what the model
+    says, so by default those are left out of the average rather than diluting it by a
+    batch-dependent factor.
+    """
+    log_q, occupied = conditional_log_probs(scores, mat)
+    keep = occupied & torch.isfinite(log_q)
+    n = n_mat.reshape(log_q.shape[0], -1).float().to(log_q.device) * keep
+    total = n.sum(dim=1, keepdim=True)
+    p_hat = n / total.clamp(min=1.0)
+    zero = torch.zeros_like(log_q)
+    cross = -(p_hat * torch.where(keep, log_q, zero)).sum(dim=1)
+    entropy = -torch.where(p_hat > 0, p_hat * torch.log(p_hat.clamp(min=1e-30)), zero).sum(dim=1)
+    usable = (occupied.sum(dim=1) >= min_k) & (total.squeeze(1) > 0)
+    return ((cross - entropy) * usable).sum(), usable.sum()
+
+
+def compute_kl_loss_batch(scores, mat, n_mat, min_k=2):
+    """Mean KL(empirical split || predicted split), for use as a training objective."""
+    kl, n_ex = kl_to_empirical(scores, mat, n_mat, min_k)
+    return kl / n_ex.clamp(min=1)
+
+
+# ── The same descendant counts, not conditioned on the observed mutations ──────
+#
+# Drop the conditioning and every descendant becomes a draw over the whole grid instead of
+# over the k cells that were used: the model has to say both *which* substitutions happen
+# and *how* the descendants divide between them. The two are related exactly --
+#
+#     uncond = cond + (-log S),    S = the probability mass the model puts on the k cells
+#
+# -- so the unconditional loss splits cleanly into the conditional loss plus a coverage
+# term, and reporting both says which half a model is losing on.
+#
+# Unlike the conditional loss, a k == 1 example is not free here: all the mass still has to
+# land on that one cell out of seq_len x (E - 1).
+
+def non_wt_log_probs(scores, aa_idx):
+    """``log p`` over every cell except the wild-type residue at each position.
+
+    ``aa_idx`` is the ``(batch, seq_len)`` wild-type sequence. Non-finite scores (a NaN
+    mask, a -inf sentinel) are excluded from the normalizer along with wild-type.
+    """
+    B, L, E = scores.shape
+    z = scores.float().scatter(2, aa_idx.unsqueeze(-1).to(scores.device), float("-inf"))
+    z = torch.where(torch.isfinite(z), z, torch.full_like(z, float("-inf")))
+    return torch.log_softmax(z.reshape(B, -1), dim=1).reshape(B, L, E)
+
+
+def unconditional_nll(scores, aa_idx, n_mat):
+    """``(total NLL, n observations)`` with each descendant a draw over the whole grid."""
+    log_p = non_wt_log_probs(scores, aa_idx)
+    n = n_mat.float().to(log_p.device)
+    keep = (n > 0) & torch.isfinite(log_p)
+    nll = -(n * torch.where(keep, log_p, torch.zeros_like(log_p))).sum()
+    return nll, (n * keep).sum()
+
+
+def compute_unconditional_loss_batch(scores, aa_idx, n_mat):
+    """Mean unconditional NLL per descendant, for use as a training objective."""
+    nll, n_obs = unconditional_nll(scores, aa_idx, n_mat)
+    return nll / n_obs.clamp(min=1.0)
+
+
 RBD_RANGE = list(range(330, 531))  # 0-indexed, inclusive
 
 

@@ -48,6 +48,9 @@ dev = ["pytest"]
 antiGen-train = "antiGen.train:main"
 antiGen-infer = "antiGen.infer:main"
 antiGen-eval = "antiGen.eval:main"
+antiGen-eval-counts = "antiGen.eval_counts:main"
+antiGen-clade-fitness = "antiGen.clade_fitness:main"
+antiGen-clade-cluster = "antiGen.clade_cluster:main"
 antiGen-validate-examples = "antiGen.validate_examples:main"
 
 [tool.setuptools.packages.find]

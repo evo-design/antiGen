@@ -24,6 +24,7 @@ class ModelType(str, Enum):
     EVE = "eve"  # EVE VAE (pre-train on MSA, optional finetune)
     TRANCEPTION = "tranception"  # Tranception autoregressive LM (pre-train on MSA, optional finetune)
     GATED_FITNESS_PREDICTOR = "gated_fitness_predictor"  # two predictors blended via per-position gate
+    RESIDUAL_FITNESS_PREDICTOR = "residual_fitness_predictor"  # persistence counts + learned sequence residual
 
 
 class TrainingMode(str, Enum):
@@ -233,6 +234,48 @@ class GatedFitnessConfig:
 
 
 @dataclass(frozen=True)
+class ResidualConfig:
+    """Late fusion of the persistence counts with a sequence-derived residual.
+
+    The score for a listed substitution j is
+
+        s_j = beta * log(c_j + alpha) + lam * f(sequence)[pos_j, alt_j]
+
+    where c_j is the number of samples from the example's OWN time window descended from
+    j. Under the conditional objective only differences of s within an example matter, so
+    this says next window's share is this window's share times a sequence-derived
+    multiplier -- discrete-time replicator dynamics, with the network supplying a growth
+    advantage rather than a prevalence.
+
+    At beta = 1, lam = 0 the model IS the persistence baseline, exactly. That is the point
+    of ``lambda_init = 0``: training starts at the tuned baseline's loss and descends from
+    there, so any gain is attributable to sequence. The trade-off is that the inner
+    network sees zero gradient on the first step (the chain rule multiplies by lam), so
+    lam has to move off zero before the residual starts learning; ``lambda_init`` can be
+    set small-but-nonzero to skip that.
+
+    beta < 1 after training means large lineages saturate -- next year's share grows
+    sublinearly in this year's. beta = 1 is pure replicator dynamics.
+
+    With no counts supplied (scoring a de novo sequence), the prevalence term is constant
+    across cells and drops out of the softmax, so the model degrades to lam * f(sequence):
+    the sequence-only predictor.
+
+    Attributes:
+        alpha: Pseudocount added to every count before the log. Not learned -- swept.
+        beta_init: Initial prevalence exponent.
+        lambda_init: Initial sequence-residual gate.
+        learn_beta: Whether beta is a trained parameter.
+        learn_lambda: Whether lam is a trained parameter.
+    """
+    alpha: float = 1.0
+    beta_init: float = 1.0
+    lambda_init: float = 0.0
+    learn_beta: bool = True
+    learn_lambda: bool = True
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     """Unified model configuration.
 
@@ -253,6 +296,7 @@ class ModelConfig:
     tranception: TranceptionConfig = field(default_factory=TranceptionConfig)
     pssm: PSSMConfig = field(default_factory=PSSMConfig)
     gated: GatedFitnessConfig = field(default_factory=GatedFitnessConfig)
+    residual: ResidualConfig = field(default_factory=ResidualConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to dictionary for checkpoint storage."""
@@ -321,6 +365,13 @@ class ModelConfig:
                 "partner_b_type": self.gated.partner_b_type,
                 "gate_variant": self.gated.gate_variant,
             },
+            "residual": {
+                "alpha": self.residual.alpha,
+                "beta_init": self.residual.beta_init,
+                "lambda_init": self.residual.lambda_init,
+                "learn_beta": self.residual.learn_beta,
+                "learn_lambda": self.residual.learn_lambda,
+            },
         }
 
     @classmethod
@@ -388,6 +439,15 @@ class ModelConfig:
             gate_variant=gated_dict.get("gate_variant", "static"),
         )
 
+        res_dict = d.get("residual", {})
+        residual_config = ResidualConfig(
+            alpha=res_dict.get("alpha", 1.0),
+            beta_init=res_dict.get("beta_init", 1.0),
+            lambda_init=res_dict.get("lambda_init", 0.0),
+            learn_beta=res_dict.get("learn_beta", True),
+            learn_lambda=res_dict.get("learn_lambda", True),
+        )
+
         return cls(
             model_type=ModelType(d["model_type"]),
             seq_len=d["seq_len"],
@@ -399,6 +459,7 @@ class ModelConfig:
             tranception=tranception_config,
             pssm=pssm_config,
             gated=gated_config,
+            residual=residual_config,
         )
 
 

@@ -25,6 +25,11 @@ endif
 antiGen-data: $(OBJ)
 	$(CC) $(CXXFLAGS) $(INCLUDES) $(DEFS) -o $@ $(OBJ)
 
+# Rebuild every object when any header changes. types.h defines the Node layout that all
+# four translation units share, so a stale object file there is a silent ABI mismatch
+# (a segfault at run time) rather than a compile error.
+$(OBJ): $(wildcard include/*.h)
+
 $(BUILDDIR)/%.o: src/%.cpp | $(BUILDDIR)
 	$(CC) $(CXXFLAGS) $(INCLUDES) $(DEFS) $(XFLAG) -c $< -o $@
 

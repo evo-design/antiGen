@@ -107,6 +107,7 @@ output_<dataset>/
 ```
 
 Each example within `examples_cutoff_*.txt` holds a sequence, its `TRAINING`/`TESTING` designation, whether it is the root example of or is descended from a supplied variant of interest, and the substitutions observed in that sequence's children (the training target).
+Each line of the `MUTATIONS_TO_CHILDREN:` block is `<pos>,<alt>,<descendants>`, where `descendants` counts the observed sequences descended from that substitution — everything at or below the child it leads to. The count stays on the example's own side of the split: sequences from before the cutoff for a `TRAINING` example, from after it for a `TESTING` one. Summing the counts on the global root therefore gives the number of training sequences, less those whose genotype is the root's own.
 `antiGen-validate-examples <file> [--variant V]` checks a file is well-formed (single consistent
 sequence length, alphabet `ACDEFGHIKLMNPQRSTVWY*-`, in-range positions, ≥1 training example). The
 Quickstart above generates a miniature example of this format from the toy inputs in
