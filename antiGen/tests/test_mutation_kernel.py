@@ -12,10 +12,11 @@ import pytest
 
 from antiGen.mutation_kernel import (AA, ARMS, BREAK_EVEN, CONS_DELTA, CONS_FAST,
                                      CONS_SLOW_MULT, Candidates, Forecast,
-                                     apply_substitution, average, candidates, convolve,
+                                     apply_substitution, average, candidates,
+                                     causal_operating_point, convolve, reads_slow,
                                      consensus_freq, descent, empirical_counts, gate,
                                      golden_mu, one_step_floor, site_allele_freq,
-                                     _columns)
+                                     candidate_cap, MIN_CANDIDATE_CAP, _columns)
 from antiGen.season_emd import emd
 from antiGen.season_momentum import (K_FAMILIES, MU_FIXED, Task, TipPanel, design_for,
                                      fit_family, make_grid, run_family, train_set)
@@ -876,3 +877,192 @@ def test_the_panels_tau_e_reaches_a_scoring_run(panel):
     # means the arm's default rather than "unset".
     same = t_short.candidates("kcmom", tau_k=1.0, m=0, tau_e=None)
     assert np.allclose(same.pi, base.pi)
+
+
+# ── choosing the operating point causally (`causal_operating_point`) ────────
+#
+# `p_down` is an oracle quantity: `phi` is the c-transform of the optimal TARGET
+# potential, so a gate row knows where its season actually went. The round that settled
+# `tau_e 0.25, tau_k 0.02, m 0` pooled the gate over transitions 2017->2018 .. 2022->2023
+# and applied the one point at every origin -- and five of those six transitions are also
+# scored, so the operating point behind the row reported at origin 2018 was chosen partly
+# from origin 2018's own target. These tests pin the rule that removes it.
+
+def _rows(arm="kcmom", **per_cfg):
+    """Gate rows in the shape `kernel_gate` writes them.
+
+    `per_cfg` maps a config name to `{season: deriv}`; config names are decoded as
+    `te<fast>_ts<slow>_tk<tau_k>_m<m>` so a test can say what it means in the call. The
+    slow window may be `n` for None, which is what an arm that reads no slow table
+    records."""
+    out = []
+    for name, by_season in per_cfg.items():
+        te, ts, tk, m = name.split("_")
+        slow = None if ts[2:] == "n" else float(ts[2:])
+        for s, dv in by_season.items():
+            out.append(dict(season=int(s), next=int(s) + 1, arm=arm,
+                            tau_e=float(te[2:]), tau_e_slow=slow,
+                            tau_k=float(tk[2:]), m=int(m[1:]),
+                            deriv=float(dv), p_down=0.5, p_flat=0.1))
+    return out
+
+
+def test_a_gate_row_from_the_future_is_never_readable():
+    """The whole correction in one assertion.
+
+    `te1.0_tk0.1_m0` is far the best config -- but only because of transition
+    2022->2023, which closes at 2023.25, after origin 2021's horizon of 2021.25. At
+    origin 2021 the choice must be made from 2017..2020 alone, where the other config
+    wins."""
+    rows = _rows(**{"te1.0_ts3.0_tk0.1_m0": {2017: -0.1, 2018: -0.1, 2019: -0.1, 2020: -0.1,
+                                              2021: -0.1, 2022: -9.9},
+                    "te0.25_ts0.75_tk0.02_m0": {2017: -0.5, 2018: -0.5, 2019: -0.5,
+                                                2020: -0.5, 2021: -0.5, 2022: -0.5}})
+    te, ts, tk, m, info = causal_operating_point(rows, "kcmom", 2021)
+    assert (te, ts, tk, m) == (0.25, 0.75, 0.02, 0)
+    assert info["gated_on"] == [2017, 2018, 2019, 2020]
+    # And with everything readable, the future-fed config does win -- so the test is
+    # about the filter and not about the arithmetic.
+    assert causal_operating_point(rows, "kcmom", 2026)[:4] == (1.0, 3.0, 0.1, 0)
+
+
+def test_the_previous_transition_is_readable_and_this_one_is_not():
+    """The boundary, which is where an off-by-one would live. Transition `j` reads the
+    targets of season `j + 1`, closing at `(j + 1) + 0.25`; origin `i` forecasts from
+    `i + 0.25`. So `j = i - 1` closes exactly at the horizon and is in; `j = i` is out."""
+    rows = _rows(**{"te0.25_ts0.75_tk0.02_m0": {2019: -0.5, 2020: -0.5, 2021: -0.5}})
+    assert causal_operating_point(rows, "kcmom", 2021)[4]["gated_on"] == [2019, 2020]
+    assert causal_operating_point(rows, "kcmom", 2020)[4]["gated_on"] == [2019]
+
+
+def test_a_config_measured_on_fewer_transitions_is_dropped_not_averaged():
+    """A mean over four transitions and a mean over five are not comparable, and taking
+    the argmin across both lets a config win by having been measured on the easy ones."""
+    rows = _rows(**{"te0.5_ts1.5_tk0.1_m0": {2019: -9.9},            # one easy row only
+                    "te0.25_ts0.75_tk0.02_m0": {2018: -0.5, 2019: -0.5}})
+    te, ts, tk, m, info = causal_operating_point(rows, "kcmom", 2020)
+    assert (te, ts, tk, m) == (0.25, 0.75, 0.02, 0)
+    assert info["n_configs"] == 1
+    # Asked not to require completeness, the ragged config wins -- so the guard is what
+    # is being tested, not the fixture.
+    assert causal_operating_point(rows, "kcmom", 2020,
+                                  require_complete=False)[:4] == (0.5, 1.5, 0.1, 0)
+
+
+def test_an_origin_with_nothing_readable_raises_rather_than_defaulting():
+    """Falling back to the declared flag would leave half a panel causal and half not,
+    with nothing in the output saying which half."""
+    rows = _rows(**{"te0.25_ts0.75_tk0.02_m0": {2020: -0.5, 2021: -0.5}})
+    with pytest.raises(ValueError, match="no gate row"):
+        causal_operating_point(rows, "kcmom", 2020)
+    with pytest.raises(ValueError, match="no gate row"):
+        causal_operating_point(rows, "kcons", 2025)          # arm absent entirely
+
+
+def test_each_arm_gets_its_own_operating_point():
+    rows = (_rows("kcmom", **{"te0.25_ts0.75_tk0.02_m0": {2019: -0.9},
+                              "te1.0_ts3.0_tk0.1_m0": {2019: -0.1}})
+            + _rows("kcons", **{"te0.25_tsn_tk0.02_m0": {2019: -0.1},
+                                "te1.0_tsn_tk0.1_m0": {2019: -0.9}}))
+    assert causal_operating_point(rows, "kcmom", 2020)[:4] == (0.25, 0.75, 0.02, 0)
+    # kcons reads no slow table, so its rows carry None and it is never asked to choose
+    # between two settings of a field it cannot see.
+    assert causal_operating_point(rows, "kcons", 2020)[:4] == (1.0, None, 0.1, 0)
+
+
+def test_the_resolved_point_overrides_the_declared_flags(panel):
+    """`Task.kernel_point` is the one place the override happens, and it happens before
+    the cache key -- so the key still names the kernel that was actually built, and a
+    task asked for two different declared points returns the resolved one both times."""
+    task = Task(panel, 2001)
+    declared = task.candidates("kcmom", tau_k=1.0, m=0, tau_e=1.0)
+    task._cache.clear()
+    task.kernel_point = {"kcmom": (0.25, 0.75, 0.02, 0)}
+    a = task.candidates("kcmom", tau_k=1.0, m=0, tau_e=1.0)
+    b = task.candidates("kcmom", tau_k=0.5, m=3, tau_e=2.0)     # different flags
+    assert a is b, "the override must collapse onto one cache key"
+    resolved = [k for k in task._cache if k[0] == "cand"]
+    assert resolved == [("cand", "kcmom", 0.02, 0, 0.25, 0.75)]
+    assert not np.allclose(np.sort(a.pi), np.sort(declared.pi)), (
+        "the fixture's two operating points give the same proposal; it proves nothing")
+    # An arm the table did not resolve is untouched.
+    task.candidates("kcons", tau_k=0.5, m=3, tau_e=2.0)
+    assert ("cand", "kcons", 0.5, 3, 2.0, None) in task._cache
+
+
+def test_the_slow_window_is_free_and_must_exceed_the_fast_one(panel):
+    """The asymmetry this replaces: the genotype momentum column selects `tau_f` and
+    `tau_s` independently, so the site-allele momentum -- the same construction at allele
+    resolution -- may not have its slow window pinned to a multiple of its fast one.
+
+    Three things are pinned here: the slow window changes the table, the 3x fallback is
+    still what `None` means, and a slow window at or below the fast one raises rather
+    than producing a momentum term that points backwards."""
+    a = consensus_freq(panel, 2001.25, "kcmom", 0.5, 1.5)
+    b = consensus_freq(panel, 2001.25, "kcmom", 0.5, 4.0)
+    assert not np.allclose(a, b), "the slow window does not reach the table"
+    # `None` is still 3x the fast window, so every pre-2026-09-28 run reproduces.
+    assert np.allclose(consensus_freq(panel, 2001.25, "kcmom", 0.5, None),
+                       consensus_freq(panel, 2001.25, "kcmom", 0.5, 0.5 * CONS_SLOW_MULT))
+    for bad in (0.5, 0.25):
+        with pytest.raises(ValueError, match="longer than the fast one"):
+            consensus_freq(panel, 2001.25, "kcmom", 0.5, bad)
+
+
+def test_only_the_momentum_arm_reads_a_slow_window(panel):
+    """`kcons` is the delta = 0 control, so the slow table is never built for it. If the
+    gate swept a slow window for it every configuration would be identical and the argmin
+    would be decided by iteration order -- which is what `reads_slow` exists to stop."""
+    assert reads_slow("kcmom") and not reads_slow("kcons")
+    assert not reads_slow("kemp") and not reads_slow("kunif")
+    for slow in (1.5, 4.0, None):
+        assert np.allclose(consensus_freq(panel, 2001.25, "kcons", 0.5, slow),
+                           consensus_freq(panel, 2001.25, "kcons", 0.5, 99.0))
+
+
+# ── the candidate cap is relative to the leak-free block (2026-10-02) ───────
+
+def test_a_leak_free_arm_is_never_refused_for_its_own_dense_block(task, monkeypatch):
+    """The absolute 500k cap refused `kcmom` and `kcons` at origins 2020 and 2021 of
+    `panel_K30_v1` -- 530,528 and 520,654 rows -- for being 6% over a constant sized
+    against the backbone's 379-707-genotype support. An `observed` arm at `m = 0` asks
+    for exactly its own dense block and must never be refused it, at any panel size.
+
+    The floor is monkeypatched to 1 so the fixture's tiny support exercises the relative
+    branch rather than the floor."""
+    monkeypatch.setattr("antiGen.mutation_kernel.MIN_CANDIDATE_CAP", 1)
+    A = task.panel.codes[task.sup]
+    col_site, _ = _columns(task.panel, A, "observed")
+    dense = len(task.sup) * len(col_site)
+    for arm in ("kunif", "kemp", "kcons", "kcmom"):
+        assert candidate_cap(task.panel, A, arm, col_site) == dense
+        cand = task.candidates(arm, 1.0, 0)          # tau_k = 1: as dense as it gets
+        assert 0 < len(cand.parent) <= dense
+
+
+def test_an_all_residue_arm_at_m_zero_still_trips_the_cap(monkeypatch):
+    """What the guard exists for. `kplm` opens every varying site to all twenty residues,
+    so its untruncated block is a large multiple of the leak-free one -- ~13x at origin
+    2020 of `panel_K30_v1`, 7.1M rows against 530k -- and the LP is no longer a transport
+    problem. Truncating with `m` is the caller's job, and the arm says so."""
+    monkeypatch.setattr("antiGen.mutation_kernel.MIN_CANDIDATE_CAP", 1)
+    p = _marg_panel()
+    t = Task(p, 2001)
+    A = p.codes[t.sup]
+    obs = len(_columns(p, A, "observed")[0])
+    assert len(_columns(p, A, "all")[0]) > obs, "the fixture must have a novel channel"
+    assert candidate_cap(p, A, "kplm") == len(t.sup) * obs
+    with pytest.raises(ValueError, match="the cap is"):
+        t.candidates("kplm", 1.0, 0)
+    # ...and the same arm truncated is fine, which is what the message tells the caller.
+    assert len(t.candidates("kplm", 1.0, 2).parent) <= 2 * len(t.sup)
+
+
+def test_the_cap_floor_reproduces_the_old_absolute_behaviour(task):
+    """Below the backbone's size nothing changes: the floor is the constant the absolute
+    cap was, so no panel smaller than the one that forced this change sees a different
+    verdict from the one it would have seen before 2026-10-02."""
+    A = task.panel.codes[task.sup]
+    assert MIN_CANDIDATE_CAP == 500_000
+    for arm in ARMS:
+        assert candidate_cap(task.panel, A, arm) == MIN_CANDIDATE_CAP

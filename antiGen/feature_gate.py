@@ -40,7 +40,8 @@ import json
 import numpy as np
 
 from antiGen.antigen_feature import FEATURES, anchors, redundancy
-from antiGen.season_momentum import MONTH, Task, TipPanel, load_alignment_dated, load_tips
+from antiGen.season_momentum import (MONTH, Task, TipPanel, add_panel_source_args,
+                                     tips_from_args)
 
 
 def _spearman(x, y, w):
@@ -162,10 +163,7 @@ def summarise(rows, verbose=True):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tree", default=None)
-    ap.add_argument("--ref", default=None)
-    ap.add_argument("--alignment", nargs="+", default=None)
-    ap.add_argument("--metadata", default=None)
+    add_panel_source_args(ap)
     ap.add_argument("--min-allele-freq", type=float, default=0.005)
     ap.add_argument("--lookback", type=float, default=5.0)
     ap.add_argument("--max-support", type=int, default=0)
@@ -184,22 +182,14 @@ def main():
     ap.add_argument("-o", "--output", default=None)
     a = ap.parse_args()
 
-    if a.alignment:
-        if not a.metadata:
-            ap.error("--alignment needs --metadata")
-        tips, _ = load_alignment_dated(a.alignment, a.metadata)
-        src = f"alignment, {len(a.alignment)} segments"
-    else:
-        if not (a.tree and a.ref):
-            ap.error("give either --tree/--ref or --alignment/--metadata")
-        tips, _ = load_tips(a.tree, a.ref)
-        src = "guide-tree tips"
+    tips, _, src, submitted = tips_from_args(ap, a)
     feats = tuple(x for x in a.features.split(",") if x)
     bad = [x for x in feats if x not in FEATURES]
     if bad:
         ap.error(f"unknown features {bad}; have {list(FEATURES)}")
 
-    panel = TipPanel(tips, a.min_allele_freq, a.lookback, a.max_support)
+    panel = TipPanel(tips, a.min_allele_freq, a.lookback, a.max_support,
+                     submitted=submitted)
     panel.agen_root = a.antigen_checkpoints
     panel.agen_device = a.antigen_device
     print(f"source: {src}; {len(panel.tips)} dated sequences, "
@@ -222,7 +212,8 @@ def main():
     table, verdict = summarise(rows)
     if a.output:
         with open(a.output, "w") as f:
-            json.dump(dict(source=src, gated_on=sel, held_out=held,
+            json.dump(dict(source=src, panel=a.panel_provenance,
+                           gated_on=sel, held_out=held,
                            features=list(feats),
                            per_transition=rows, table=table, verdict=verdict),
                       f, indent=2)

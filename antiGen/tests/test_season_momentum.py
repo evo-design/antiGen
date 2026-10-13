@@ -1504,3 +1504,220 @@ def test_the_consensus_families_run_end_to_end(win_panel, capsys):
     out = report(rows, fams)
     assert out["mlr+mom+dfc"]["coef_name"] == "delta"
     assert "delta" in capsys.readouterr().out
+
+
+# ── the feature set as a function of the past only (`--censor-features`) ────
+#
+# `TipPanel` has always accepted a `feature_mask`, and `huddleston_panel` has always
+# passed one; the backbone driver never could, so every backbone number in the log was
+# produced with the (position, residue) columns chosen over the whole record -- 1996-2026
+# of allele frequencies deciding which alleles the 2017 forecast is allowed a coefficient
+# for. The fitted values are still fitted on earlier transitions, so this is an exposure
+# in the column *set* and not in the coefficients, but it is one, and at origin 2017 of
+# the real backbone 42 of the 239 columns exist only because of post-horizon data and
+# vary over the support. These tests pin the flag that removes it.
+
+CENSOR_REF = {"SigPep": "M", "HA1": "AAAA", "HA2": "C", "nuc": "x" * 18}
+# Season Y runs 1 Oct Y-1 to 1 Apr Y, so .80 lands in season Y+1 and .10 in season Y.
+CENSOR_SEASONS = (2001, 2002, 2003, 2004, 2005)
+
+
+def _censor_tree(tmp_path, future_allele):
+    """A flat tree: four tips a season, position 2 of HA1 carrying the varying allele.
+
+    Every season holds three "A" tips and one that differs, so the panel has something to
+    fit. `future_allele` is the residue the *post-horizon* seasons carry at HA1 position 3
+    -- the one whose global frequency decides whether that column exists. Seasons up to
+    2003 never carry it, so censoring at origin 2003's horizon must make the column
+    disappear and rewriting it must then change nothing.
+    """
+    kids = []
+    for k, s in enumerate(CENSOR_SEASONS):
+        for j in range(4):
+            muts = []
+            if j == 3:
+                muts.append("A2C")                      # the ordinary varying site
+            if s > 2003 and j >= 2:
+                muts.append(f"A3{future_allele}")       # the post-horizon allele
+            date = (s - 1) + 0.80 + 0.02 * j
+            kids.append({"name": f"t{k}_{j}",
+                         "branch_attrs": {"mutations": {"HA1": muts}} if muts else {},
+                         "node_attrs": {"num_date": {"value": date}}})
+    tree = {"tree": {"name": "root", "branch_attrs": {}, "children": kids}}
+    (tmp_path).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ref.json").write_text(json.dumps(CENSOR_REF))
+    (tmp_path / "tree.json").write_text(json.dumps(tree))
+    return tmp_path
+
+
+def _censor_run(tmp_path, future_allele, censor, origin=2003):
+    """`season_momentum.main` end to end, returning the output JSON."""
+    import sys
+    from antiGen import season_momentum as sm
+
+    d = _censor_tree(tmp_path, future_allele)
+    out = d / "out.json"
+    argv = ["season_momentum", "--tree", str(d / "tree.json"), "--ref", str(d / "ref.json"),
+            "--min-allele-freq", "0.1", "--min-season-seqs", "2", "--min-train", "2",
+            "--val-folds", "2", "--maxiter", "20", "--drop-targets", "",
+            "--tau-f-months", "1", "--tau-s-years", "inf", "--lambdas", "1",
+            "--windows", "0", "--alphas", "0", "--gamma-pens", "0.01",
+            "--families", "season,mlr,mlr+mom", "--transitions", str(origin),
+            "-o", str(out)]
+    if censor:
+        argv.append("--censor-features")
+    old = sys.argv
+    try:
+        sys.argv = argv
+        sm.main()
+    finally:
+        sys.argv = old
+    return json.loads(out.read_text())
+
+
+def test_the_censor_fixture_can_actually_show_a_feature_set_leak(tmp_path):
+    """Without this the invariance test below would pass vacuously.
+
+    The allele at HA1 position 3 appears only in seasons 2004 and 2005, i.e. strictly
+    after origin 2003's horizon. Counted over the whole record it clears the 0.1 floor
+    and the site contributes two columns; counted only up to the horizon the site is
+    monomorphic and contributes none."""
+    a = _censor_run(tmp_path / "all", "G", censor=False)
+    c = _censor_run(tmp_path / "cut", "G", censor=True)
+    assert a["n_features"] > c["n_features"], (
+        "censoring removed no column; the fixture proves nothing")
+    assert a["censor_at"] is None and c["censor_at"] == 2003.25
+    assert c["n_feature_tips"] == 12          # three seasons of four tips, 2001-2003
+
+
+def test_rewriting_the_future_cannot_move_a_censored_feature_set(tmp_path):
+    """The audit in one assertion. Two records identical at or before 2003.25 and
+    different after it must give the same columns once the counts are censored -- and
+    must not, uncensored, or the fixture is not exercising the exposure."""
+    cut_g = _censor_run(tmp_path / "cg", "G", censor=True)
+    cut_w = _censor_run(tmp_path / "cw", "W", censor=True)
+    assert cut_g["n_features"] == cut_w["n_features"]
+    assert cut_g["n_feature_tips"] == cut_w["n_feature_tips"]
+    all_g = _censor_run(tmp_path / "ag", "G", censor=False)
+    all_w = _censor_run(tmp_path / "aw", "W", censor=False)
+    # Same *count* either way here, but the columns are different residues; the point is
+    # that the censored panel cannot tell the two records apart at all and the
+    # uncensored one is reading a residue no pre-horizon sequence carries.
+    assert all_g["n_features"] > cut_g["n_features"]
+    assert all_w["n_features"] > cut_w["n_features"]
+
+
+def test_the_censored_run_still_scores_the_origin_it_was_censored_at(tmp_path):
+    """A censored panel must be a panel: the roll still happens and the target is
+    untouched. The geometry -- varying sites, codes, transport costs -- is global by
+    construction, so the floor may not move when only the feature counts are censored."""
+    a = _censor_run(tmp_path / "all", "G", censor=False)
+    c = _censor_run(tmp_path / "cut", "G", censor=True)
+    (ra,), (rc,) = a["per_transition"], c["per_transition"]
+    assert ra["season"] == rc["season"] == 2003
+    assert rc["floor"] == pytest.approx(ra["floor"], abs=1e-12)
+    assert rc["emd_season"] == pytest.approx(ra["emd_season"], abs=1e-12)
+    assert np.isfinite(rc["emd_mlr+mom"])
+
+
+def test_censoring_refuses_a_panel_it_cannot_censor(tmp_path):
+    """One panel, one censoring horizon. Two origins in a single run would need two
+    feature sets, and silently taking the first would censor the other at the wrong
+    date."""
+    for bad in ("", "2003,2004"):
+        d = _censor_tree(tmp_path / f"b{len(bad)}", "G")
+        import sys
+        from antiGen import season_momentum as sm
+        argv = ["season_momentum", "--tree", str(d / "tree.json"),
+                "--ref", str(d / "ref.json"), "--censor-features"]
+        if bad:
+            argv += ["--transitions", bad]
+        old = sys.argv
+        try:
+            sys.argv = argv
+            with pytest.raises(SystemExit):
+                sm.main()
+        finally:
+            sys.argv = old
+
+
+# ── the parallel selector ───────────────────────────────────────────────────
+#
+# `--select-workers` is a performance flag and the tests below are what entitles it to be
+# described that way. The selector's combination loop is 84% of a scored task's wall on
+# the additive panel at K = 90 -- 13,000 network-simplex solves at about a minute each --
+# and the only reason it may be split across processes is that no iteration reads what
+# another writes. These check that claim on the two things that could break it: the
+# numbers themselves, and the tie-break that decides which of two equal candidates wins.
+
+def _wide_tasks():
+    """Four consecutive seasons as `rolling` would set them up: `(tasks, order)`.
+
+    Built fresh on each call so that the serial and the parallel run below cannot share a
+    warm `task._cache` -- which is the one piece of state the two paths differ in, and so
+    the one the comparison has to hold apart rather than let coincide."""
+    tips = []
+    for y, g in ((2001, "AAAA"), (2002, "ACAA"), (2003, "ACAG"), (2004, "AGAG")):
+        tips += [(y - 0.1, g), (y - 0.05, g), (y + 0.1, "AAAG"), (y + 0.2, g)]
+    panel = TipPanel(tips, min_allele_freq=0.0, lookback=5.0)
+    order = [s for s in panel.seasons if (s + 1) in panel.seasons]
+    return {s: Task(panel, s) for s in order}, order
+
+
+@pytest.mark.parametrize("family", ["mlr", "mlr+mom", "ewma"])
+def test_worker_pool_reproduces_the_serial_selector_exactly(family):
+    """Same chosen combos and the same validation error for every candidate, bit for bit.
+
+    `repr` and not `pytest.approx`: a worker pool that agreed to 1e-12 would mean the two
+    paths were doing arithmetic in different orders, which is the finding this test exists
+    to rule out, not a pass."""
+    from antiGen.season_momentum import select
+
+    tasks, order = _wide_tasks()
+    grid = make_grid((1, 3), (1.0, np.inf), (0.3, 3.0), (0, 2), (0.0, 0.05))
+    i = len(order) - 1
+    ser_c, ser_e = select(tasks, order, i, grid, family, 3, 10, 0.01, top_k=2)
+    tasks2, order2 = _wide_tasks()
+    par_c, par_e = select(tasks2, order2, i, grid, family, 3, 10, 0.01, top_k=2,
+                          workers=3)
+    assert repr(ser_e) == repr(par_e)
+    assert [sorted(c.items(), key=repr) for c in ser_c] == \
+           [sorted(c.items(), key=repr) for c in par_c]
+
+
+def test_the_tie_break_is_grid_order_on_both_paths():
+    """Among candidates with equal validation error the earliest in the grid wins, and a
+    NaN never wins at all. The parallel path returns its pairs out of order, so it has to
+    re-impose this rather than inherit it from the loop."""
+    from antiGen.season_momentum import select_chunks
+
+    # The ordering contract, stated directly on the scan `select` runs over `errs`.
+    errs = {0: 2.0, 1: 1.0, 2: 1.0, 3: float("nan"), 4: 3.0}
+    best, best_err = None, np.inf
+    for c in sorted(errs):
+        if errs[c] < best_err:
+            best, best_err = c, errs[c]
+    assert best == 1, "the first of two equal minima, not the last"
+    assert sorted(errs, key=lambda c: errs[c])[:2] == [1, 2], "stable within a tie"
+    # And the chunking never reorders the grid it is cutting.
+    assert [a for a, _ in select_chunks([{}] * 10, 3)] == \
+           sorted(a for a, _ in select_chunks([{}] * 10, 3))
+
+
+def test_chunks_cover_the_grid_once_and_never_split_a_cache_group():
+    """`mu` is the fastest-varying axis and `_momentum_prediction` memoises the parent a
+    run of `mu`s shares, so a chunk boundary inside such a run would refit it once per
+    piece -- five times the fits for the same numbers."""
+    from antiGen.season_momentum import cache_groups, collapse, select_chunks
+
+    grid = make_grid((1, 3), (1.0, np.inf), (0.3, 3.0), (0, 2), (0.0,),
+                     mus=(0, 0.05, 0.1, 0.2, 0.4), kernels=("kcmom",))
+    g = collapse(grid, "mlr+mom+K")
+    groups = cache_groups(g)
+    assert [b - a for a, b in groups] == [5] * (len(g) // 5), "one group per mu-run"
+    for n in (1, 2, 3, 7, 64):
+        chunks = select_chunks(g, n)
+        assert chunks[0][0] == 0 and chunks[-1][1] == len(g)
+        assert all(x[1] == y[0] for x, y in zip(chunks, chunks[1:])), "contiguous cover"
+        starts = {a for a, _ in groups}
+        assert all(a in starts for a, _ in chunks), "no cut inside a cache group"

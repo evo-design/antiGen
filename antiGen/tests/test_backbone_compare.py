@@ -105,3 +105,60 @@ def test_standardisation_matches_their_weighted_convention():
 def test_a_zero_coefficient_reproduces_the_current_frequencies():
     P = np.random.default_rng(0).normal(size=(5, 2)); x0 = np.full(5, 0.2)
     assert np.allclose(project(np.zeros(2), P, x0), x0)
+
+
+# ── the panel and the tree are two inputs, not one (2026-10-02) ─────────────
+
+def _maps(tmp_path, ref):
+    """Luksza's two distance maps over a toy concatenation."""
+    import os
+    d = tmp_path / "maps"
+    d.mkdir(exist_ok=True)
+    (d / "luksza.json").write_text(json.dumps({"map": {"HA1": [1]}}))
+    (d / "luksza_nonepitope.json").write_text(json.dumps({"map": {"HA1": [2, 3]}}))
+    return str(d)
+
+
+def test_the_sequence_join_reproduces_the_old_index_join(tmp_path, tiny):
+    """`BackbonePanel` used to pair `tip_nodes[i]` with `panel.tip_gid[i]`, which was
+    sound only because both lists were the same tips sorted the same way. The join is
+    now by sequence, so that a tree and a panel from different sources can meet; on the
+    one-tree path the two must agree exactly, and this is what says so."""
+    from antiGen.backbone_compare import BackbonePanel
+    from antiGen.season_momentum import Task
+    tree_json = str(tmp_path / "tree.json")
+    ref_json = str(tmp_path / "ref.json")
+    bp = BackbonePanel.from_tree(tree_json, ref_json, _maps(tmp_path, None),
+                                 min_allele_freq=0.0, lookback=10.0, verbose=False)
+    p = bp.panel
+    nodes = bp._tip_nodes(2001)
+    # the index join the old code did, reconstructed here
+    assert [p.gid[n.seq] for n in nodes] == [int(g) for g in p.tip_gid]
+    task = Task(p, 2001)
+    idx, cnt = bp._live(task)
+    assert bp.join_misses[2001] == 0
+    assert cnt.sum() == len(idx) > 0
+
+
+def test_a_per_origin_tree_source_refuses_an_origin_it_has_no_build_for(tmp_path):
+    """Falling back to another origin's build would put that origin's hindsight into
+    this one's `lbi`, which is the whole thing per-origin trees remove."""
+    from antiGen.backbone_compare import PerOriginTrees
+    d = tmp_path / "trees"
+    d.mkdir()
+    src = PerOriginTrees(str(d), str(tmp_path / "ref.json"), verbose=False)
+    with pytest.raises(FileNotFoundError, match="no tree for origin 2019"):
+        src.nodes(2019)
+
+
+def test_a_panel_the_distance_maps_cannot_index_is_refused(tmp_path, tiny):
+    """The maps are indexed by position in the SigPep+HA1+HA2 concatenation. A panel
+    built from a different alignment would be scored at the wrong residues, silently."""
+    from antiGen.backbone_compare import BackbonePanel, OneTree
+    from antiGen.season_momentum import TipPanel
+    ref_json = str(tmp_path / "ref.json")
+    trees = OneTree(str(tmp_path / "tree.json"), ref_json, verbose=False)
+    short = TipPanel([(2001.1, "AAA"), (2001.2, "AAT"), (2002.1, "ATT")],
+                     min_allele_freq=0.0, lookback=10.0)
+    with pytest.raises(ValueError, match="distance maps are over"):
+        BackbonePanel(short, trees, _maps(tmp_path, None), ref_json, verbose=False)

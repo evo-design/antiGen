@@ -63,7 +63,8 @@ from scipy.optimize import minimize
 from antiGen.clade_cluster import season_of
 from antiGen.season_emd import emd
 from antiGen.season_momentum import (H3N2_SEGMENTS, Task, TipPanel,
-                                     consensus_distance, cost_matrix)
+                                     add_panel_source_args, consensus_distance,
+                                     cost_matrix, tips_from_args)
 
 L1_LAMBDA = 0.1          # their config/config.json, fitness_model.l1_lambda
 LBI_TAU, LBI_WINDOW = 0.3, 0.5          # their config, lbi.tau and lbi.window
@@ -218,7 +219,7 @@ def mutational_load(tip, season, nonepi):
     return float(count)
 
 
-def epitope_cross_immunity(seq_codes, sup, past_codes, past_w, epi_idx):
+def epitope_cross_immunity(seq_codes, sup, past_codes, past_w, epi_idx, d0=D0):
     """`ep_x`: sum over previously circulating strains of `w_j exp(-D_ep(i,j) / D0)`.
 
     `D_ep` counts differences at the epitope sites only. Higher means the strain looks
@@ -232,7 +233,7 @@ def epitope_cross_immunity(seq_codes, sup, past_codes, past_w, epi_idx):
     for a in range(0, len(sup), step):
         b = min(a + step, len(sup))
         D = (A[a:b, None, :] != P[None, :, :]).sum(2)
-        out[a:b] = (np.exp(-D / D0) * past_w).sum(axis=1)
+        out[a:b] = (np.exp(-D / d0) * past_w).sum(axis=1)
     return -out
 
 
@@ -282,65 +283,267 @@ def fit_their_model(train, l1=L1_LAMBDA, seed=0):
 
 # ── the panel, with their metrics attached ──────────────────────────────────
 
-class BackbonePanel:
-    """Our backbone panel, plus Huddleston's metrics computed per season and genotype."""
+# ── where the topology comes from, which is no longer where the panel does ──
 
-    def __init__(self, tree_json, ref_json, maps_dir, min_allele_freq=0.005,
-                 lookback=5.0, verbose=True):
-        self.root, self.nodes = load_tree(tree_json, ref_json)
-        tips = [(float(n.date), n.seq) for n in self.nodes
-                if n.is_tip and n.date is not None]
-        self.panel = TipPanel(sorted(tips), min_allele_freq=min_allele_freq,
-                              lookback=lookback)
-        self.tip_nodes = sorted([n for n in self.nodes if n.is_tip and n.date is not None],
-                                key=lambda n: (float(n.date), n.seq))
+class TreeSource:
+    """The topology `lbi` and `ne_star` read, keyed by forecast origin.
+
+    **Why this exists (2026-10-02).** `BackbonePanel` used to fuse two things: the panel
+    -- the sequences every model is scored on -- and the tree, because both were read off
+    the same `tree.json`. Two of their four metrics need no tree at all
+    (`distance_from_consensus`, which is the current top row, and `ep_x`), and two do:
+    `lbi` walks nodes and branch lengths, `ne_star` walks a tip up to its ancestor in the
+    prior season. So a run on an additive manifest panel could produce two of the four
+    and would be missing their designated best sequence-only arm, `ne_star-lbi`.
+
+    Splitting them is the same separation `PROPOSAL_additive_panel.md` made on our side.
+    The panel is the manifest; the tree supplies `lbi` and `ne_star` and nothing else, and
+    it therefore needs to hold only `S(T)` -- the target season is read off the *panel*,
+    via `task.tgt_w`, and never off the tree. That is what makes §8's per-origin rebuilds
+    tractable: a tree per origin over the date-prefix, with no target tips in it.
+
+    **The join is by sequence, not by row order.** The old code paired
+    `tip_nodes[i]` with `panel.tip_gid[i]`, which was sound only because both lists were
+    the same tips sorted the same way. Once the tree and the panel are separate objects
+    that coincidence is gone, so a tree tip finds its genotype through `panel.gid`. On
+    the one-tree path the two are provably identical -- `panel.gseq[i]` IS
+    `tip_nodes[i].seq`, both sorted by `(date, seq)` -- which a test pins.
+    """
+
+    def nodes(self, season):
+        raise NotImplementedError
+
+    def label(self):
+        raise NotImplementedError
+
+
+class OneTree(TreeSource):
+    """One build, read at every origin. What every run before 2026-10-02 did.
+
+    Causally this is the standing exposure the 2026-09-28 list calls "the backbone tree
+    itself": a 2026 build knows the whole record, and censoring LBI to the horizon does
+    not undo a topology estimated with hindsight. One build swap was worth 0.3866 AA to
+    `lbi`. It stays reachable because every number in the ledger stands on it.
+    """
+
+    def __init__(self, tree_json, ref_json, verbose=True):
+        self.path = tree_json
+        self.root, self._nodes = load_tree(tree_json, ref_json)
+        if verbose:
+            n_tips = sum(1 for n in self._nodes if n.is_tip and n.date is not None)
+            print(f"tree: one build, {n_tips} dated tips, {os.path.basename(tree_json)}")
+
+    def nodes(self, season):
+        return self._nodes
+
+    def label(self):
+        return f"one tree: {self.path}"
+
+
+class PerOriginTrees(TreeSource):
+    """One build per forecast origin, each estimated from that origin's `S(T)` alone.
+
+    Huddleston's own recipe (§8): at each timepoint, take the date-prefix and rebuild.
+    Tip sets are nested by construction; topologies are not, and should not be -- a
+    forecaster at origin `T` faces exactly the tree more data gives them.
+
+    **Origin `j`'s metrics always read tree `j`, including when origin `j` is a training
+    row for a later origin `i`.** That is Huddleston's convention -- their per-timepoint
+    tip-attribute tables are computed at their own timepoint -- and it is causal, since
+    tree `j` is estimated from `S(T_j)` and nothing after. The alternative, re-reading
+    every training row off tree `i`, is also defensible (a forecaster at `i` holds only
+    tree `i`) but makes the training features a function of the origin that consumes
+    them, which breaks the cache and is not what their pipeline does.
+    """
+
+    def __init__(self, trees_dir, ref_json, pattern="tree_{season}.json", verbose=True):
+        self.dir, self.pattern, self.ref = trees_dir, pattern, ref_json
+        self._cache = {}
+        self.verbose = verbose
+        if not os.path.isdir(trees_dir):
+            raise FileNotFoundError(f"no per-origin tree directory at {trees_dir}")
+
+    def path_for(self, season):
+        return os.path.join(self.dir, self.pattern.format(season=int(season)))
+
+    def nodes(self, season):
+        s = int(season)
+        if s not in self._cache:
+            path = self.path_for(s)
+            if not os.path.exists(path):
+                raise FileNotFoundError(
+                    f"no tree for origin {s} at {path}. A per-origin run refuses to fall "
+                    f"back to another origin's build: reading origin {s}'s `lbi` off a "
+                    f"tree estimated at a different timepoint is the hindsight this "
+                    f"arm exists to remove")
+            _, nodes = load_tree(path, self.ref)
+            if self.verbose:
+                n_tips = sum(1 for n in nodes if n.is_tip and n.date is not None)
+                print(f"tree: origin {s}, {n_tips} dated tips, "
+                      f"{os.path.basename(path)}", flush=True)
+            self._cache[s] = nodes
+        return self._cache[s]
+
+    def label(self):
+        return f"per-origin trees: {self.dir}/{self.pattern}"
+
+
+class BackbonePanel:
+    """A panel, plus Huddleston's metrics computed per season and genotype.
+
+    The panel and the tree are separate inputs. `from_tree` derives both from one
+    Nextstrain build, which is what every run before 2026-10-02 did and is byte-for-byte
+    the old constructor; the primary constructor takes a `TipPanel` from anywhere -- an
+    additive manifest, say -- and a `TreeSource` for the two metrics that need one.
+    """
+
+    def __init__(self, panel, trees, maps_dir, ref_json, verbose=True):
+        self.panel = panel
+        self.trees = trees
         self.nonepi = site_mask(os.path.join(maps_dir, "luksza_nonepitope.json"),
                                 ref_json=ref_json)
         epi = site_mask(os.path.join(maps_dir, "luksza.json"), ref_json=ref_json)
+        if len(self.nonepi) != panel.seq_len:
+            raise ValueError(
+                f"the distance maps are over {len(self.nonepi)} residues and the panel's "
+                f"sequences are {panel.seq_len}. The maps are indexed by position in the "
+                f"SigPep+HA1+HA2 concatenation --ref describes, so a panel built from a "
+                f"different alignment cannot be scored against them")
         # epitope sites, expressed in the panel's varying-site coordinates
         self.epi_idx = np.array([j for j, p in enumerate(self.panel.sites) if epi[p]],
                                 dtype=int)
-        self._cache = {}
+        self._cache, self._live_cache = {}, {}
+        self._lbi_cache, self._epx_cache = {}, {}
+        self.join_misses = {}
         if verbose:
-            print(f"backbone: {len(tips)} tips, {len(self.panel.genotypes)} genotypes, "
-                  f"{self.nonepi.sum()} non-epitope and {epi.sum()} epitope sites, "
-                  f"{len(self.epi_idx)} epitope sites varying in the panel")
+            print(f"panel: {len(panel.tips)} tips, {len(self.panel.genotypes)} "
+                  f"genotypes, {self.nonepi.sum()} non-epitope and {epi.sum()} epitope "
+                  f"sites, {len(self.epi_idx)} epitope sites varying in the panel")
+            print(f"their tree-based metrics (lbi, ne_star) read {trees.label()}")
 
-    def metrics(self, task):
-        """Their four sequence-only metrics, per support genotype, at one horizon."""
-        key = float(task.horizon)
+    @classmethod
+    def from_tree(cls, tree_json, ref_json, maps_dir, min_allele_freq=0.005,
+                  lookback=5.0, verbose=True):
+        """Panel and tree both off one Nextstrain build -- the pre-2026-10-02 path."""
+        trees = OneTree(tree_json, ref_json, verbose=verbose)
+        tips = [(float(n.date), n.seq) for n in trees.nodes(None)
+                if n.is_tip and n.date is not None]
+        panel = TipPanel(sorted(tips), min_allele_freq=min_allele_freq,
+                         lookback=lookback)
+        return cls(panel, trees, maps_dir, ref_json, verbose=verbose)
+
+    # The metrics are split across three caches rather than one, because the selector
+    # sweeps `lbi`'s two timescales and `ep_x`'s decay constant and must not recompute
+    # the parts that do not depend on them. `ne_star` and `distance_from_consensus` have
+    # no hyperparameter of their own; LBI is keyed on (horizon, tau, window) and `ep_x`
+    # on (horizon, d0). Splitting the old single loop preserves its arithmetic exactly:
+    # each metric is still summed over the same tips in the same order and divided by
+    # the same count, which the `--select` regression check verifies to 0 AA.
+
+    def _live(self, task):
+        """Which tree tips are in the window, and where each lands in the support.
+
+        **Joined by sequence.** A tree tip contributes to support genotype `k` when its
+        reconstructed sequence is the genotype at `k`. Tips the panel does not carry are
+        counted in `join_misses` rather than dropped quietly: on the one-tree path that
+        count is zero by construction, and on a per-origin tree it is the measurement of
+        how well the build's ancestral reconstruction reproduces the alignment it was
+        built from. A support genotype that no tree tip reaches keeps `lbi = ne_star = 0`,
+        which is the same thing the old code did for a genotype outside the window.
+        """
+        key = (int(task.season), float(task.horizon))
+        if key in self._live_cache:
+            return self._live_cache[key]
+        p = self.panel
+        pos = {int(g): k for k, g in enumerate(task.sup)}
+        idx, missed = [], 0
+        for i, n in enumerate(self._tip_nodes(task.season)):
+            if float(n.date) > task.horizon or float(n.date) <= task.horizon - p.lookback:
+                continue
+            g = p.gid.get(n.seq)
+            if g is None:
+                missed += 1
+                continue
+            if int(g) in pos:
+                idx.append((i, n, pos[int(g)]))
+        self.join_misses[int(task.season)] = missed
+        cnt = np.zeros(len(task.sup))
+        for _, _, k in idx:
+            cnt[k] += 1
+        out = (idx, cnt)
+        self._live_cache[key] = out
+        return out
+
+    def _tip_nodes(self, season):
+        """This origin's tree tips, in the panel's own `(date, seq)` order.
+
+        The order is immaterial to every metric -- each is a sum over the same set -- and
+        is held to the panel's so that the one-tree path enumerates exactly the list the
+        pre-2026-10-02 code did, in exactly its order.
+        """
+        s = int(season)
+        if not hasattr(self, "_tipnode_cache"):
+            self._tipnode_cache = {}
+        if s not in self._tipnode_cache:
+            self._tipnode_cache[s] = sorted(
+                (n for n in self.trees.nodes(s) if n.is_tip and n.date is not None),
+                key=lambda n: (float(n.date), n.seq))
+        return self._tipnode_cache[s]
+
+    def _lbi(self, task, tau=LBI_TAU, window=LBI_WINDOW):
+        key = (int(task.season), float(task.horizon), float(tau), float(window))
+        if key in self._lbi_cache:
+            return self._lbi_cache[key]
+        by_node = local_branching_index(self.trees.nodes(task.season), task.horizon,
+                                        tau, window)
+        idx, cnt = self._live(task)
+        lbi = np.zeros(len(task.sup))
+        for _, n, k in idx:
+            lbi[k] += by_node.get(id(n), 0.0)
+        nz = cnt > 0
+        lbi[nz] /= cnt[nz]
+        self._lbi_cache[key] = lbi
+        return lbi
+
+    def _epx(self, task, d0=D0):
+        key = (float(task.horizon), float(d0))
+        if key in self._epx_cache:
+            return self._epx_cache[key]
+        p = self.panel
+        m = (p.observable(task.horizon) & (p.dates > task.horizon - MAX_YEARS_BACK))
+        pg, pc = np.unique(p.tip_gid[m], return_counts=True)
+        out = epitope_cross_immunity(p.codes, task.sup, p.codes[pg], pc / pc.sum(),
+                                     self.epi_idx, d0)
+        self._epx_cache[key] = out
+        return out
+
+    def metrics(self, task, hp=None):
+        """Their four sequence-only metrics, per support genotype, at one horizon.
+
+        `hp` is None for their published constants -- the default path, unchanged --
+        or a combo carrying `lbi_tau`, `lbi_window` and `d0`.
+        """
+        tau = LBI_TAU if hp is None else hp["lbi_tau"]
+        win = LBI_WINDOW if hp is None else hp["lbi_window"]
+        d0 = D0 if hp is None else hp["d0"]
+        key = (int(task.season), float(task.horizon), float(tau), float(win), float(d0))
         if key in self._cache:
             return self._cache[key]
         p = self.panel
-        sup = task.sup
         w = task.baseline("season")
         w = w if w.sum() > 0 else task.level(1.0 / 12)
 
-        lbi_by_node = local_branching_index(self.nodes, task.horizon)
-        # collapse per-tip metrics onto genotypes, weighted by how many tips carry each
-        lbi = np.zeros(len(sup)); nes = np.zeros(len(sup)); cnt = np.zeros(len(sup))
-        pos = {int(g): k for k, g in enumerate(sup)}
-        for i, n in enumerate(self.tip_nodes):
-            if float(n.date) > task.horizon or float(n.date) <= task.horizon - p.lookback:
-                continue
-            g = int(p.tip_gid[i])
-            if g not in pos:
-                continue
-            k = pos[g]
-            lbi[k] += lbi_by_node.get(id(n), 0.0)
+        idx, cnt = self._live(task)
+        nes = np.zeros(len(task.sup))
+        for _, n, k in idx:
             nes[k] += mutational_load(n, task.season, self.nonepi)
-            cnt[k] += 1
         nz = cnt > 0
-        lbi[nz] /= cnt[nz]; nes[nz] /= cnt[nz]
+        nes[nz] /= cnt[nz]
 
-        # the previously circulating population the cross-immunity term sums over
-        m = ((p.dates <= task.horizon) & (p.dates > task.horizon - MAX_YEARS_BACK))
-        pg, pc = np.unique(p.tip_gid[m], return_counts=True)
         out = dict(
-            lbi=lbi, ne_star=nes,
-            ep_x=epitope_cross_immunity(p.codes, sup, p.codes[pg], pc / pc.sum(),
-                                        self.epi_idx),
-            distance_from_consensus=consensus_distance(p.codes, sup, w))
+            lbi=self._lbi(task, tau, win), ne_star=nes,
+            ep_x=self._epx(task, d0),
+            distance_from_consensus=consensus_distance(p.codes, task.sup, w))
         self._cache[key] = out
         return out
 
@@ -357,8 +560,109 @@ THEIR_MODELS = {
 }
 
 
+
+# ── giving their models the same per-origin selector ours gets ──────────────
+
+# Their coefficients were already refitted at every origin; their *hyperparameters* were
+# not -- they sat at the published config while ours were re-chosen per origin off a
+# 1,080-combination grid by 3-fold validation with the top 5 averaged. That asymmetry is
+# in our favour and this closes it, so the question "does their model improve if it is
+# allowed the same protocol?" gets an answer rather than an argument.
+#
+# Their knobs, with the published value first. These are the only free constants in the
+# module; everything else about their models is structure.
+THEIR_GRID_DEFAULT = dict(
+    l1=(0.1, 0.03, 0.3, 1.0),          # their config.json fitness_model.l1_lambda
+    window=(6, 2, 3, 0),               # their six-year training window; 0 = all earlier
+    lbi_tau=(0.3, 0.1, 1.0),           # their lbi.tau
+    lbi_window=(0.5, 0.25, 1.0),       # their lbi.window, years a tip counts as alive
+    d0=(14.0, 7.0, 28.0),              # Luksza-Lassig cross-immunity decay
+)
+
+# Which knobs actually change a family's prediction, so the grid can be collapsed the way
+# `season_momentum.collapse` collapses ours. Sweeping a field a family cannot see would
+# solve the same problem repeatedly and, worse, let the argmin be decided by ties.
+def their_fields(preds):
+    f = ["l1", "window"]
+    if "lbi" in preds:
+        f += ["lbi_tau", "lbi_window"]
+    if "ep_x" in preds:
+        f += ["d0"]
+    return f
+
+
+def their_grid(spec=None):
+    spec = spec or THEIR_GRID_DEFAULT
+    keys = list(spec)
+    out = [dict()]
+    for k in keys:
+        out = [dict(c, **{k: v}) for c in out for v in spec[k]]
+    return out
+
+
+def collapse_their(grid, preds):
+    """Distinct candidates for one family, first occurrence kept (published value first)."""
+    f = their_fields(preds)
+    seen, out = set(), []
+    for c in grid:
+        key = tuple(c[k] for k in f)
+        if key not in seen:
+            seen.add(key)
+            out.append(c)
+    return out
+
+
+def their_train_idx(order, i, window):
+    """Transitions a fit may use when predicting `order[i]`. 0 means all earlier."""
+    return order[:i] if not window else order[max(0, i - window):i]
+
+
+def predict_their(bp, tasks, order, i, combo, preds):
+    """One family's forecast at origin `order[i]` under one hyperparameter combo."""
+    task = tasks[order[i]]
+    train = []
+    for j in their_train_idx(order, i, combo["window"]):
+        t = tasks[j]
+        x0 = t.baseline("season")
+        if x0.sum() <= 0:
+            continue
+        P = standardize(np.column_stack([bp.metrics(t, combo)[q] for q in preds]), x0)
+        train.append((P, x0, t.tgt_w, t.M))
+    beta = fit_their_model(train, l1=combo["l1"])
+    x0 = task.baseline("season")
+    P = standardize(np.column_stack([bp.metrics(task, combo)[q] for q in preds]), x0)
+    return (x0 if beta is None else project(beta, P, x0)), beta
+
+
+def select_their(bp, tasks, order, i, grid, preds, val_folds=3, top_k=5):
+    """`season_momentum.select`, applied to their grid: same folds, same top-k.
+
+    The folds are the `val_folds` most recent transitions before the test one, each
+    scored by a fit that saw only what preceded *it*, so the choice is causal. Returns
+    the top-k combos whose forecasts the caller averages -- with three folds the single
+    argmin is mostly noise, which is why ours averages and why theirs must too if the
+    comparison is to be of protocols rather than of tie-breaking.
+    """
+    g = collapse_their(grid, preds)
+    folds = [j for j in range(max(1, i - val_folds), i)]
+    errs = {}
+    for c, combo in enumerate(g):
+        vals = []
+        for j in folds:
+            if not their_train_idx(order, j, combo["window"]):
+                continue
+            w, _ = predict_their(bp, tasks, order, j, combo, preds)
+            vals.append(tasks[order[j]].score(w))
+        if vals:
+            errs[c] = float(np.mean(vals))
+    if not errs:
+        return [g[0]], errs
+    return [g[c] for c in sorted(errs, key=lambda c: errs[c])[:top_k]], errs
+
+
 def rolling(bp, seasons=None, drop_targets=(2020,), min_seqs=30, window=6,
-            min_train=2, verbose=True):
+            min_train=2, verbose=True, select=False, grid=None, val_folds=3,
+            top_k=5):
     """Score their models season by season, refitting coefficients at every origin.
 
     The training window is their six years, which on annual seasons is six transitions,
@@ -384,18 +688,37 @@ def rolling(bp, seasons=None, drop_targets=(2020,), min_seqs=30, window=6,
                    emd_season=task.score(task.baseline("season")))
         met = {j: bp.metrics(tasks[j]) for j in train_idx + [s]}
         for name, preds in THEIR_MODELS.items():
-            train = []
-            for j in train_idx:
-                t = tasks[j]
-                x0 = t.baseline("season")
-                if x0.sum() <= 0:
-                    continue
-                P = standardize(np.column_stack([met[j][q] for q in preds]), x0)
-                train.append((P, x0, t.tgt_w, t.M))
-            beta = fit_their_model(train)
-            x0 = task.baseline("season")
-            P = standardize(np.column_stack([met[s][q] for q in preds]), x0)
-            w = x0 if beta is None else project(beta, P, x0)
+            if select:
+                # Their hyperparameters re-chosen here, off the same folds and with the
+                # same top-k averaging our selector uses. Everything else -- the
+                # objective, the optimiser, the standardisation, the projection -- is
+                # unchanged, so the only difference from the arm above is the protocol.
+                combos, _ = select_their(bp, tasks, order, i, grid, preds,
+                                         val_folds, top_k)
+                ws, betas = [], []
+                for c in combos:
+                    wc, bc = predict_their(bp, tasks, order, i, c, preds)
+                    ws.append(wc); betas.append(bc)
+                w = np.mean(ws, axis=0)
+                ssum = w.sum()
+                w = w / ssum if ssum > 0 else task.baseline("season")
+                beta = betas[0]
+                row["n_grid_" + name] = len(collapse_their(grid, preds))
+                row["n_avg_" + name] = len(combos)
+                row["combo_" + name] = {k: combos[0][k] for k in their_fields(preds)}
+            else:
+                train = []
+                for j in train_idx:
+                    t = tasks[j]
+                    x0 = t.baseline("season")
+                    if x0.sum() <= 0:
+                        continue
+                    P = standardize(np.column_stack([met[j][q] for q in preds]), x0)
+                    train.append((P, x0, t.tgt_w, t.M))
+                beta = fit_their_model(train)
+                x0 = task.baseline("season")
+                P = standardize(np.column_stack([met[s][q] for q in preds]), x0)
+                w = x0 if beta is None else project(beta, P, x0)
             row["emd_" + name] = task.score(w)
             row["beta_" + name] = None if beta is None else [float(b) for b in beta]
         # the Barrat-Charlaix single-strain baselines, as point masses
@@ -420,8 +743,17 @@ def rolling(bp, seasons=None, drop_targets=(2020,), min_seqs=30, window=6,
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tree", default=os.path.expanduser("~/h3n2/tree.json"))
-    ap.add_argument("--ref", default=os.path.expanduser("~/h3n2/ref.json"))
+    add_panel_source_args(ap)
+    ap.set_defaults(tree=None, ref=os.path.expanduser("~/h3n2/ref.json"))
+    ap.add_argument("--trees-dir", default=None,
+                    help="a directory of per-origin builds, `tree_<season>.json`, each "
+                         "estimated from that origin's S(T) alone. `lbi` and `ne_star` "
+                         "then read the tree a forecaster at that origin would have "
+                         "had, instead of one present-day build that knows the whole "
+                         "record -- the oldest item on the 'still exposed' list, and "
+                         "the one that most directly flatters their side. Required when "
+                         "the panel comes from --manifest; without it there is no tree "
+                         "to read and two of their four metrics have no definition")
     ap.add_argument("--maps", default=os.path.expanduser(
         "~/flu-forecasting/config/distance_maps/h3n2/ha"))
     ap.add_argument("--min-allele-freq", type=float, default=0.005)
@@ -429,11 +761,47 @@ def main():
     ap.add_argument("--window", type=int, default=6)
     ap.add_argument("--min-season-seqs", type=int, default=30)
     ap.add_argument("--drop-targets", default="2020")
+    ap.add_argument("--select", action=argparse.BooleanOptionalAction, default=True,
+                    help="re-choose THEIR hyperparameters at every origin, by the same "
+                         "protocol ours uses (3 validation folds, top-5 averaged), "
+                         "instead of holding them at their published config. ON BY "
+                         "DEFAULT since 2026-09-24: ours are selected per origin off a "
+                         "1,080-combination grid, so scoring theirs at constants frozen "
+                         "in 2019 compares protocols as much as models. `--no-select` "
+                         "restores the published config, which is what every run before "
+                         "that date used -- so a pre-2026-09-24 script that passed no "
+                         "flag now produces the OTHER arm, and the arm is recorded in "
+                         "the output JSON for exactly that reason")
+    ap.add_argument("--val-folds", type=int, default=3)
+    ap.add_argument("--top-k", type=int, default=5)
     ap.add_argument("-o", "--out", default=None)
     a = ap.parse_args()
-    bp = BackbonePanel(a.tree, a.ref, a.maps, a.min_allele_freq, a.lookback)
+    print("their hyperparameters: "
+          + ("RE-SELECTED at every origin, 3 folds, top-5 averaged -- the same protocol "
+             "ours gets" if a.select else
+             "their published config (l1 0.1, window 6, lbi_tau 0.3, lbi_window 0.5, "
+             "d0 14)"))
+    if a.alignment and not a.trees_dir:
+        ap.error("--alignment/--manifest gives a panel but no topology, and `lbi` and "
+                 "`ne_star` need one. Pass --trees-dir, or run on --tree/--ref")
+    if a.trees_dir:
+        tips, skipped, src, submitted = tips_from_args(ap, a)
+        if skipped:
+            print(f"{skipped} sequences skipped (undated or unmatched)")
+        panel = TipPanel(tips, min_allele_freq=a.min_allele_freq,
+                         lookback=a.lookback, submitted=submitted)
+        trees = PerOriginTrees(a.trees_dir, a.ref)
+        bp = BackbonePanel(panel, trees, a.maps, a.ref)
+    else:
+        if not a.tree:
+            a.tree = os.path.expanduser("~/h3n2/tree.json")
+        tips_from_args(ap, a)        # for `a.panel_provenance`, and the same preflights
+        bp = BackbonePanel.from_tree(a.tree, a.ref, a.maps, a.min_allele_freq,
+                                     a.lookback)
     drop = tuple(int(x) for x in a.drop_targets.split(",") if x)
-    rows = rolling(bp, drop_targets=drop, min_seqs=a.min_season_seqs, window=a.window)
+    rows = rolling(bp, drop_targets=drop, min_seqs=a.min_season_seqs, window=a.window,
+                   select=a.select, grid=their_grid() if a.select else None,
+                   val_folds=a.val_folds, top_k=a.top_k)
     nai = np.array([r["emd_season"] for r in rows])
     print(f"\n{'model':26}{'mean EMD':>10}{'vs persistence':>16}{'wins':>8}")
     for name in THEIR_MODELS:
@@ -449,7 +817,20 @@ def main():
     print(f"{'floor':26}{np.mean([r['floor'] for r in rows]):10.3f}")
     if a.out:
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-        json.dump(dict(per_transition=rows), open(a.out, "w"), indent=1, default=float)
+        # The run's own settings travel with its numbers. Until 2026-09-24 this file
+        # held `per_transition` and nothing else, so `theirs.json` and
+        # `theirs_with2020.json` cannot be told apart from a selected run by reading
+        # them -- which is how the protocol asymmetry went unnoticed for two days.
+        json.dump(dict(select=bool(a.select), val_folds=a.val_folds, top_k=a.top_k,
+                       window=a.window, drop_targets=sorted(drop),
+                       min_season_seqs=a.min_season_seqs, lookback=a.lookback,
+                       min_allele_freq=a.min_allele_freq,
+                       panel=getattr(a, "panel_provenance", None),
+                       trees=bp.trees.label(),
+                       tree_join_misses=bp.join_misses,
+                       n_grid=(len(their_grid()) if a.select else 0),
+                       per_transition=rows),
+                  open(a.out, "w"), indent=1, default=float)
         print(f"\nwrote {a.out}")
 
 

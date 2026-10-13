@@ -78,8 +78,8 @@ from scipy import sparse
 from antiGen.clade_cluster import season_of
 from antiGen.antigen_kernel import ARMS as AGEN_ARMS, build as agen_candidates
 from antiGen.mutation_kernel import (ARMS as EMP_ARMS, Forecast, average, candidates as
-                                     kernel_candidates, convolve, golden_mu,
-                                     one_step_floor)
+                                     kernel_candidates, causal_operating_point, convolve,
+                                     golden_mu, one_step_floor, reads_slow)
 
 # Every kernel arm the selector may be pointed at, whichever module builds it. The two
 # families in `K_FAMILIES` read the arm out of the grid, so an arm from either module is
@@ -144,7 +144,8 @@ def load_tips(tree_json, ref_json, segments=H3N2_SEGMENTS):
     return tips, skipped
 
 
-def load_alignment_dated(alignments, metadata, ambig="X", max_ambig=0.02):
+def load_alignment_dated(alignments, metadata, ambig="X", max_ambig=0.02,
+                         manifest=None, with_submitted=False, with_names=False):
     """Every sequence in the alignment as (decimal date, genotype). No tree involved.
 
     The same reading `clade_cluster.SeasonSequences` does -- ambiguous residues resolved
@@ -152,8 +153,36 @@ def load_alignment_dated(alignments, metadata, ambig="X", max_ambig=0.02):
     dropped -- but kept as individual dated observations rather than aggregated into
     seasons, because the whole point here is the month-to-month structure. Out-of-season
     sequences are kept too.
+
+    `manifest` restricts the read to a declared, hashed, append-only panel -- see
+    `antiGen.panel_manifest`. Two things change when one is given, and the second is the
+    less obvious of the two:
+
+    1. Only the admitted accessions are read, so the panel is the frozen subsample `S`
+       rather than whatever the corpus happens to hold. The *horizon* prefix is not
+       applied here: `TipPanel.support(T)` already takes it, and taking it twice would
+       mean a panel that could only serve one origin.
+    2. **Dates come from the manifest, not from the metadata.** The manifest pins each
+       accession's date at admission, and that pin is the fix for the 23 tips the two
+       backbone builds re-dated -- a sequence's position in time was revisable, which
+       made it a different observation without making it a different row.
+
+    With `with_submitted`, returns `(tips, dropped, submitted)`, the third aligned with
+    `tips`. It is the input to the level-2 (submission-censored) support; the loader
+    itself never censors anything, because a censoring applied at load time would reach
+    the target as well, and the target must not be submission-censored.
+
+    With `with_names`, the accession of each tip is appended as a further parallel list.
+    `antiGen.panel_tree` needs it: a per-origin tree has to be built from *exactly* the
+    sequences the panel holds -- after the ambiguity floor and after ambiguous residues
+    are resolved to the global per-position consensus -- or the sequence join that
+    `BackbonePanel` does between a tree tip and a panel genotype silently loses tips.
+    Reading the FASTA a second time in another module is how the two drift apart.
     """
     from antiGen.clade_cluster import decimal_date, read_fasta
+    from antiGen import panel_manifest
+
+    man = panel_manifest.load(manifest) if manifest is not None else None
 
     dates = {}
     with open(metadata) as f:
@@ -169,6 +198,23 @@ def load_alignment_dated(alignments, metadata, ambig="X", max_ambig=0.02):
                 if v is not None:
                     dates[a[i_strain]] = v
 
+    sub_by_acc = None
+    if man is not None:
+        pinned = {a: decimal_date(d) for a, d in man.dates().items()}
+        moved = sum(1 for a, v in pinned.items()
+                    if a in dates and abs(dates[a] - v) > 1e-9)
+        if moved:
+            print(f"manifest pins {moved} dates the corpus now disagrees with; the "
+                  f"manifest's are used -- a re-dating is a panel version bump")
+        dates = pinned
+        if with_submitted:
+            sub_by_acc = man.submitted_decimal()
+            if sub_by_acc is None:
+                raise ValueError(
+                    "level-2 support needs a submission date on every manifest row; "
+                    "this manifest has none. Costs one metadata column from a GISAID "
+                    "re-pull -- see PROPOSAL_additive_panel.md section 5")
+
     segs = [read_fasta(pth) for pth in alignments]
     names = set(dates)
     for sg in segs:
@@ -182,20 +228,129 @@ def load_alignment_dated(alignments, metadata, ambig="X", max_ambig=0.02):
         if g.count(ambig) > max_ambig * seq_len:
             dropped += 1
             continue
-        raw.append((dates[n], g))
+        raw.append((dates[n], g, n))
 
     col = [Counter() for _ in range(seq_len)]
-    for _, g in raw:
+    for _, g, _n in raw:
         for p, ch in enumerate(g):
             if ch != ambig:
                 col[p][ch] += 1
     consensus = "".join(c.most_common(1)[0][0] if c else ambig for c in col)
-    fixed = []
-    for d, g in raw:
+    fixed, submitted = [], []
+    for d, g, n in raw:
         if ambig in g:
             g = "".join(consensus[p] if ch == ambig else ch for p, ch in enumerate(g))
         fixed.append((d, g))
-    return fixed, dropped
+        if sub_by_acc is not None:
+            submitted.append(sub_by_acc[n])
+    out = (fixed, dropped)
+    if with_submitted:
+        out = out + (submitted,)
+    if with_names:
+        out = out + ([n for _, _, n in raw],)
+    return out
+
+
+def add_panel_source_args(ap):
+    """The `--tree/--ref` vs `--alignment/--metadata` pair, plus the manifest.
+
+    Shared by every CLI that builds a `TipPanel`, so that a panel cannot be selected one
+    way in `season_momentum` and another in `kernel_gate` -- the two have to be reading
+    the identical set of sequences for a gate table to mean anything about a score.
+    """
+    ap.add_argument("--tree", default=None)
+    ap.add_argument("--ref", default=None)
+    ap.add_argument("--alignment", nargs="+", default=None,
+                    help="per-segment aligned FASTAs; use instead of --tree/--ref to run "
+                         "on every sequence rather than the guide tree's tips")
+    ap.add_argument("--metadata", default=None, help="TSV of strain and date")
+    ap.add_argument("--manifest", default=None,
+                    help="an additive panel manifest from antiGen.panel_manifest: "
+                         "restricts the alignment to the admitted accessions and takes "
+                         "their dates from the manifest rather than from the corpus, so "
+                         "neither the subsample nor a sequence's position in time can be "
+                         "redrawn by a later download")
+    ap.add_argument("--manifest-sha", default=None,
+                    help="the manifest hash this run was built against. Refuses to run "
+                         "on a mismatch -- the analogue of the tree preflight, and for "
+                         "the same reason: two directories holding the same filenames "
+                         "and differing only in which panel they read")
+    ap.add_argument("--level", type=int, default=1, choices=(1, 2),
+                    help="1: the collection-date prefix, which assumes instantaneous "
+                         "reporting. 2: additionally censor the support by submission "
+                         "date, which needs a date_submitted column on the manifest. "
+                         "Either way the TARGET is never censored; see TipPanel.target")
+
+
+def tips_from_args(ap, a):
+    """`(tips, skipped, src, submitted)` from a parsed `add_panel_source_args` namespace.
+
+    One reader, so every CLI resolves the panel identically and the manifest preflight
+    cannot be present in one entry point and missing from another.
+
+    Also sets `a.panel_provenance`: the dict every CLI writes into its output JSON, so
+    that **the panel's hash is in every run's output**. That is the first of the three
+    things PROPOSAL_additive_panel.md section 13 asks this round for -- the claim "the
+    past is fixed" has to be checkable by someone who was not here, and a scored file
+    that does not name the panel it stands on cannot be told apart from one that stands
+    on a different draw. It is carried on the namespace rather than returned so that the
+    four call sites keep the arity they have; `a` is already the carrier of every other
+    setting a run records.
+    """
+    # Checked before the manifest is opened, so that pointing --manifest at a tree run
+    # says what is wrong rather than failing on whichever file is missing first.
+    if getattr(a, "manifest", None) and not a.alignment:
+        ap.error("--manifest describes a sequence corpus and applies to "
+                 "--alignment/--metadata, not to a guide tree")
+    manifest = None
+    if getattr(a, "manifest", None):
+        from antiGen import panel_manifest
+        manifest = panel_manifest.load(a.manifest)
+        got = manifest.sha256()
+        if getattr(a, "manifest_sha", None) and got != a.manifest_sha:
+            ap.error(f"PREFLIGHT FAILED: {a.manifest} is {got}, run expects "
+                     f"{a.manifest_sha}")
+        print(f"panel manifest {os.path.basename(a.manifest)} @ {got[:12]}, "
+              f"{len(manifest.rows)} accessions, K={manifest.header.get('K')}, "
+              f"cells={manifest.header.get('cells')}, "
+              f"corpus {manifest.header.get('corpus_version')}")
+    level = int(getattr(a, "level", 1) or 1)
+    if level == 2 and manifest is None:
+        ap.error("--level 2 needs --manifest: the submission dates live on the manifest")
+
+    if a.alignment:
+        if not a.metadata:
+            ap.error("--alignment needs --metadata")
+        if level == 2:
+            tips, skipped, submitted = load_alignment_dated(
+                a.alignment, a.metadata, manifest=manifest, with_submitted=True)
+        else:
+            tips, skipped = load_alignment_dated(a.alignment, a.metadata,
+                                                 manifest=manifest)
+            submitted = None
+        src = f"alignment, {len(a.alignment)} segments"
+        if manifest is not None:
+            src += f", manifest {manifest.sha256()[:12]}"
+    else:
+        if not (a.tree and a.ref):
+            ap.error("give either --tree/--ref or --alignment/--metadata")
+        tips, skipped = load_tips(a.tree, a.ref)
+        submitted = None
+        src = "guide-tree tips"
+    a.panel_provenance = {
+        "source": src,
+        "manifest": getattr(a, "manifest", None),
+        "manifest_sha256": None if manifest is None else manifest.sha256(),
+        "panel_K": None if manifest is None else manifest.header.get("K"),
+        "panel_cells": None if manifest is None else manifest.header.get("cells"),
+        "panel_salt": None if manifest is None else manifest.header.get("salt"),
+        "corpus_version": (None if manifest is None
+                           else manifest.header.get("corpus_version")),
+        "corpus_sha": None if manifest is None else manifest.header.get("corpus_sha"),
+        "level": level,
+        "tree": None if a.alignment else getattr(a, "tree", None),
+    }
+    return tips, skipped, src, submitted
 
 
 # ── the panel ───────────────────────────────────────────────────────────────
@@ -204,9 +359,26 @@ class TipPanel:
     """Dated sequences, the genotypes they form, and the Hamming geometry between them."""
 
     def __init__(self, tips, min_allele_freq=0.005, lookback=5.0, max_support=0,
-                 embedding=None, metric="hamming", marginals=None, feature_mask=None):
-        self.tips = sorted(tips)
+                 embedding=None, metric="hamming", marginals=None, feature_mask=None,
+                 submitted=None):
+        # Sorted by index rather than by value so that `submitted` -- which is aligned
+        # with the *input* order -- can be carried along without being folded into the
+        # tip tuples that the rest of the module unpacks as `(date, genotype)`. The
+        # resulting `self.tips` is identical to `sorted(tips)`.
+        order = sorted(range(len(tips)), key=lambda i: tips[i])
+        self.tips = [tips[i] for i in order]
         self.lookback = lookback
+        # Submission dates, when the corpus supplies them: level 2 of the causality
+        # ladder. `observable(T)` reads them and `target` cannot, which is the asymmetry
+        # of PROPOSAL_additive_panel.md section 5 asserted in code rather than in a
+        # docstring. A collection-date prefix assumes instantaneous reporting, and the
+        # collection-to-GISAID lag is ~3 months on average (Huddleston & Bedford 2025),
+        # so level 1 hands every model inputs a real forecaster would not have had. It
+        # flatters the inputs equally across models and the target not at all.
+        self.submitted = (None if submitted is None
+                          else np.asarray([submitted[i] for i in order], dtype=float))
+        if self.submitted is not None and len(self.submitted) != len(self.tips):
+            raise ValueError("submitted must be aligned with tips")
         # Kept on the panel, not only consumed in the constructor: the consensus kernel
         # arms floor their momentum ratio at this frequency, and a floor that silently
         # fell back to a private default would not be the declared one it claims to be.
@@ -369,9 +541,28 @@ class TipPanel:
 
     # ── supports and weights ────────────────────────────────────────────────
 
+    def observable(self, horizon):
+        """Everything a forecaster standing at `horizon` could have seen.
+
+        One place, so that every quantity computed "up to T" -- the support, the immune
+        landscape, the kernel's substitution counts, their epitope cross-immunity -- is
+        censored by the same predicate and cannot drift apart. With no submission dates
+        this is exactly `dates <= horizon`, which is what every run before the additive
+        panel did; with them it is level 2 of section 5, and is still monotone in
+        `horizon`, so the additivity of the panel survives it.
+
+        **`target` does not call this and must not.** The target for season Y+1 is the
+        question, not an input; submission-censoring it would be asking what we could
+        have known about an outcome rather than what the outcome was.
+        """
+        m = self.dates <= horizon
+        if self.submitted is not None:
+            m &= self.submitted <= horizon
+        return m
+
     def support(self, horizon):
         """Genotypes observable at `horizon`, within the lookback. Ordered and cached."""
-        m = (self.dates <= horizon) & (self.dates > horizon - self.lookback)
+        m = self.observable(horizon) & (self.dates > horizon - self.lookback)
         sup, cnt = np.unique(self.tip_gid[m], return_counts=True)
         if self.max_support and len(sup) > self.max_support:
             keep = np.argsort(-cnt, kind="stable")[:self.max_support]
@@ -385,7 +576,13 @@ class TipPanel:
         return sup, m
 
     def target(self, season):
-        """The observed distribution of a season: its in-season sequences, uniform."""
+        """The observed distribution of a season: its in-season sequences, uniform.
+
+        Reads `self.season` and nothing else -- deliberately not `observable`. See that
+        method: censoring the target by submission date would ask what we could have
+        known about an outcome rather than what the outcome was, and the asymmetry is
+        the point rather than an oversight. `test_panel_manifest` pins it.
+        """
         m = self.season == season
         g, c = np.unique(self.tip_gid[m], return_counts=True)
         return g, c / c.sum()
@@ -456,7 +653,7 @@ class TipPanel:
         key = (float(horizon), float(tau_c))
         if key in self._land:
             return self._land[key]
-        idx = np.where(self.dates <= horizon)[0]
+        idx = np.where(self.observable(horizon))[0]
         age = horizon - self.dates[idx]
         # Ages are measured from the most recent sequence rather than from the horizon.
         # The shares are normalised per site, so a common factor on every weight cancels
@@ -651,7 +848,7 @@ class Task:
 
     __slots__ = ("panel", "season", "horizon", "sup", "mask", "S", "tgt_g", "tgt_w",
                  "M", "floor", "assigned", "n_next", "M_alt", "floor_alt", "scored",
-                 "_cache")
+                 "kernel_point", "_cache")
 
     def __init__(self, panel, season):
         self.panel = panel
@@ -692,6 +889,11 @@ class Task:
         # set. `descent_gate` refuses in that case, which makes the rule structural
         # rather than a note in a docstring.
         self.scored = False
+        # `{arm: (tau_e, tau_k, m)}` when the run resolves the kernel's operating point
+        # per origin off a gate table. `rolling` sets it; `candidates` obeys it. Unset --
+        # the attribute simply absent, since `__slots__` -- means the declared flags
+        # stand, which is what every run before the causal-gate change did.
+        self.kernel_point = None
         self._cache = {}
 
     def level(self, tau):
@@ -837,7 +1039,7 @@ class Task:
         key = ("tp", W, nbin)
         if key in self._cache:
             return self._cache[key]
-        idx = np.where(self.mask & (self.panel.dates <= self.horizon)
+        idx = np.where(self.mask & self.panel.observable(self.horizon)
                        & (self.panel.dates > self.horizon - W))[0]
         pos = {int(g): k for k, g in enumerate(self.sup)}
         groups = {}
@@ -1043,7 +1245,7 @@ class Task:
 
     # ── the mutation kernel ─────────────────────────────────────────────────
 
-    def candidates(self, arm, tau_k=1.0, m=0, tau_e=_UNSET):
+    def candidates(self, arm, tau_k=1.0, m=0, tau_e=_UNSET, tau_slow=_UNSET):
         """The one-step candidates `arm` proposes off this task's support.
 
         Cached on exactly the arguments that change the proposal, because the selector
@@ -1066,7 +1268,16 @@ class Task:
         # here -- before the cache key -- keeps the key naming the kernel that was built.
         if tau_e is _UNSET:
             tau_e = getattr(self.panel, "kernel_tau_e", None)
-        key = ("cand", arm, float(tau_k), int(m), tau_e)
+        if tau_slow is _UNSET:
+            tau_slow = getattr(self.panel, "kernel_tau_slow", None)
+        # The per-origin operating point, when there is one, wins over anything the grid
+        # or the CLI carries. Resolved in `rolling` from the gate rows this origin is
+        # allowed to read, and applied here -- one place, before the cache key, so the
+        # key still names the kernel that was actually built.
+        pt = self.kernel_point
+        if pt and arm in pt:
+            tau_e, tau_slow, tau_k, m = pt[arm]
+        key = ("cand", arm, float(tau_k), int(m), tau_e, tau_slow)
         if key not in self._cache:
             if arm in AGEN_ARMS:
                 # antiGen's proposal is the forward pass itself: one softmax over the
@@ -1092,7 +1303,7 @@ class Task:
             else:
                 self._cache[key] = kernel_candidates(
                     self.panel, self.sup, self.M, self.tgt_g, arm, tau_k=tau_k, m=m,
-                    horizon=self.horizon, tau_e=tau_e)
+                    horizon=self.horizon, tau_e=tau_e, tau_slow=tau_slow)
         return self._cache[key]
 
     def floor_ext(self, residues="observed"):
@@ -1109,7 +1320,7 @@ class Task:
                                               self.tgt_w, residues)
         return self._cache[key]
 
-    def descent_gate(self, w, arm, tau_k=1.0, m=0, tau_e=_UNSET):
+    def descent_gate(self, w, arm, tau_k=1.0, m=0, tau_e=_UNSET, tau_slow=_UNSET):
         """`p_down`, `p_flat` and the `mu = 0` derivative for one arm on this task.
 
         **Oracle, and guarded.** `phi` is the c-transform of the optimal *target*
@@ -1125,7 +1336,8 @@ class Task:
                 f"{self.season}->{self.season + 1} has not been scored yet; measuring "
                 f"p_down before scoring is selection on the test set")
         from antiGen.mutation_kernel import descent
-        return descent(self.candidates(arm, tau_k, m, tau_e), w, self.M, self.tgt_w)
+        return descent(self.candidates(arm, tau_k, m, tau_e, tau_slow), w, self.M,
+                       self.tgt_w)
 
     def score(self, w, alt=False):
         """Earth-mover's distance to the observed next season.
@@ -1888,14 +2100,144 @@ def collapse(grid, family):
     return out
 
 
-def select(tasks, order, i, grid, family, val_folds, maxiter, gamma_pen, top_k=1):
+def combo_error(tasks, order, folds, combo, family, maxiter, gamma_pen):
+    """The mean validation score of one combination, or None if no fold could be fitted.
+
+    Lifted out of `select` so that the serial and the worker-pool paths evaluate a
+    combination through one piece of code rather than through two copies of it. That is
+    the whole of what a worker does, and it reads nothing but its arguments."""
+    vals = []
+    for j in folds:
+        tr = train_set(tasks, order, j, combo["window"])
+        if not tr:
+            continue
+        w = run_family(tasks[order[j]], combo, family, tr, maxiter, gamma_pen)
+        vals.append(tasks[order[j]].score(w))
+    if not vals:
+        return None
+    return float(np.mean(vals))
+
+
+# The job a pool of forked workers reads. Set in the parent immediately before the pool
+# is created and cleared after, so the children inherit it through `fork` and nothing is
+# pickled but the `(index, error)` pairs they send back. It is module state rather than
+# an argument because `Pool` pickles the callable's arguments, and `tasks` carries the
+# panel, the cost matrices and the candidate blocks.
+_SELECT_JOB = {}
+
+
+def _select_chunk(bounds):
+    """One contiguous run of the collapsed grid, evaluated in a forked worker."""
+    lo, hi = bounds
+    j = _SELECT_JOB
+    out = []
+    for c in range(lo, hi):
+        e = combo_error(j["tasks"], j["order"], j["folds"], j["grid"][c], j["family"],
+                        j["maxiter"], j["gamma_pen"])
+        if e is not None:
+            out.append((c, e))
+    return out
+
+
+def cache_groups(grid):
+    """The index ranges of `grid` that share one memoised `mlr+mom` fit.
+
+    `make_grid` varies `mu` fastest, so a kernel family's collapsed grid holds runs of
+    combinations that differ only in `mu` -- and `_momentum_prediction` memoises the
+    parent those runs share on `task._cache`, which is why `mlr+mom+K`'s 5,400
+    combinations cost 1,080 fits and not 5,400. A worker split that cut through one of
+    those runs would refit the parent once per piece, so the chunks below are built out
+    of whole groups. For a family with no momentum parent the groups are singletons and
+    the grouping costs nothing."""
+    keys = RELEVANT["mlr+mom"]
+
+    def key(c):
+        return tuple(grid[c].get(k) for k in keys)
+
+    out, start = [], 0
+    for c in range(1, len(grid) + 1):
+        if c == len(grid) or key(c) != key(start):
+            out.append((start, c))
+            start = c
+    return out
+
+
+def select_chunks(grid, n_chunks):
+    """`grid` cut into at most `n_chunks` contiguous pieces, never through a cache group.
+
+    More pieces than workers, because the combinations are not equally dear -- a `mu = 0`
+    entry carries no candidate block and scores an unextended transport problem -- and a
+    pool that hands out small pieces balances itself. A worker keeps its own `_cache`
+    across the pieces it is given, so there is no cost to making them small beyond the
+    one group they cannot be smaller than."""
+    groups = cache_groups(grid)
+    if n_chunks <= 1 or len(groups) <= 1:
+        return [(0, len(grid))]
+    want = max(1, len(grid) // n_chunks)
+    out, lo, size = [], 0, 0
+    for a, b in groups:
+        size += b - a
+        if size >= want:
+            out.append((lo, b))
+            lo, size = b, 0
+    if lo < len(grid):
+        out.append((lo, len(grid)))
+    return out
+
+
+def _select_parallel(tasks, order, folds, grid, family, maxiter, gamma_pen, workers):
+    """`errs` for the whole collapsed grid, computed in a pool of forked workers.
+
+    Returned with its keys in ascending order, which is the order the serial loop inserts
+    them in and which `top_k`'s stable sort breaks ties by. `fork` is required and not
+    merely preferred: the children inherit the panel, the cost matrices and the candidate
+    blocks as copy-on-write pages, and a spawned child would have to pickle them. On a
+    platform without it the caller falls back to the serial path.
+
+    The pool is also why `OMP_NUM_THREADS=1` is not optional for a parallel run -- the
+    transport solve and the BLAS calls under the fit would otherwise each take the whole
+    node and the workers would fight over it."""
+    import multiprocessing as mp
+
+    try:
+        ctx = mp.get_context("fork")
+    except ValueError:
+        ctx = None
+    if ctx is None:
+        return {c: e for c, e in
+                ((c, combo_error(tasks, order, folds, combo, family, maxiter, gamma_pen))
+                 for c, combo in enumerate(grid)) if e is not None}
+
+    chunks = select_chunks(grid, 4 * workers)
+    _SELECT_JOB.update(tasks=tasks, order=order, folds=folds, grid=grid, family=family,
+                       maxiter=maxiter, gamma_pen=gamma_pen)
+    try:
+        with ctx.Pool(min(workers, len(chunks))) as pool:
+            pairs = [p for part in pool.imap_unordered(_select_chunk, chunks)
+                     for p in part]
+    finally:
+        _SELECT_JOB.clear()
+    return {c: e for c, e in sorted(pairs)}
+
+
+def select(tasks, order, i, grid, family, val_folds, maxiter, gamma_pen, top_k=1,
+           workers=0):
     """Choose a hyperparameter combo for predicting `order[i]`, seeing only earlier data.
 
     Validation folds are the `val_folds` most recent transitions before the test one, each
     scored by a fit that saw only what preceded *it*. Recent folds rather than all of them
     because the record is not stationary: the entry of 2026-09-21 measured the most recent
     K transitions beating the oldest K by 3-4 points, so a selector that averages over a
-    decade is choosing for a process that no longer holds."""
+    decade is choosing for a process that no longer holds.
+
+    `workers > 1` evaluates the collapsed grid in a pool of forked processes. **It cannot
+    change a number**, and the reason is structural rather than empirical: this loop reads
+    `tasks`, `order`, `i`, `grid`, `val_folds`, `maxiter`, `gamma_pen` and `top_k` and
+    nothing else, no iteration writes anything another iteration reads, and there is no
+    RNG anywhere under `run_family` or `score`. The one piece of shared mutable state is
+    `task._cache`, which is a memoisation of pure functions -- a cold cache costs time and
+    returns the same arrays. The argmin and the `top_k` list are then taken by the same
+    ascending scan the serial path uses, so ties are broken by grid order either way."""
     folds = [j for j in range(max(1, i - val_folds), i)]
     folds = [j for j in folds if train_set(tasks, order, j, 0)]
     if not folds or family in FIXED_BASELINES:
@@ -1904,21 +2246,24 @@ def select(tasks, order, i, grid, family, val_folds, maxiter, gamma_pen, top_k=1
         grid = base_grid(sorted({c["tau_f"] / MONTH for c in grid}))
     else:
         grid = collapse(grid, family)
-    best, best_err, errs = None, np.inf, {}
-    for c, combo in enumerate(grid):
-        vals = []
-        for j in folds:
-            tr = train_set(tasks, order, j, combo["window"])
-            if not tr:
-                continue
-            w = run_family(tasks[order[j]], combo, family, tr, maxiter, gamma_pen)
-            vals.append(tasks[order[j]].score(w))
-        if not vals:
-            continue
-        e = float(np.mean(vals))
-        errs[c] = e
+    if workers > 1 and len(grid) > 1:
+        errs = _select_parallel(tasks, order, folds, grid, family, maxiter, gamma_pen,
+                                workers)
+    else:
+        errs = {}
+        for c, combo in enumerate(grid):
+            e = combo_error(tasks, order, folds, combo, family, maxiter, gamma_pen)
+            if e is not None:
+                errs[c] = e
+    # The serial scan, kept verbatim and run over `errs` rather than fused into the loop
+    # above, because the parallel path has to reproduce it exactly: `e < best_err` means
+    # the FIRST strict minimum in grid order wins, and it means a NaN never wins at all.
+    # `min` over the items would differ on both counts.
+    best, best_err = None, np.inf
+    for c in sorted(errs):
+        e = errs[c]
         if e < best_err:
-            best, best_err = combo, e
+            best, best_err = grid[c], e
     if best is None:
         return [grid[0]], errs
     if top_k <= 1:
@@ -1933,7 +2278,7 @@ def select(tasks, order, i, grid, family, val_folds, maxiter, gamma_pen, top_k=1
 
 def rolling(panel, drop_targets=(2020,), min_seqs=30, min_train=2, val_folds=3,
             grid=None, maxiter=80, gamma_pen=0.01, families=FAMILIES, verbose=True,
-            only=None, top_k=1):
+            only=None, top_k=1, gate_rows=None, select_workers=0):
     """Roll forward one season at a time, selecting hyperparameters from the past only."""
     counts = {s: int((panel.season == s).sum()) for s in panel.seasons}
     usable = [s for s in panel.seasons if counts.get(s, 0) >= min_seqs]
@@ -1941,6 +2286,22 @@ def rolling(panel, drop_targets=(2020,), min_seqs=30, min_train=2, val_folds=3,
              if (s + 1) in usable and (s + 1) not in drop_targets]
     if verbose:
         print(f"transitions in play: " + ", ".join(f"{s}->{s+1}" for s in order))
+        # An origin whose lookback window reaches back past the first sequence the panel
+        # holds has a shorter support than the origins after it, and is not comparable to
+        # them. The additive panel makes this visible for the first time: the corpus
+        # starts 2013-01-01, so at `lookback = 5` every origin before 2018.25 is short --
+        # PROPOSAL_additive_panel.md section 7.3, which says such an origin is "either
+        # dropped or carried with the shortfall stated". It is carried, and the shortfall
+        # is stated here and recorded per row as `lookback_shortfall` rather than left to
+        # be noticed. A backbone run never saw this because the Nextstrain build's window
+        # was anchored to the build date and so always covered its own origins.
+        short = [(s, float(panel.dates.min()) - (s + 0.25 - panel.lookback))
+                 for s in order]
+        short = [(s, d) for s, d in short if d > 1e-9]
+        if short:
+            print("  SHORT LOOKBACK -- the panel starts at "
+                  f"{float(panel.dates.min()):.3f} and these origins want history before "
+                  "it: " + ", ".join(f"{s}->{s+1} (-{d:.2f}y)" for s, d in short))
         if drop_targets:
             print(f"  (targets {sorted(drop_targets)} dropped from evaluation, "
                   f"validation and training alike -- declared anomalous)")
@@ -1958,7 +2319,9 @@ def rolling(panel, drop_targets=(2020,), min_seqs=30, min_train=2, val_folds=3,
                    n_support=len(task.sup), n_target=len(task.tgt_g),
                    support_dropped=float(panel.support_dropped.get(task.horizon, 0.0)),
                    n_next_seqs=task.n_next, floor=task.floor,
-                   metric=panel.metric, floor_alt=task.floor_alt)
+                   metric=panel.metric, floor_alt=task.floor_alt,
+                   lookback_shortfall=max(
+                       0.0, float(panel.dates.min()) - (task.horizon - panel.lookback)))
         # Both floors, side by side, whenever a kernel family is in play. Convolving
         # moves what is reachable -- 3.632 to 2.780 over observed residues and 2.692 over
         # all twenty, on the backbone panel -- and every reduction in this log is quoted
@@ -1968,9 +2331,32 @@ def rolling(panel, drop_targets=(2020,), min_seqs=30, min_train=2, val_folds=3,
             kinds = sorted({ARMS[c["kernel"]]["residues"] for c in grid
                             if c.get("kernel")})
             row["floor_ext"] = {k: task.floor_ext(k) for k in kinds}
+        # The kernel's operating point, resolved per origin off the gate rows whose
+        # targets had closed by this horizon. Pooling the gate over the whole training
+        # half and applying one point everywhere -- what every run before this did --
+        # chose `tau_e`, `tau_k` and `m` for five of the eight scored transitions partly
+        # from those transitions' own targets, because `p_down` reads the optimal target
+        # potential. `causal_operating_point` applies the same "target has closed" rule
+        # the selector's folds obey, and raising on an origin with nothing to read is
+        # deliberate: falling back to a declared default would make half the panel
+        # causal and the other half not, with nothing in the output saying which.
+        if gate_rows is not None:
+            arms_in_play = sorted({c["kernel"] for c in grid if c.get("kernel")})
+            task.kernel_point, chosen = {}, {}
+            for arm in arms_in_play:
+                te, ts_, tk, mk, info = causal_operating_point(gate_rows, arm, s)
+                task.kernel_point[arm] = (te, ts_, tk, mk)
+                chosen[arm] = info
+            row["kernel_point"] = chosen
+            if verbose and chosen:
+                for arm, info in chosen.items():
+                    print(f"    kernel {arm}: tau_e {info['tau_e']} (slow "
+                          f"{info['tau_e_slow']}), tau_k {info['tau_k']:g}, "
+                          f"m {info['m']}  (mean dW/dmu {info['deriv']:+.4f} over "
+                          + ", ".join(f"{j}->{j+1}" for j in info['gated_on']) + ")")
         for fam in families:
             combos, _ = select(tasks, order, i, grid, fam, val_folds, maxiter,
-                               gamma_pen, top_k)
+                               gamma_pen, top_k, workers=select_workers)
             combos = [c if not (fam == "base_sel" and "base" not in c)
                       else base_grid(sorted({g["tau_f"] / MONTH for g in grid}))[0]
                       for c in combos]
@@ -2141,8 +2527,7 @@ def report(rows, families=FAMILIES, n_boot=4000, seed=0):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tree", default=None)
-    ap.add_argument("--ref", default=None)
+    add_panel_source_args(ap)
     ap.add_argument("--min-allele-freq", type=float, default=0.005)
     ap.add_argument("--lookback", type=float, default=5.0,
                     help="years of history a prediction may put weight on")
@@ -2152,10 +2537,6 @@ def main():
                          "alignment, where the window holds thousands. Restricts the "
                          "model and leaves the target alone, so it cannot flatter a "
                          "positive result")
-    ap.add_argument("--alignment", nargs="+", default=None,
-                    help="per-segment aligned FASTAs; use instead of --tree/--ref to run "
-                         "on every sequence rather than the guide tree's tips")
-    ap.add_argument("--metadata", default=None, help="TSV of strain and date")
     ap.add_argument("--min-season-seqs", type=int, default=30)
     ap.add_argument("--min-train", type=int, default=2)
     ap.add_argument("--val-folds", type=int, default=3,
@@ -2266,7 +2647,7 @@ def main():
     ap.add_argument("--kernel-m", type=int, default=0,
                     help="keep only the top m proposals per parent genotype and "
                          "renormalise; 0 keeps every one. This is the lever the round "
-                         "lives on -- a kernel must place more than 44.6% of its "
+                         "lives on -- a kernel must place more than 44.6%% of its "
                          "proposal mass on downhill directions to be worth anything, and "
                          "truncation is how a ranking's enrichment is converted into a "
                          "forecast. Settled by the gate, like --kernel-tau-k")
@@ -2281,6 +2662,15 @@ def main():
                          "costs the multiple-looks budget nothing. Without this flag a "
                          "scoring run could not reach a timescale the gate is free to "
                          "sweep, which is a trap rather than a default")
+    ap.add_argument("--tau-e-slow", type=float, default=None,
+                    help="the SLOW site-allele window for the consensus momentum arm, in "
+                         "years. Until 2026-09-28 this was pinned at 3x --tau-e, which "
+                         "gave the allele-level momentum one free timescale where the "
+                         "genotype-level momentum column it mirrors has two (tau_f and "
+                         "tau_s, both selected). Both are now selected, by the same "
+                         "per-origin descent gate; this flag is the declared-constant "
+                         "route for a run that is not using --kernel-gate-table. Must "
+                         "exceed --tau-e. Unset keeps the 3x fallback")
     ap.add_argument("--plm-marginals", default=None,
                     help=".npz from antiGen.plm_marginals, needed by the kobs/kplm arms. "
                          "Matched to the panel by sequence string and by the set of "
@@ -2307,6 +2697,13 @@ def main():
     ap.add_argument("--top-k", type=int, default=1,
                     help="average the predictions of the best K candidates by validation "
                          "error instead of taking the single argmin. A protocol constant")
+    ap.add_argument("--select-workers", type=int,
+                    default=int(os.environ.get("ANTIGEN_SELECT_WORKERS", "0") or 0),
+                    help="evaluate the selector's grid in this many forked processes "
+                         "(0 or 1 = serial, the default). A performance flag and nothing "
+                         "else: the combination loop reads only its arguments and holds "
+                         "no RNG, so the chosen combination and every score are the same "
+                         "either way. Keep OMP_NUM_THREADS=1 when using it")
     ap.add_argument("--alphas", default="0,0.05",
                     help="uniform mass mixed into the base measure, which is the handle "
                          "on strains with very low counts")
@@ -2318,19 +2715,36 @@ def main():
     ap.add_argument("--transitions", default="",
                     help="evaluate only these transitions, by the season predicted from")
     ap.add_argument("--families", default=",".join(FAMILIES))
+    ap.add_argument("--kernel-gate-table", default=None,
+                    help="JSON from antiGen.kernel_gate, run with --full-table so it "
+                         "covers every transition. With it, the kernel's operating point "
+                         "(tau_e, tau_k, m) is chosen PER ORIGIN from the gate rows whose "
+                         "targets had closed by that origin's horizon, instead of one "
+                         "point pooled over the training half and applied everywhere. "
+                         "`p_down` reads the optimal target potential, so the pooled "
+                         "version chose the operating point of five of the eight scored "
+                         "backbone transitions partly from those transitions' own "
+                         "targets; this is the same 'target has closed' rule the "
+                         "selector's validation folds already obey. Overrides --tau-e, "
+                         "--kernel-tau-k and --kernel-m, and raises rather than falling "
+                         "back when an origin has no readable row")
+    ap.add_argument("--censor-features", action="store_true",
+                    help="count the allele frequencies that define the feature set over "
+                         "sequences dated at or before this origin's horizon only. "
+                         "Without it the (position, residue) columns are chosen over the "
+                         "whole record, so which alleles get a coefficient is a function "
+                         "of seasons the forecast has not seen -- second order, because "
+                         "the coefficients themselves are still fitted on earlier "
+                         "transitions, but real: at origin 2017 of the backbone, 42 of "
+                         "the 239 columns exist only because of post-horizon data and "
+                         "vary over the support. Needs exactly one --transitions origin, "
+                         "since the censoring horizon is that origin's. The geometry -- "
+                         "varying sites, alphabet, codes, every transport cost -- is "
+                         "untouched either way; see TipPanel")
     ap.add_argument("-o", "--output", default=None)
     a = ap.parse_args()
 
-    if a.alignment:
-        if not a.metadata:
-            ap.error("--alignment needs --metadata")
-        tips, skipped = load_alignment_dated(a.alignment, a.metadata)
-        src = f"alignment, {len(a.alignment)} segments"
-    else:
-        if not (a.tree and a.ref):
-            ap.error("give either --tree/--ref or --alignment/--metadata")
-        tips, skipped = load_tips(a.tree, a.ref)
-        src = "guide-tree tips"
+    tips, skipped, src, submitted = tips_from_args(ap, a)
     emb = None
     if a.embedding:
         z = np.load(a.embedding, allow_pickle=True)
@@ -2351,13 +2765,33 @@ def main():
                         if k and ARMS.get(k, {}).get("needs_plm")})
     if needs_plm and marg is None:
         ap.error(f"kernel arms {', '.join(needs_plm)} need --plm-marginals")
+    # The censoring horizon has to be known before the panel exists, because the feature
+    # mask is a constructor argument -- so `--transitions` is read here rather than at the
+    # bottom with the rest of the roll's arguments.
+    only = {int(x) for x in a.transitions.split(",")} if a.transitions else None
+    censor_at, fmask = None, None
+    if a.censor_features:
+        if not only or len(only) != 1:
+            ap.error("--censor-features needs exactly one --transitions origin: the "
+                     "feature set is censored at that origin's horizon, and one panel "
+                     "cannot carry two censorings")
+        censor_at = float(next(iter(only))) + 0.25          # 1 April of the origin season
+        # Sorted here so that `TipPanel`'s own `sorted` is a no-op and the mask stays
+        # aligned with `panel.gseq`; the same precaution `huddleston_panel.build_panel`
+        # takes. A mask silently off by one row would censor the wrong sequences.
+        order = sorted(range(len(tips)), key=lambda i: tips[i])
+        tips = [tips[i] for i in order]
+        if submitted is not None:
+            submitted = [submitted[i] for i in order]
+        fmask = np.asarray([d <= censor_at for d, _ in tips])
     panel = TipPanel(tips, a.min_allele_freq, a.lookback, a.max_support, emb, a.metric,
-                     marginals=marg)
+                     marginals=marg, feature_mask=fmask, submitted=submitted)
     needs_ckpt = sorted({k for k in a.kernels.split(",")
                          if k and ARMS.get(k, {}).get("needs_checkpoints")})
     if needs_ckpt and not a.antigen_checkpoints:
         ap.error(f"kernel arms {', '.join(needs_ckpt)} need --antigen-checkpoints")
     panel.kernel_tau_e = a.tau_e
+    panel.kernel_tau_slow = a.tau_e_slow
     panel.agen_root = a.antigen_checkpoints
     panel.agen_device = a.antigen_device
     panel.agen_sites_only = bool(a.antigen_sites_only)
@@ -2374,6 +2808,9 @@ def main():
     print(f"ground metric: {a.metric}"
           + ("  (every forecast also scored under the other one)"
              if emb is not None else ""))
+    if censor_at is not None:
+        print(f"feature set censored at {censor_at:.3f}: allele frequencies counted over "
+              f"{panel.n_feature_tips} of {len(tips)} sequences")
     print(f"lookback {a.lookback:g} years; out-of-season sequences included "
           f"({int((panel.season < 0).sum())} of {len(tips)} fall outside any season)")
 
@@ -2401,21 +2838,49 @@ def main():
 
     drop = {int(x) for x in a.drop_targets.split(",") if x.strip()}
     fams = tuple(a.families.split(","))
-    only = {int(x) for x in a.transitions.split(",")} if a.transitions else None
+    gate_rows = None
+    if a.kernel_gate_table:
+        g = json.load(open(a.kernel_gate_table))
+        if not g.get("causal_table"):
+            raise SystemExit(
+                f"{a.kernel_gate_table} was not written by `kernel_gate --full-table`. A "
+                f"gate run that stopped at --gate-through does not cover the early "
+                f"origins, and consuming it would silently leave them on the declared "
+                f"defaults while the later ones were resolved")
+        gate_rows = g["per_transition"]
+        arms = sorted({r["arm"] for r in gate_rows})
+        seas = sorted({int(r["season"]) for r in gate_rows})
+        print(f"kernel gate table: {a.kernel_gate_table}, {len(gate_rows)} rows, arms "
+              f"{', '.join(arms)}, transitions "
+              + ", ".join(f"{j}->{j+1}" for j in seas))
+        print("  the operating point is resolved per origin from the rows whose targets "
+              "had closed;\n  --tau-e/--kernel-tau-k/--kernel-m are overridden\n")
     rows = rolling(panel, drop, a.min_season_seqs, a.min_train, a.val_folds, grid,
-                   a.maxiter, a.gamma_pen, fams, only=only, top_k=a.top_k)
+                   a.maxiter, a.gamma_pen, fams, only=only, top_k=a.top_k,
+                   gate_rows=gate_rows, select_workers=a.select_workers)
     summary = report(rows, fams)
     if a.output:
         with open(a.output, "w") as f:
             # The kernel settings are recorded, not only used: two runs of this file
             # can differ in nothing else, and a scored output that does not name the
             # kernel it was produced under cannot be told apart from another later.
-            json.dump(dict(n_tips=len(tips), n_features=len(panel.features),
+            json.dump(dict(panel=a.panel_provenance,
+                           n_tips=len(tips), n_features=len(panel.features),
+                           censor_at=censor_at,
+                           n_feature_tips=int(panel.n_feature_tips),
                            lookback=a.lookback, val_folds=a.val_folds,
                            drop_targets=sorted(drop), n_grid=len(grid),
                            kernels=a.kernels, kernel_tau_k=a.kernel_tau_k,
                            kernel_m=a.kernel_m, tau_e=a.tau_e,
+                           tau_e_slow=a.tau_e_slow,
+                           kernel_gate_table=a.kernel_gate_table,
                            mus=a.mus, families=a.families,
+                           # Recorded so a reader can see it, and deliberately NOT a
+                           # field `merge_families.py` compares: the worker count is the
+                           # one flag that must leave every number alone, so a merge that
+                           # refused a pair differing only in it would be asserting the
+                           # opposite of what is true.
+                           select_workers=int(a.select_workers),
                            per_transition=rows, summary=summary), f, indent=2)
         print(f"\nWrote {a.output}")
 

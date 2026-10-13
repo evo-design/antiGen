@@ -1,0 +1,693 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+% Latin Modern: scalable Type 1 outlines of Computer Modern. microtype's font expansion
+% refuses to run against the bitmap CM fonts this machine's TeX resolves by default
+% ("auto expansion is only possible with scalable fonts"), which is a fatal error rather
+% than a warning. Same typeface, so nothing about the document's appearance changes.
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\Cov}{Cov}
+\DeclareMathOperator{\Var}{Var}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\1}{\mathbf{1}}
+\newcommand{\Ind}[1]{\mathbb{I}\!\left[#1\right]}
+\newcommand{\VT}{V_T}
+
+\title{\textbf{\texttt{mlr+mom+K}}: a complete derivation\\[2pt]
+\large A multinomial-logit fitness model over allele features and frequency momentum,\\
+convolved with a consensus mutation kernel}
+\author{antiGen}
+\date{28 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This note derives, in full, the forecasting model referred to in the run logs as
+\texttt{mlr+mom+K}. The model predicts the genotype composition of the next influenza
+A/H3N2 season as a distribution over observed genotypes \emph{and their one-substitution
+neighbours}. It has three parts, each derived separately below: a base measure obtained
+by exponentially discounting past observations; an exponential tilt of that base measure
+whose exponent is linear in one-hot allele indicators and a frequency-momentum column,
+fitted by penalised multinomial likelihood against a nearest-neighbour assignment
+target; and a convolution with a mutation kernel that proposes, for each genotype, the
+substitutions toward alleles the population is moving \emph{to}. Every forecast is scored
+by the exact earth-mover's distance to the realised season under a Hamming ground metric.
+We state the estimator's convexity, the gradient used to fit it, the identification
+structure of the design, the mass-conservation and nesting properties of the
+convolution, and the selection protocol under which every hyperparameter is chosen ---
+including the kernel's own timescale and temperature, which earlier versions of this note
+fixed by an oracle diagnostic and which are now resolved per origin from information
+available at that origin. We close with the empirical result and the caveats that
+presently govern it.
+\end{abstract}
+
+\tableofcontents
+
+\section{The forecasting problem}
+
+\subsection{Data and notation}
+
+The data are dated amino-acid sequences. Writing $\mathcal{D} = \{(t_i, g_i)\}_{i=1}^{N}$
+for sequence $i$ observed at decimal time $t_i$ with genotype $g_i$, each genotype is a
+string over the $566$-residue concatenated translation
+$\texttt{SigPep} \mathbin\Vert \texttt{HA1} \mathbin\Vert \texttt{HA2}$ of the HA segment.
+On the backbone panel $N = 1{,}683$ tips carry $1{,}063$ distinct genotypes.
+
+A \emph{season} $s$ runs from 1 October of year $s-1$ to 1 April of year $s$. A forecast
+made at origin season $s$ has \emph{horizon}
+\begin{equation}
+  T \;=\; s + \tfrac14,
+\end{equation}
+i.e.\ 1 April of season $s$, and predicts the composition of season $s+1$.
+
+\subsection{Support, target, ground metric}
+
+\paragraph{Support.} The forecast is a probability vector over the genotypes observable
+at the horizon within a lookback window $L$:
+\begin{equation}
+  \VT \;=\; \bigl\{\, g_i \;:\; T - L < t_i \le T \,\bigr\},
+  \qquad L = 5 \text{ years}.
+\end{equation}
+Typical sizes are $|\VT| \in [271, 442]$. Nothing dated after $T$ enters any quantity
+below; this is the property that makes every component leak-free, and it is enforced by
+test rather than by convention.
+
+\paragraph{Target.} Let $G_{s+1}$ be the distinct genotypes of season $s+1$ and
+$y \in \Delta^{|G_{s+1}|-1}$ their empirical frequencies.
+
+\paragraph{Ground metric.} For $v \in \VT$ and $j \in G_{s+1}$,
+\begin{equation}
+  M_{vj} \;=\; d_{\mathrm H}(v, j) \;=\; \sum_{q=1}^{566} \Ind{v_q \neq j_q},
+\end{equation}
+the Hamming distance in amino-acid substitutions. All reported quantities are in these
+units.
+
+\subsection{The scoring functional}
+
+A forecast $x \in \Delta^{|\VT|-1}$ is scored by the exact $1$-Wasserstein distance
+(earth-mover's distance) to the realised season:
+\begin{equation}
+  W(x, y) \;=\; \min_{\Gamma \in \R_{\ge0}^{|\VT| \times |G_{s+1}|}}
+  \; \sum_{v,j} \Gamma_{vj} M_{vj}
+  \quad\text{s.t.}\quad \Gamma \1 = x,\;\; \Gamma^\top \1 = y .
+  \label{eq:emd}
+\end{equation}
+This is a linear program, solved exactly (network simplex, \texttt{float64}). In the run
+artifacts the value $W(x,y)$ for a family \texttt{fam} is recorded under the key
+\texttt{emd\_fam}; the prefix names the \emph{metric}, not the model.
+
+Two reference levels accompany every panel:
+\begin{align}
+  \text{persistence} &:\quad W(x^{\mathrm{seas}}, y),
+    \quad x^{\mathrm{seas}} = \text{uniform over season-$s$ sequences},\\
+  \text{floor} &:\quad \min_{x \in \Delta^{|\VT|-1}} W(x,y)
+    \;=\; \sum_j y_j \min_{v \in \VT} M_{vj},
+  \label{eq:floor}
+\end{align}
+the second because the optimal reweighting sends every target's mass to its nearest
+support point. The floor is what \emph{any} reweighting of $\VT$ could achieve; it is
+the correct bar for every model in this note except the kernel arm, for which
+Section~\ref{sec:extfloor} derives a lower one.
+
+\section{The base measure}
+
+\subsection{Exponentially discounted level}
+
+For a timescale $\tau>0$ define the discounted genotype shares
+\begin{equation}
+  \pi^{(\tau)}_v \;=\;
+  \frac{\displaystyle\sum_{i \,:\, g_i = v,\; T-L < t_i \le T} e^{-(T-t_i)/\tau}}
+       {\displaystyle\sum_{u \in \VT}\;\sum_{i \,:\, g_i = u,\; T-L < t_i \le T} e^{-(T-t_i)/\tau}},
+  \qquad v \in \VT,
+  \label{eq:level}
+\end{equation}
+with the convention $\pi^{(\infty)}_v \propto \#\{i : g_i = v\}$ over the window. A decay
+rather than a hard window is used so that every genotype in $\VT$ retains strictly
+positive weight at every $\tau$: recency is expressed without discarding support, which
+matters because the support also determines the floor \eqref{eq:floor}.
+
+\subsection{Uniform smoothing}
+
+The tilt in Section~\ref{sec:tilt} acts multiplicatively on the base measure, so a
+genotype seen once --- whose share is estimated from a single sequence --- would have a
+badly estimated number exponentiated. The base measure is therefore mixed with the
+uniform distribution:
+\begin{equation}
+  b_v \;=\; (1-\alpha)\,\pi^{(\tau_f)}_v \;+\; \frac{\alpha}{|\VT|},
+  \qquad \alpha \in [0,1).
+  \label{eq:base}
+\end{equation}
+This bounds below how small, and hence how poorly estimated, any base probability can be.
+$\alpha$ is selected per origin (Section~\ref{sec:selection}); on the backbone panel the
+selector chose $\alpha = 0$ at every origin.
+
+\section{The design}
+
+\subsection{Allele features}
+
+At each of the $566$ sites, let the \emph{varying} sites be those carrying more than one
+allele at panel-wide frequency $\ge \phi$ ($\phi = 0.005$). Enumerating the surviving
+(site, allele) pairs gives the feature index set $\mathcal{F}$, $|\mathcal{F}| = d$, over
+$103$ varying sites with $d = 239$ on the backbone panel. The one-hot block is
+\begin{equation}
+  S \in \{0,1\}^{|\VT| \times d},
+  \qquad S_{v,(q,a)} \;=\; \Ind{v_q = a}.
+\end{equation}
+
+\begin{remark}[No intercept]
+Each row of $S$ sums to the number of varying sites at which $v$ carries an in-grid
+allele --- between $100$ and $103$, hence nearly but not exactly constant. An explicit
+intercept would be unidentified, since adding a constant to the exponent cancels in
+\eqref{eq:tilt}; see Lemma~\ref{lem:shift}. None is included.
+\end{remark}
+
+\subsection{The momentum column}
+
+Let $\tau_f < \tau_s$ be a fast and a slow timescale. The raw log-ratio of the two
+discounted levels,
+\begin{equation}
+  \tilde m_v \;=\; \log \pi^{(\tau_f)}_v \;-\; \log \pi^{(\tau_s)}_v,
+\end{equation}
+is positive for genotypes whose share is rising and negative for those whose share is
+falling: it is a discrete-time estimate of $\tfrac{d}{dt}\log \pi_v$ smoothed over two
+horizons. It is then centred under the base measure,
+\begin{equation}
+  m_v \;=\; \tilde m_v \;-\; \sum_{u \in \VT} \pi^{(\tau_f)}_u \, \tilde m_u .
+  \label{eq:mom}
+\end{equation}
+The design is the concatenation
+\begin{equation}
+  Z \;=\; \bigl[\, S \;\big\vert\; m \,\bigr] \in \R^{|\VT| \times (d+1)},
+  \qquad \theta = (\beta, \gamma) \in \R^{d} \times \R .
+\end{equation}
+
+\begin{lemma}[Shift invariance; why centring is free]\label{lem:shift}
+Let $x(\theta)$ be as in \eqref{eq:tilt}. For any $c \in \R$, replacing the column $m$ by
+$m - c\1$ leaves $x(\theta)$ unchanged for every $\theta$.
+\end{lemma}
+\begin{proof}
+Replacing $m$ by $m - c\1$ replaces the exponent $z_v^\top\theta$ by
+$z_v^\top\theta - c\gamma$, a constant in $v$. Then
+$b_v e^{z_v^\top\theta - c\gamma} = e^{-c\gamma} b_v e^{z_v^\top\theta}$, and the common
+factor $e^{-c\gamma}$ cancels between numerator and denominator of \eqref{eq:tilt}.
+\end{proof}
+
+Centring therefore changes no prediction. It is done so that the penalty on $\gamma$
+(Section~\ref{sec:penalty}) means ``how much tilt'' rather than ``how much tilt plus an
+offset'', which would otherwise make the regularisation path depend on an arbitrary
+additive constant.
+
+\section{The forecast}\label{sec:tilt}
+
+The model is an exponential tilt --- equivalently a conditional logit with an offset ---
+of the base measure:
+\begin{equation}
+  \boxed{\;
+  x_v(\theta) \;=\;
+  \frac{b_v \, \exp\!\bigl(\beta^\top S_v + \gamma\, m_v\bigr)}
+       {\displaystyle\sum_{u \in \VT} b_u \, \exp\!\bigl(\beta^\top S_u + \gamma\, m_u\bigr)},
+  \qquad v \in \VT .
+  \;}
+  \label{eq:tilt}
+\end{equation}
+Writing $f = Z\theta$, the implementation evaluates
+$x \propto b \odot \exp(f - \max_v f_v)$, which is the standard shift for numerical
+stability and is exact by Lemma~\ref{lem:shift}.
+
+Interpretation: $\exp(\beta^\top S_v + \gamma m_v)$ is a relative fitness. A genotype's
+predicted share is its current (discounted) share multiplied by a fitness that depends on
+which alleles it carries and on whether its own frequency trajectory is rising. This is
+the Malthusian form $x_v \propto b_v e^{f_v}$ used throughout the field; what is specific
+here is the feature set and the estimator.
+
+\section{The estimator}
+
+\subsection{Why not minimise the score directly}
+
+The natural estimator would minimise \eqref{eq:emd} in $\theta$. We do not, for two
+reasons. First, $\theta \mapsto W(x(\theta), y)$ is not convex: $W$ is convex in $x$, but
+$x(\theta)$ is not an affine function of $\theta$, and the composition need not be convex.
+Second, each objective evaluation costs a transport solve. The estimator below is convex,
+has a closed-form gradient, and costs no transport solve at all; the transport LP is paid
+once per scored forecast, at evaluation time. \emph{Everything reported is still scored by
+\eqref{eq:emd}} --- the surrogate is used for fitting only.
+
+\subsection{The assignment target}
+
+Exact genotypes rarely recur: on this panel only about $6\%$ of a season's sequences carry
+a genotype already seen before 1 April. A multinomial likelihood over exact genotype
+identity would therefore discard $94\%$ of the data. Instead, each next-season sequence is
+assigned to its nearest already-observed genotype, ties split equally. With
+$\mu_j = \min_{u \in \VT} M_{uj}$,
+\begin{equation}
+  q_v \;=\; \sum_{j \in G_{s+1}} y_j \cdot
+  \frac{\Ind{M_{vj} = \mu_j}}{\bigl|\{u \in \VT : M_{uj} = \mu_j\}\bigr|},
+  \qquad \sum_{v \in \VT} q_v = 1 .
+  \label{eq:assign}
+\end{equation}
+This is precisely the transport plan attaining the floor \eqref{eq:floor}. It is a
+\emph{surrogate target for estimation}; it is never a scoring target.
+
+\subsection{Penalised multinomial cross-entropy}
+
+Let $\mathcal{T}_s$ be the training transitions available at origin $s$
+(Section~\ref{sec:selection}). For $r \in \mathcal{T}_s$ write $Z^{(r)}, b^{(r)},
+q^{(r)}$ for that transition's design, base measure and assignment target, and
+$x^{(r)}(\theta)$ for \eqref{eq:tilt} evaluated on it. The estimator is
+\begin{equation}
+  \boxed{\;
+  \hat\theta \;=\; \argmin_{\theta \in \R^{d+1}}\;
+  \underbrace{\frac{1}{|\mathcal{T}_s|}\sum_{r \in \mathcal{T}_s}
+  \Bigl(-\sum_{v} q^{(r)}_v \log x^{(r)}_v(\theta)\Bigr)}_{\textstyle \ell(\theta)}
+  \;+\; \theta^\top P \theta ,
+  \;}
+  \label{eq:est}
+\end{equation}
+with $P$ the diagonal penalty of Section~\ref{sec:penalty}.
+
+\begin{proposition}[Gradient]\label{prop:grad}
+For a single transition with design $Z$, base $b$, target $q$ and total target mass
+$q_{\mathrm{tot}} = \sum_v q_v$,
+\begin{equation}
+  \nabla_\theta \Bigl(-\sum_v q_v \log x_v(\theta)\Bigr)
+  \;=\; Z^\top\bigl(q_{\mathrm{tot}}\, x(\theta) - q\bigr).
+  \label{eq:grad}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Write $f = Z\theta$, $w_v = b_v e^{f_v}$, $A = \sum_u w_u$, $x = w/A$. Then
+$\log x_v = \log b_v + z_v^\top\theta - \log A$ and
+\[
+  \nabla_\theta \log A
+  = \frac{1}{A}\sum_u w_u z_u = \sum_u x_u z_u = Z^\top x .
+\]
+Hence $\nabla_\theta \log x_v = z_v - Z^\top x$, and
+\[
+  \nabla_\theta\Bigl(-\sum_v q_v \log x_v\Bigr)
+  = -\sum_v q_v\bigl(z_v - Z^\top x\bigr)
+  = -Z^\top q + q_{\mathrm{tot}} Z^\top x . \qedhere
+\]
+\end{proof}
+
+This is the textbook multinomial-logit gradient, ``observed minus expected''. The factor
+$q_{\mathrm{tot}}$ is inert here, since \eqref{eq:assign} normalises to one; it is
+retained because the same routine serves a within-season fit whose bundles carry unnormalised
+shares, and omitting it there would make the loss and its gradient different functions.
+
+\begin{proposition}[Convexity]\label{prop:convex}
+$\ell$ is convex in $\theta$, with Hessian for a single transition
+\begin{equation}
+  \nabla^2_\theta \Bigl(-\sum_v q_v \log x_v\Bigr)
+  \;=\; q_{\mathrm{tot}}\; Z^\top\bigl(\operatorname{diag}(x) - x x^\top\bigr) Z \;\succeq\; 0 .
+\end{equation}
+\end{proposition}
+\begin{proof}
+Differentiating \eqref{eq:grad}, $\nabla_\theta x = (\operatorname{diag}(x) - xx^\top)Z$.
+For any $u$, $u^\top Z^\top(\operatorname{diag}(x) - xx^\top)Zu = \Var_{v\sim x}(z_v^\top u) \ge 0$,
+the variance of a real random variable under the probability vector $x$. A nonnegative
+combination over $r \in \mathcal{T}_s$ preserves positive semidefiniteness, and
+$\theta^\top P\theta$ is convex, so \eqref{eq:est} is a convex program.
+\end{proof}
+
+Consequently the fit has a unique optimal value, and the solution does not depend on
+initialisation. Optimisation is by L-BFGS-B with analytic gradient \eqref{eq:grad}.
+
+\subsection{Anisotropic penalty}\label{sec:penalty}
+
+The penalty is diagonal but not isotropic:
+\begin{equation}
+  P \;=\; \operatorname{diag}\bigl(\underbrace{\lambda,\dots,\lambda}_{d
+  \text{ allele features}},\; \gamma_{\mathrm{pen}}\bigr),
+  \qquad
+  \theta^\top P \theta \;=\; \lambda\|\beta\|_2^2 + \gamma_{\mathrm{pen}}\gamma^2 .
+\end{equation}
+The rationale is that the two blocks are doing different jobs. The $d = 239$ allele
+coefficients are many relative to the two or three training transitions available and
+must be shrunk. The single momentum coefficient \emph{is} the term the family is named
+for; penalising it at $\lambda$ would switch it off by default. It nevertheless carries a
+small penalty of its own, so that a single training transition cannot drive it away.
+
+\begin{remark}[Preconditioning]
+The implementation substitutes $\theta = P^{-1/2} u$ and minimises
+$\ell(P^{-1/2}u) + \|u\|_2^2$. This is an exact reparameterisation that whitens the
+quadratic term; it changes the iterates of L-BFGS, not the optimum.
+\end{remark}
+
+\section{The mutation kernel}\label{sec:kernel}
+
+Everything so far redistributes mass among \emph{observed} genotypes. The kernel extends
+the forecast to genotypes one substitution away from an observed one.
+
+\subsection{The candidate set}
+
+Let $Q$ be the varying sites and, for each $q \in Q$, let $\mathcal{A}_q$ be the residues
+\emph{observed in the support} at site $q$. The candidate columns are
+\begin{equation}
+  \mathcal{C} \;=\; \bigl\{(q,b) \;:\; q \in Q,\; b \in \mathcal{A}_q \bigr\},
+\end{equation}
+and for a parent $v \in \VT$ the candidate $v^{q\to b}$ is $v$ with site $q$ set to $b$,
+defined for $b \neq v_q$. Sites carrying a single residue contribute nothing, since
+substituting to the residue already present is a no-op. Restricting to observed residues
+is what keeps the arm leak-free; it is also why the extended floor below is $2.780$ rather
+than the $2.692$ of the full Hamming ball.
+
+\subsection{Site--allele frequencies and their extrapolation}
+
+Define, for timescale $\tau$ and site $q$,
+\begin{equation}
+  f^{(\tau)}_q(b) \;=\;
+  \frac{\sum_{i\,:\, t_i \le T,\; (g_i)_q = b} e^{-(T-t_i)/\tau}}
+       {\sum_{i\,:\, t_i \le T} e^{-(T-t_i)/\tau}},
+  \qquad \sum_{b} f^{(\tau)}_q(b) = 1 .
+  \label{eq:saf}
+\end{equation}
+Only sequences dated at or before $T$ contribute. With a fast timescale $\tau_e$ and a
+slow one $3\tau_e$, the kernel proposes toward
+\begin{equation}
+  \log \hat f_q(b) \;\;\propto\;\;
+  \log f^{(\tau_e)}_q(b) \;+\; \delta\Bigl(
+  \log \max\bigl(f^{(\tau_e)}_q(b), \phi\bigr) -
+  \log \max\bigl(f^{(3\tau_e)}_q(b), \phi\bigr)\Bigr),
+  \label{eq:fhat}
+\end{equation}
+renormalised per site. The fast timescale $\tau_e$ is \emph{selected per origin}
+(\S\ref{sec:selection}); the ratio $3$ between the slow and fast windows is declared, not
+selected, and is borrowed from the panel's own $\tau_s$ grid. Here $\delta = 1$ for
+\texttt{kcmom} and $\delta = 0$ for \texttt{kcons}, which is the matched control: \texttt{kcons} proposes toward where the
+population \emph{is}, \texttt{kcmom} toward where it is \emph{heading}. Equation
+\eqref{eq:fhat} is the site--allele reading of the genotype-level momentum column
+\eqref{eq:mom}.
+
+The floor $\phi$ (the panel's own minimum allele frequency, $0.005$) is applied
+\emph{inside the ratio only}; the level term keeps its exact share. Without it, an allele
+absent from the slow window but present in the fast one yields an infinite ratio and the
+arm would place a site's entire proposal mass on whichever residue happened to appear most
+recently.
+
+\subsection{The proposal}
+
+The proposal factorises into a site propensity and a residue propensity,
+$\pi(q,b \mid v) \propto s_q(v)\,\psi_q(v_q \to b)$, with
+\begin{equation}
+  \boxed{\;
+  \pi(q,b \mid v) \;\propto\;
+  \underbrace{\hat f_q(b)}_{\psi}\;\cdot\;
+  \underbrace{\bigl(1 - \hat f_q(v_q)\bigr)}_{s},
+  \qquad b \neq v_q .
+  \;}
+  \label{eq:prop}
+\end{equation}
+The first factor proposes the allele the population is moving toward. The second is the
+entire conditioning on $v$: if $v$ already carries the rising allele at site $q$ then
+$1 - \hat f_q(v_q)$ is small and little proposal mass is spent there. The kernel pushes
+$v$ only at the sites where $v$'s own residue is the one being left behind.
+
+Writing $L_v(q,b) = \log \hat f_q(b) + \log\bigl(1 - \hat f_q(v_q)\bigr)$ and
+$L_v(q,b) = -\infty$ when $b = v_q$, the realised proposal is a tempered, optionally
+truncated softmax,
+\begin{equation}
+  \pi(\cdot \mid v) \;=\; \operatorname{softmax}\bigl(L_v / \tau_k\bigr)
+  \quad\text{restricted to its top } m \text{ columns},
+  \label{eq:softmax}
+\end{equation}
+with $m = 0$ meaning no truncation. As $\tau_k \to 0$ the proposal approaches a point mass
+on the single most favourable substitution per parent. Both $\tau_k$ and $m$ are selected
+per origin (\S\ref{sec:selection}).
+
+It is worth recording what $\tau_k$ does and does not control, because the selected values
+are small enough to look alarming. Between $\tau_k = 0.02$ and $\tau_k = 0.001$ the number
+of materialised candidates falls by a factor of roughly fourteen, while the mass-weighted
+descent statistics move in the third decimal ($p_{\mathrm{down}}$ $0.7425 \to 0.7415$,
+$p_{\mathrm{flat}}$ $0.0684 \to 0.0675$ at $\tau_e = 0.25$). The discarded candidates carry
+no mass: the small-$\tau_k$ proposal is the same distribution with a numerically negligible
+tail pruned, not a qualitatively sharper kernel.
+
+\subsection{Convolution}
+
+Let $K$ be the operator sending mass at $v$ to $\{v^{q\to b}\}$ in proportions
+\eqref{eq:softmax}, and let $p_v \in \{0,1\}$ indicate whether $v$ has at least one
+candidate. The forecast becomes
+\begin{equation}
+  \boxed{\; x' \;=\; (1-\mu)\,x \;+\; \mu\, K x , \qquad \mu \in [0,1]. \;}
+  \label{eq:conv}
+\end{equation}
+Operationally the implementation keeps $x_v(1 - \mu p_v)$ on the original support and
+emits $\mu \sum_v x_v p_v$ onto the candidate block, which is \eqref{eq:conv} exactly.
+
+\begin{lemma}[Mass conservation]
+$\sum x' = \sum x$ for every $\mu \in [0,1]$, including for parents with no candidate.
+\end{lemma}
+\begin{proof}
+The retained mass is $\sum_v x_v(1 - \mu p_v)$ and the emitted mass is
+$\mu\sum_v x_v p_v$, since $K$ is row-stochastic on $\{v : p_v = 1\}$. The two sum to
+$\sum_v x_v$. A parent with $p_v = 0$ has an empty row of $K$, so $\mu$ multiplies nothing
+and its mass is retained in full.
+\end{proof}
+
+\begin{lemma}[Nesting]\label{lem:nest}
+At $\mu = 0$, $x' = x$ bit-identically, with no candidate block materialised.
+\end{lemma}
+
+Lemma~\ref{lem:nest} is what makes the kernel family \emph{selectable}: it contains its
+own parent as the $\mu = 0$ member, so the choice between \texttt{mlr+mom} and
+\texttt{mlr+mom+K} is a choice of $\mu$ within one family, made by the ordinary selector
+on past data alone. It is also the identity used to verify that two independent runs are
+paired --- the parent columns of the kernel run must reproduce the parent run exactly, and
+do, to $0$.
+
+\subsection{Cost block and the extended floor}\label{sec:extfloor}
+
+Scoring \eqref{eq:emd} on the extended support requires the distance from each candidate
+to each target. No candidate sequence is materialised: since $v^{q\to b}$ differs from $v$
+at exactly one site,
+\begin{equation}
+  M_{v^{q\to b},\, j} \;=\; M_{vj} \;-\; \Ind{v_q = j_q} \;+\; \Ind{b \neq j_q},
+  \label{eq:costrec}
+\end{equation}
+so the block is obtained from the parent rows by a rank-one correction per column. This
+recursion counts agreeing residues and is therefore specific to the Hamming metric; the
+implementation raises rather than silently falling back under another ground metric.
+
+Because the forecast may now place mass outside $\VT$, the bar in \eqref{eq:floor} is no
+longer the right one. The relevant floor is
+\begin{equation}
+  \text{floor}^{\mathrm{ext}}
+  \;=\; \sum_j y_j \min_{u \,\in\, \VT \cup \mathcal{N}_1(\VT)} M_{uj},
+\end{equation}
+where $\mathcal{N}_1$ is the one-substitution neighbourhood over observed residues. On the
+panel reported in \S\ref{sec:result} $\text{floor} = 3.389$ while
+$\text{floor}^{\mathrm{ext}} = 2.541$; on the earlier published panel the pair is $3.632$
+and $2.780$. The
+earth-mover's distances remain directly comparable across all models --- same targets,
+same cost matrix --- but any statement of the form ``fraction of the achievable gain
+captured'' must use each model's own floor.
+
+\section{Selection protocol}\label{sec:selection}
+
+\subsection{What is chosen per origin, and on what}
+
+The hyperparameters $(\tau_f, \tau_s, \lambda, W, \alpha, \gamma_{\mathrm{pen}}, \mu)$
+are re-chosen at every origin. Let $\mathcal{O} = (s_1 < s_2 < \dots)$ be the ordered
+transitions and let origin $s_i$ be the one being predicted. Then:
+\begin{enumerate}[noitemsep]
+  \item the \emph{training set} is the $W$ most recent transitions strictly before $s_i$
+        ($W = 0$ meaning all of them);
+  \item the \emph{validation folds} are the $k = 3$ most recent transitions before $s_i$,
+        each scored by a fit that saw only what preceded \emph{it};
+  \item each grid combination is scored by mean EMD over those folds;
+  \item the forecasts of the best $k' = 5$ combinations are averaged.
+\end{enumerate}
+Recent folds rather than all of them are used because the record is not stationary. Grid
+collapse is applied per family: fields a family cannot see are not swept, so that the
+argmin is never decided by ties among identical predictions.
+
+\subsection{The kernel's own constants}\label{sec:gatesel}
+
+The triple $(\tau_e, \tau_k, m)$ cannot ride in the grid above, because the grid is scored
+by forecast EMD on the validation folds and each additional field multiplies the cost of
+an already expensive search. It is chosen instead by a \emph{descent gate}. Writing
+$\varphi_u = \min_j (M_{uj} - z^\star_j)$ for the $c$-transform of the optimal target
+potential of the unextended transport, Danskin's theorem gives the right-derivative of the
+convolved score at $\mu = 0$ as
+\begin{equation}
+  \frac{\partial W_1}{\partial \mu}\Bigl|_{0}
+  \;=\; \sum_v x_v \sum_{(q,b)} \pi(q,b \mid v)\,
+        \bigl[\varphi_{v^{q\to b}} - \varphi_v\bigr]
+  \;=\; 1 - p_{\mathrm{flat}} - 2p_{\mathrm{down}},
+  \label{eq:deriv}
+\end{equation}
+every bracket being exactly $-1$, $0$ or $+1$ because the Hamming cost is integer-valued.
+This is cheap --- one transport solve per transition, no forecast scored --- but it is an
+\textbf{oracle} quantity: $z^\star$ reads where the season actually went.
+
+That is the whole difficulty, and it is why this subsection exists. Measuring
+\eqref{eq:deriv} on a transition and then \emph{scoring} that transition with the
+resulting constants is selection on the evaluation set. The protocol is therefore:
+
+\begin{quote}
+Gate row $j$ reads the targets of season $j+1$, which close at $(j+1)+\tfrac14$. Origin
+$s_i$ forecasts from $s_i + \tfrac14$. Row $j$ is readable at origin $s_i$ exactly when
+$(j+1)+\tfrac14 \le s_i + \tfrac14$, i.e.\ $j < s_i$. At each origin, $(\tau_e, \tau_k, m)$
+is the argmin of \eqref{eq:deriv} averaged over the readable rows, restricted to
+configurations measured on all of them.
+\end{quote}
+
+This is the same ``target has closed'' rule the training window and the validation folds
+obey, stated on the gate's index rather than the forecast's. A configuration missing from
+any readable transition is dropped rather than averaged over the subset it has, since a
+mean over four transitions and a mean over five are not comparable. An origin with no
+readable row raises rather than falling back to a declared default, which would leave part
+of a panel causal and part of it not with nothing in the output saying which.
+
+\medskip
+\noindent
+With that, \textbf{every quantity entering the forecast at $s_i$ --- coefficients,
+hyperparameters, and the kernel's own constants --- is a function of data strictly earlier
+than $s_i$.} Earlier versions of this note could not make that claim: they fixed
+$(\tau_e, \tau_k, m) = (0.25, 0.02, 0)$ by pooling \eqref{eq:deriv} over transitions
+$\{2017, 2018, 2020, 2021, 2022\}$, five of which are also scored. \S\ref{sec:caveats}
+records what the correction cost.
+
+The descent surface is flat where it matters, which is why it can be resolved from short
+prefixes without damage: averaged over all eleven transitions, $\tau_e$ has an interior
+optimum at $0.5$ ($-0.5602$, against $-0.5504$ at $0.25$ and $-0.5416$ at $1$) and
+$\tau_k$ is a plateau from $0.001$ to $0.02$ with a spread of $0.005$. The per-origin
+choices wander inside that plateau rather than disagreeing with each other.
+
+\subsection{Averaging}
+
+For predictions $x^{(1)},\dots,x^{(k')}$ possibly living on different extended supports,
+the average is taken in the extended space: the support parts average pointwise and every
+candidate block is carried along with its mass divided by $k'$. Blocks from different
+combinations are never merged, since their candidate indexings are not comparable.
+
+\section{Result}\label{sec:result}
+
+On the backbone panel with the evaluation masked on season 2021 (eight scored
+transitions; nothing held out of any fit), with $\delta = 1$ and $(\tau_e, \tau_k, m)$
+resolved per origin by \S\ref{sec:gatesel}. The comparison models are given the same
+per-origin selector, on the same folds with the same averaging, rather than being held at
+the constants their papers ship; \S\ref{sec:caveats} says what that is worth and in which
+direction.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+model & mean EMD (AA) & vs.\ persistence & transitions won \\
+\midrule
+\texttt{mlr+mom+K} & \textbf{7.488} & $+6.11\%$ & $8/8$ \\
+\texttt{distance\_from\_consensus} & 7.566 & $+5.21\%$ & $6/8$ \\
+\texttt{ne\_star-lbi} & 7.624 & $+4.80\%$ & $6/8$ \\
+\texttt{mlr+mom} & 7.661 & $+3.86\%$ & $8/8$ \\
+\texttt{lbi} & 7.677 & $+4.20\%$ & $5/8$ \\
+\texttt{ne\_star} (Huddleston 2020) & 7.772 & $+2.35\%$ & $6/8$ \\
+\midrule
+persistence & 7.970 & --- & --- \\
+floor (reweighting) & 3.389 & --- & --- \\
+floor (extended support) & 2.541 & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\noindent
+``Transitions won'' counts wins against persistence, which is the column all rows share.
+The paired gain of the kernel over its own parent is $-0.173$ AA with a $95\%$ bootstrap
+interval of $[-0.272, -0.084]$, improving $7$ of $8$ transitions --- the exception being
+$2019 \to 2020$, at $+0.014$ AA. So \texttt{mlr+mom+K} beats persistence everywhere and
+beats its own parent almost everywhere; the two counts differ and both are reported.
+
+The selector chose $\mu \in \{0.05, 0.1, 0.2, 0.4\}$ across the scored origins, and
+$\mu = 0$ at the masked origin $2020$, where by Lemma~\ref{lem:nest} it returns the parent
+bit-identically. Nothing above is separable from the rows beneath it: every paired interval
+between the top five models straddles zero. What is not shared is the win count --- $8/8$
+belongs to \texttt{mlr+mom+K} and \texttt{mlr+mom} alone.
+
+\medskip
+\noindent
+\textbf{Out of panel.} On the 23 validation origins of the Huddleston 2020 panel
+(1996--2014 sequence data, a different corpus and a six-month pivot grid), the same kernel
+takes \texttt{mlr+mom} from $5.896$ to $5.750$ against a naive baseline of $6.370$: a
+paired gain of $-0.1455$ AA, $95\%$ interval $[-0.206, -0.079]$, improving $21$ of $23$
+origins. The four families shared with the reference run on that panel reproduce it to
+$0$, so the pairing is exact. The eight test origins of that panel are not yet scored.
+
+\section{Caveats}\label{sec:caveats}
+
+\begin{enumerate}
+\item \textbf{What the causal correction cost, and what it did not settle.} The previous
+version of this note fixed $(\tau_e, \tau_k, m)$ by pooling the oracle diagnostic
+\eqref{eq:deriv} over five of the eight scored transitions, and reported $7.476$ /
+$+6.42\%$ / $8$-of-$8$ with a paired gain of $-0.186$ AA $[-0.220, -0.150]$. Resolving the
+triple per origin instead (\S\ref{sec:gatesel}) moves the mean by $+0.0124$ AA, with a
+bootstrap interval of $[-0.0735, +0.0865]$ that is an order of magnitude wider than the
+point estimate. The two arms are not distinguishable, and the correction was made because
+the earlier protocol was indefensible, not because the number demanded it. Two things the
+correction does \emph{not} settle: it widens the paired interval on the kernel's gain from
+$[-0.220,-0.150]$ to $[-0.272,-0.084]$, and it costs one transition against the parent.
+
+\item \textbf{$\mu$ is no longer pinned, but the grid ceiling still binds sometimes.}
+Under the superseded arm the selector chose $\mu = 0.4$ --- the largest value offered ---
+at every origin, so the optimum sat on a boundary and the reported gain was a lower bound.
+Under the causal arm it chooses $0.4$ at four of the eight scored origins and the interior
+values $0.05$, $0.1$, $0.2$ at the rest. The boundary therefore still binds at half the
+panel and the grid $\{0, 0.05, 0.1, 0.2, 0.4\}$ should still be extended, but the defect is
+now partial rather than total. The change is unsurprising: a differently tempered kernel
+wants a different mixing weight.
+
+\item \textbf{The backbone is a development set, and the kernel has now partly
+replicated.} The model was designed and tuned across many rounds on exactly these
+transitions. In the round that produced the first version of this result, three other
+statistically significant backbone findings were checked on the out-of-sample Huddleston
+2020 panel and none replicated; one reversed sign and became significantly harmful. The
+kernel has since been checked there and does replicate on the 23 validation origins
+($-0.1455$ AA $[-0.206, -0.079]$, $21$ of $23$; \S\ref{sec:result}). The eight
+\emph{test} origins of that panel --- the strictest split available --- are still running,
+and until they report the out-of-panel evidence is one arm rather than two.
+
+\item \textbf{The out-of-panel replication carries a transferred constant.} That H2020 run
+used $(\tau_e, \tau_k, m) = (0.25, 0.02, 0)$, the operating point the \emph{backbone} gate
+chose. The backbone gate read targets from 2018--2023 and every H2020 origin predates them,
+so for that panel these are future information --- exactly the defect \S\ref{sec:gatesel}
+removes on the backbone, left in place there because the run was most of the way through
+when it was found. An H2020 gate table would fix it and has not been built.
+
+\item \textbf{The comparison protocol is now symmetric, and that is worth stating in both
+directions.} The rows in \S\ref{sec:result} attributed to Huddleston 2020 are scored with
+their hyperparameters re-chosen at every origin on our folds, not held at the config their
+papers ship, because comparing a per-origin selector against constants frozen in 2019
+compares protocols as much as models. Averaged over their six models this \emph{costs}
+them $0.042$ AA --- three folds over $16$ to $144$ candidates mostly adds variance to a
+one- or two-coefficient model --- but for \texttt{lbi} it is worth $+0.467$ AA, taking it
+from $8.144$ / $-2.56\%$ / $2$-of-$8$ to $7.677$ / $+4.20\%$ / $5$-of-$8$. The choice moves
+\texttt{mlr+mom} from fourth to third of six fitted models, so it is not a choice that
+flatters this work.
+
+\item \textbf{The estimator and the score are different functionals.} Coefficients
+minimise penalised cross-entropy against the assignment target \eqref{eq:assign}; every
+number reported is an earth-mover's distance \eqref{eq:emd} to the realised season. The
+gap between the two is not quantified here.
+
+\item \textbf{$\delta$ contributes little.} The matched control \texttt{kcons}
+($\delta = 0$) scores $-0.174$ against \texttt{kcmom}'s $-0.182$. The level term does
+essentially all the work and the momentum extrapolation adds $0.008$ AA, which falsifies
+the motivating argument for the arm even though the arm itself succeeds. Both figures are
+from the superseded pooled arm; \texttt{kcons} has not been rerun under
+\S\ref{sec:gatesel}, so the comparison is between two models at a common operating point
+rather than each at its own.
+\end{enumerate}
+
+\end{document}

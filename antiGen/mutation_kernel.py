@@ -109,9 +109,16 @@ ARMS = {
 # scores no forecast, so settling them there costs the multiple-looks budget nothing,
 # whereas putting them in front of the outer selector would cost about a point each.
 #
-# `CONS_FAST` is the fast timescale in years when no `tau_e` is given, and the slow one
-# is `CONS_SLOW_MULT` times it. 1 and 3 years are the panel's own `--tau-s-years` grid,
-# so the pair is borrowed rather than invented.
+# `CONS_FAST` is the fast timescale in years when no `tau_e` is given, and
+# `CONS_SLOW_MULT` times it is the slow one when no slow timescale is given either.
+#
+# **The multiple is a fallback, not the protocol.** It was the protocol until 2026-09-28,
+# and it was an asymmetry with no justification behind it: the genotype-level momentum
+# column selects `tau_f` and `tau_s` independently, so the allele-level momentum -- which
+# is the same construction read at site-allele resolution, `eq:fhat` against `eq:mom` --
+# had one free timescale where its own analogue has two. Both are now selected. The
+# multiple survives only so that a caller who names a fast timescale and no slow one gets
+# the documented old behaviour rather than an error.
 CONS_FAST = 1.0
 CONS_SLOW_MULT = 3.0
 # The momentum exponent per arm. `kcons` is the level-only control -- it proposes toward
@@ -120,12 +127,30 @@ CONS_SLOW_MULT = 3.0
 # is the right direction" from "the change in the consensus is".
 CONS_DELTA = {"kcons": 0.0, "kcmom": 1.0}
 
-# Refuse to materialise a candidate block bigger than this. At `m = 0` over observed
-# residues a transition carries 63k-168k triples, so the guard only ever fires on an
-# untruncated PLM arm, where the block would be 2.3M rows and the LP no longer a
-# transport problem. Raising rather than silently truncating: a truncation the caller did
-# not ask for would change which kernel was scored.
-MAX_CANDIDATES = 500_000
+# Refuse to materialise a candidate block bigger than the **leak-free dense block** --
+# `|sup|` parents times the one-step neighbourhood over residues the support already
+# carries. Raising rather than silently truncating: a truncation the caller did not ask
+# for would change which kernel was scored.
+#
+# **Why relative and not an absolute row count (2026-10-02).** This was
+# `MAX_CANDIDATES = 500_000`, a number sized against the backbone panel's 379-707-genotype
+# support, where `m = 0` over observed residues carries 63k-168k triples; the guard was
+# documented as firing "only ever on an untruncated PLM arm, where the block would be
+# 2.3M rows". On the additive panel it fired on `kcmom` and `kcons` -- both
+# `residues="observed"` -- at origins 2020 and 2021, whose dense blocks are 530,528 and
+# 520,654 rows. That is 6% over a constant that had nothing to do with them, and it is
+# the panel growing, not a kernel nobody asked for.
+#
+# An arm with `residues="observed"` can never exceed its own dense block: at `m = 0` that
+# block is exactly what the caller asked for. So the guard no longer fires on
+# `kunif`/`kemp`/`kcons`/`kcmom`/`kobs` at any panel size, and never needs re-cutting
+# when the corpus grows. A `residues="all"` arm still trips it -- on `panel_K30_v1` at
+# origin 2020 the all-residues block is ~7.1M rows against 530k leak-free, a factor of
+# 13 -- which is the case the guard was written for.
+#
+# `MIN_CANDIDATE_CAP` is the floor, so behaviour on panels smaller than the backbone is
+# unchanged from the absolute cap.
+MIN_CANDIDATE_CAP = 500_000
 
 
 class Candidates:
@@ -425,7 +450,7 @@ def site_allele_freq(panel, horizon, tau):
     nA, J = len(panel.alphabet), panel.codes.shape[1]
     f = np.full((J, nA), 1.0 / nA)
     memo[key] = f
-    idx = np.where(panel.dates <= horizon)[0]
+    idx = np.where(panel.observable(horizon))[0]
     if not len(idx) or not J:
         return f
     age = horizon - panel.dates[idx]
@@ -452,7 +477,7 @@ def site_allele_freq(panel, horizon, tau):
     return f
 
 
-def consensus_freq(panel, horizon, arm, tau_e):
+def consensus_freq(panel, horizon, arm, tau_e, tau_slow=None):
     """`f_hat_q(b)`: the site-allele shares the consensus arms propose toward.
 
     `kcons` returns the fast table as it stands -- where the population *is*. `kcmom`
@@ -472,13 +497,25 @@ def consensus_freq(panel, horizon, arm, tau_e):
     allele absent from the slow window but present in the fast one gives an infinite
     ratio, and the arm would put all of a site's mass on whichever allele happened to
     appear most recently. The floor is the panel's declared one rather than a new
-    constant, so it is auditable against a number already in the protocol."""
+    constant, so it is auditable against a number already in the protocol.
+
+    `tau_slow` is the slow window, selected alongside the fast one rather than pinned to a
+    multiple of it. `None` falls back to `CONS_SLOW_MULT * fast`, which is what every run
+    before 2026-09-28 did. A slow window at or below the fast one is refused rather than
+    silently producing a momentum term that points backwards: the whole content of the
+    ratio is that the slow table lags the fast one."""
     fast = float(CONS_FAST if tau_e is None else tau_e)
     f_fast = site_allele_freq(panel, horizon, fast)
     delta = CONS_DELTA[arm]
     if delta == 0.0:
-        return f_fast
-    f_slow = site_allele_freq(panel, horizon, fast * CONS_SLOW_MULT)
+        return f_fast                       # the slow table is never read; see `reads_slow`
+    slow = float(fast * CONS_SLOW_MULT if tau_slow is None else tau_slow)
+    if not slow > fast:
+        raise ValueError(
+            f"the slow site-allele window must be longer than the fast one; got "
+            f"fast {fast:g}, slow {slow:g}. A ratio at or below 1 makes the momentum "
+            f"term point backwards, which is a different model, not a bad setting")
+    f_slow = site_allele_freq(panel, horizon, slow)
     eps = max(float(getattr(panel, "min_allele_freq", 0.0)) or 1e-3, 1e-12)
     with np.errstate(divide="ignore"):
         lg = (np.log(np.maximum(f_fast, 1e-300))
@@ -492,7 +529,18 @@ def consensus_freq(panel, horizon, arm, tau_e):
     return out
 
 
-def _log_weights(panel, sup, A, arm, col_site, col_res, horizon, tau_e):
+def reads_slow(arm):
+    """Whether `arm` reads a slow site-allele table at all.
+
+    Only the momentum arms do. Sweeping a slow timescale for `kcons` (delta = 0), `kemp`
+    or `kunif` would produce configurations that are identical in every number the gate
+    reports, and the argmin among them would then be decided by iteration order -- the
+    hazard `collapse` exists to prevent on the outer grid. Callers that build a gate grid
+    must ask this first."""
+    return float(CONS_DELTA.get(arm, 0.0)) != 0.0
+
+
+def _log_weights(panel, sup, A, arm, col_site, col_res, horizon, tau_e, tau_slow=None):
     """`log(s_q(v) psi_q(v_q -> b))` for every parent and every candidate column.
 
     The factorisation `pi(q,b|v) ∝ s_q(v) psi_q(v_q -> b)` is where the arms differ, and
@@ -520,7 +568,7 @@ def _log_weights(panel, sup, A, arm, col_site, col_res, horizon, tau_e):
             # sites where v's *own* residue is the one being left behind, which is the
             # whole of the arm's conditioning on v and the reason a site where v already
             # carries the rising allele is not proposed at.
-            fh = consensus_freq(panel, horizon, arm, tau_e)
+            fh = consensus_freq(panel, horizon, arm, tau_e, tau_slow)
             nA = fh.shape[1]
             safe = np.where(col_res < nA, col_res, 0)[None, :]
             psi = np.where(col_res[None, :] < nA, fh[col_site[None, :], safe], 0.0)
@@ -607,7 +655,24 @@ def _cost_block(M, A, B, parent, site, res):
     return R[first], inv.astype(np.int32)
 
 
-def candidates(panel, sup, M, tgt_g, arm, tau_k=1.0, m=0, horizon=None, tau_e=None):
+def candidate_cap(panel, A, arm, col_site=None):
+    """The largest block `candidates` will materialise for this arm on this support.
+
+    `|sup|` times the number of leak-free `(site, residue)` columns -- the one-step
+    neighbourhood over residues the support already carries -- floored at
+    `MIN_CANDIDATE_CAP`. For a `residues="observed"` arm the leak-free columns *are* the
+    arm's own columns, so no second pass over the sites is needed and the cap is by
+    construction unreachable. See the `MIN_CANDIDATE_CAP` comment for why this is
+    relative rather than absolute."""
+    if ARMS[arm]["residues"] == "observed" and col_site is not None:
+        n_cols = len(col_site)
+    else:
+        n_cols = len(_columns(panel, A, "observed")[0])
+    return max(MIN_CANDIDATE_CAP, len(A) * n_cols)
+
+
+def candidates(panel, sup, M, tgt_g, arm, tau_k=1.0, m=0, horizon=None, tau_e=None,
+               tau_slow=None):
     """Every one-step candidate an arm proposes, with its proposal mass and cost rows."""
     if arm not in ARMS:
         raise ValueError(f"unknown kernel arm {arm!r}; have {sorted(ARMS)}")
@@ -618,7 +683,7 @@ def candidates(panel, sup, M, tgt_g, arm, tau_k=1.0, m=0, horizon=None, tau_e=No
         return Candidates(empty, empty, empty, np.zeros(0),
                           empty, np.zeros((0, len(tgt_g)), dtype=np.int16),
                           len(sup), arm, tau_k, m)
-    L = _log_weights(panel, sup, A, arm, col_site, col_res, horizon, tau_e)
+    L = _log_weights(panel, sup, A, arm, col_site, col_res, horizon, tau_e, tau_slow)
     P = _softmax_truncate(L, tau_k, m)
     # A parent the arm has nothing to say about -- every count zero, say -- falls back to
     # the control's row rather than to no row at all, so `K` stays row-stochastic and the
@@ -637,11 +702,13 @@ def candidates(panel, sup, M, tgt_g, arm, tau_k=1.0, m=0, horizon=None, tau_e=No
             P[dead] = fb[dead]
 
     vv, cc = np.nonzero(P)
-    if len(vv) > MAX_CANDIDATES:
+    cap = candidate_cap(panel, A, arm, col_site)
+    if len(vv) > cap:
         raise ValueError(
             f"{len(vv)} candidates for arm {arm!r} at tau_k={tau_k:g}, m={m}; "
-            f"the cap is {MAX_CANDIDATES}. Truncate with a smaller m rather than "
-            f"scoring a kernel nobody asked for")
+            f"the cap is {cap} ({len(sup)} parents x the leak-free one-step "
+            f"neighbourhood, floored at {MIN_CANDIDATE_CAP}). Truncate with a smaller m "
+            f"rather than scoring a kernel nobody asked for")
     parent = vv.astype(np.int32)
     site = col_site[cc]
     res = col_res[cc]
@@ -775,6 +842,68 @@ def gate(stats, break_even=BREAK_EVEN):
                         passes=bool(p > break_even), break_even=float(break_even),
                         leaky=bool(ARMS[arm]["leaky"]))
     return out
+
+
+def causal_operating_point(rows, arm, origin_season, require_complete=True):
+    """The kernel's `(tau_e, tau_k, m)` for one origin, from transitions it may read.
+
+    **Why this exists.** `p_down` is an oracle quantity -- `phi` is the c-transform of the
+    optimal *target* potential, so the gate knows where the season actually went. The
+    round that settled `tau_e = 0.25, tau_k = 0.02, m = 0` pooled the gate over
+    transitions 2017->2018 .. 2022->2023 and then applied that one point at every origin.
+    Five of those six transitions are also *scored*, so the operating point of the row
+    reported at origin 2018 was chosen partly from origin 2018's own target. The
+    measurement it produced survives the correction -- the gain is larger on the three
+    transitions the gate never saw than on the five it did -- but "survives" is not
+    "causal", and this makes it causal.
+
+    **The rule.** Gate row `j` reads the targets of season `j + 1`, which close at
+    `(j + 1) + 0.25`. Origin `i` forecasts from `i + 0.25`. So row `j` is readable at
+    origin `i` exactly when `(j + 1) + 0.25 <= i + 0.25`, i.e. `j < i` -- the same
+    "target has closed" rule `train_set` and `select` already obey, stated on the gate's
+    own index. Equality is allowed: the previous transition's target closes precisely at
+    this origin's horizon.
+
+    **`require_complete`.** A configuration measured on four of the five usable
+    transitions has a mean over a different set from one measured on all five, and taking
+    the argmin across both compares a hard panel with an easy one. So a configuration
+    that is missing anywhere is dropped rather than averaged over what it has. The
+    argmin is over the mean first-order slope `dW/dmu`, most negative first, with the
+    sorted key as a deterministic tie-break -- the gate's own criterion, not a new one.
+
+    Returns `(tau_e, tau_slow, tau_k, m, info)`; raises when the origin has no usable
+    row, because silently falling back to a declared default is how a run stops being the
+    protocol it says it is. `tau_slow` is `None` for arms that do not read a slow table
+    (`reads_slow`), which is how a one-timescale arm and a two-timescale one share this
+    function without the former sweeping a field it cannot see.
+    """
+    usable = [r for r in rows
+              if r["arm"] == arm and int(r["season"]) < int(origin_season)]
+    if not usable:
+        raise ValueError(
+            f"no gate row for arm {arm!r} is readable at origin {origin_season}: every "
+            f"row is for a transition whose target had not closed by "
+            f"{origin_season + 0.25:.2f}. Gate further back, or do not score this origin")
+    seasons = sorted({int(r["season"]) for r in usable})
+    by_cfg = defaultdict(dict)
+    for r in usable:
+        by_cfg[(r.get("tau_e"), r.get("tau_e_slow"), float(r["tau_k"]),
+                int(r["m"]))][int(r["season"])] = float(r["deriv"])
+    cfgs = {k: v for k, v in by_cfg.items()
+            if not require_complete or len(v) == len(seasons)}
+    if not cfgs:
+        raise ValueError(
+            f"no configuration of arm {arm!r} was gated on all of {seasons}; a mean over "
+            f"different transitions is not a comparison. Re-run the gate over one grid")
+    # `None` sorts against floats in the tie-break key, so the sort is on a
+    # string-normalised copy; the returned key is the original.
+    key = min(cfgs, key=lambda k: (float(np.mean(list(cfgs[k].values()))),
+                                   tuple(str(x) for x in k)))
+    tau_e, tau_slow, tau_k, m = key
+    return tau_e, tau_slow, float(tau_k), int(m), dict(
+        tau_e=tau_e, tau_e_slow=tau_slow, tau_k=float(tau_k), m=int(m),
+        deriv=float(np.mean(list(cfgs[key].values()))),
+        gated_on=seasons, n_configs=len(cfgs))
 
 
 def apply_substitution(seq, site_positions, q, res, panel):

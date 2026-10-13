@@ -6,9 +6,12 @@ object -- which strains were sampled, which timepoints they are grouped into, an
 therefore the baseline, the floor and the cost matrices:
 
   backbone   our development set. The 1,683-tip guide tree run to 2026, 8 annual
-             transitions predicting 2018, 2019 and 2021-2026 (2020 dropped as
-             anomalous). Sequence-only on both sides, because `cTiter` needs titer
-             tables that do not cover this panel.
+             transitions. Which 8 depends on the masking: by default the headline
+             `evalmask` panel predicts 2018, 2019, 2020 and 2022-2026, with season
+             2021 held out of the *evaluation only* and nothing held out of any fit.
+             `--backbone published` draws the earlier panel instead (2018, 2019,
+             2021-2026, with 2020 out of the fits as well). Sequence-only on both
+             sides, because `cTiter` needs titer tables that do not cover this panel.
   h2020      the panel of Huddleston et al. 2020: 6-month pivots, a 12-month horizon,
              23 validation origins (1996-2014 targets) and 8 test origins (2015-2019).
              Their own strains, their own KDE frequencies, their own naive baseline.
@@ -122,7 +125,18 @@ BACKBONE_ROWS = [
     ("consensus (point mass)",   "BC2021",    ("theirs", "emd_point_consensus")),
     ("top-LBI strain (point mass)", "Neher2014/BC2021", ("theirs", "emd_point_toplbi")),
     ("VaxSeer (self-trained)",   "Shi2025",   ("vaxseer", "emd_vaxseer")),
+    ("mlr+mom+K",                "this work", ("kernel",  "emd_mlr+mom+K")),
 ]
+
+# The one row that is not a reweighting of the observed support. `mlr+mom+K` convolves
+# its parent with the consensus mutation kernel, so it places mass on genotypes ONE
+# SUBSTITUTION AWAY from something observed -- strains that are not in the data yet.
+# Same targets and the same cost matrix as every other row, so the earth-mover's
+# distances are directly comparable and the column belongs in the figure. But the floor
+# it is entitled to is lower, because it can reach targets the others cannot, and that
+# has to be visible rather than inferred: the CSV carries an `extended_support` column
+# and the extended floor as its own reference row, and the figure says so in the caption.
+EXTENDED_SUPPORT_ROWS = ("mlr+mom+K",)
 
 H2020_ROWS = [
     ("mlr+mom",                 "this work", ("ours", "emd_mlr+mom")),
@@ -154,32 +168,187 @@ H2020_REFIT_TEST = {"ne_star-lbi": (6.798, -1.49),
                     "cTiter_x-ne_star *": (6.140, 6.07)}
 
 
-def load_backbone():
-    """The 8 backbone transitions: our families, theirs, and VaxSeer, one row apiece."""
+# ── which backbone masking the figure is drawn on ───────────────────────────
+
+# The backbone panel exists in two maskings and they are *different panels*, not two
+# views of one. Both score 8 transitions; they disagree about which season is anomalous
+# and, decisively, about whether the anomalous season is also withheld from the fits.
+#
+#   evalmask   THE HEADLINE PANEL (NOTES_2, 2026-09-23). Season 2021 is masked from the
+#              *evaluation only*. Every model's coefficients are fitted on the full
+#              nine-transition record; the 2020->2021 row is excluded from the averages
+#              and from nothing else. Scores 2018, 2019, 2020, 2022-2026.
+#   published  the earlier panel, kept reproducible because the 2026-09-22 entry and
+#              everything citing it report it. Season 2020 is dropped from evaluation,
+#              validation and training alike, so its models are fitted on a record with
+#              a two-year hole. Scores 2018, 2019, 2021-2026.
+#
+# The masking moved because the tip counts do not support calling 2020 anomalous (84
+# sequences, inside its neighbours' 74-102) while 2021 is at 35, and because removing a
+# season from the *fits* is a much larger claim than declining to be graded on it --
+# worth 2.04 of the published panel's 5.22 skill points. See NOTES_2 2026-09-23.
+# `theirs` is the DEFAULT arm and holds their hyperparameters selected per origin by the
+# same protocol ours uses; `theirs_published` holds them frozen at the config their paper
+# ships. The default changed on 2026-09-24 and the reason is parity: our numbers come from
+# a 1,080-combination per-origin selector with 3 validation folds and the top 5 averaged,
+# and comparing that against constants frozen in 2019 compares protocols as much as
+# models. The published arm is kept, reachable by `--their-arm published`, because it is
+# what their papers specify and what every entry before that date reports.
+#
+# It is not a change that flatters us -- it moves `mlr+mom` from fourth to third of six
+# and takes `lbi` from -2.56% / 2-of-8 to +4.20% / 5-of-8 -- which is the reason it can be
+# made the default without the choice itself needing an argument.
+#
+# WHICH TREE A PANEL STANDS ON IS PART OF WHAT THE PANEL IS (2026-10-01). The backbone
+# tree was swapped on 2026-09-28: `tree_2026-04-02` ran to 2026.193 and truncated season
+# 2026 mid-arrival, and the replacement `tree_2026-09-24` also RE-SUBSAMPLES, so every
+# season moved and the root went 2007.758 -> 2008.241. Nothing from one build may be
+# averaged with anything from the other. `evalmask` is now wholly on the 2026-09-24
+# build; `published` is wholly on the superseded 2026-04-02 one and says so in its blurb,
+# because the runs behind it (`dfc/`, `backbone3way/`) have not been re-run and mixing
+# them with the corrected ones would be the exact error the swap exists to avoid.
+#
+# The loader does not take the `tree` field on trust: it asserts that all four sources of
+# a panel agree on the persistence baseline and the floor, which they cannot do across a
+# build change. The field is the label; the assertion is the check.
+BACKBONE_PANELS = {
+    "evalmask": dict(
+        tree="2026-09-24",
+        ours=("competitors_t0924", "out", "ours_*.json"),
+        theirs=("competitors_t0924", "out", "theirs_select.json"),
+        theirs_published=("competitors_t0924", "out", "theirs_published.json"),
+        vaxseer=("competitors_t0924", "out", "vaxseer_*.json"),
+        kernel=("causalgate_t0924", "out", "cg_kcmom_*.json"),
+        # No causal-gate ORACLE arm exists on the corrected tree -- `consscore/` was only
+        # ever run on the truncated one, and the oracle arm is superseded anyway. Asking
+        # for it raises rather than reaching across builds for it.
+        kernel_oracle=None,
+        masked=2020,        # origin of the 2020->2021 transition: the eval on 2021
+        blurb="season 2021 masked from the evaluation only; nothing held out of any fit",
+    ),
+    "published": dict(
+        tree="2026-04-02",
+        ours=("dfc", "out", "dfc_*.json"),
+        vaxseer=("vaxseer", "out", "vaxseer_2*.json"),
+        # No selected arm exists on this panel: `backbone_compare --select
+        # --drop-targets 2020` has never been run. Asking for one raises rather than
+        # silently serving the frozen-config numbers under the selected label.
+        theirs=None,
+        theirs_published=("backbone3way", "theirs.json"),
+        # No causal-gate run on this panel either: `causalgate/score.slurm` was only ever
+        # pointed at the eval-mask panel. The oracle-selected arm is kept and named, and
+        # asking for the causal one raises.
+        kernel=None,
+        kernel_oracle=("consscore", "out", "c_kcmom_pub_*.json"),
+        masked=None,        # the run itself has no 2019 origin; nothing to drop here
+        blurb="season 2020 dropped from evaluation, validation and training alike",
+    ),
+}
+# Which arm of their models a panel draws. "selected" is the default; see above.
+THEIR_ARMS = ("selected", "published")
+# Which arm of the kernel family a panel draws. **"causal" is the default and is the
+# standing convention (2026-09-28): no number this project reports may have a
+# hyperparameter that was chosen with information from after its own forecast date.**
+#
+# The kernel's `(tau_e, tau_k, m)` used to come from a descent gate pooled over the
+# training half of this panel, and `p_down` is an oracle quantity -- it reads the optimal
+# target potential, so it knows where the season went. Five of the eight scored rows were
+# in that pool. The "causal" arm resolves the operating point per origin from the gate
+# rows whose targets had closed by that origin's horizon. It costs +0.0124 AA
+# [-0.0735, +0.0865], i.e. nothing, and it is the arm that can be defended.
+#
+# "oracle" reaches the superseded arm, kept reproducible because every entry before
+# 2026-09-28 reports it. It must never be the default and must never appear unlabelled.
+KERNEL_ARMS = ("causal", "oracle")
+
+
+def load_backbone(which="evalmask", their_arm="selected", kernel_arm="causal"):
+    """The 8 backbone transitions: our families, theirs, and VaxSeer, one row apiece.
+
+    `which` selects the masking (see BACKBONE_PANELS). VaxSeer is trained per origin and
+    so is masking-independent -- the same nine JSONs serve both panels, and the
+    intersection below picks out whichever origins the chosen panel actually scores.
+
+    `their_arm` selects whether their models get the same per-origin hyperparameter
+    selector ours does ("selected", the default) or sit at their published config
+    ("published"). VaxSeer is unaffected either way -- it has no selectable knob here,
+    which is an asymmetry in our favour that no arm of this flag removes.
+
+    `kernel_arm` selects whether `mlr+mom+K`'s operating point was chosen causally, per
+    origin, from gate rows whose targets had closed ("causal", the default and the
+    standing convention) or pooled from an oracle diagnostic over the training half
+    ("oracle", superseded, kept only for reproducing entries that predate 2026-09-28).
+    """
+    cfg = BACKBONE_PANELS[which]
+    if their_arm not in THEIR_ARMS:
+        raise ValueError(f"their_arm must be one of {THEIR_ARMS}")
+    if kernel_arm not in KERNEL_ARMS:
+        raise ValueError(f"kernel_arm must be one of {KERNEL_ARMS}")
+    key = "theirs" if their_arm == "selected" else "theirs_published"
+    if cfg.get(key) is None:
+        raise SystemExit(
+            f"panel {which!r} has no {their_arm!r} arm for their models. The selected "
+            f"arm comes from `backbone_compare --select` on that panel and it has not "
+            f"been run; use --their-arm published, or run it")
+    kkey = "kernel" if kernel_arm == "causal" else "kernel_oracle"
+    if cfg.get(kkey) is None:
+        raise SystemExit(
+            f"panel {which!r} has no {kernel_arm!r} arm for mlr+mom+K on its own tree "
+            f"({cfg['tree']}). The causal arm comes from `causalgate_t0924/score.slurm` "
+            f"and has only been run on the eval-mask panel; the oracle arm comes from "
+            f"`consscore/` and was only ever run on the superseded 2026-04-02 build, so "
+            f"it cannot be served beside a 2026-09-24 panel. Use the other arm, the "
+            f"other panel, or run it")
     ours, theirs, vax = {}, {}, {}
-    for f in sorted(glob.glob(os.path.join(RUNS, "dfc", "out", "dfc_*.json"))):
+    for f in sorted(glob.glob(os.path.join(RUNS, *cfg["ours"]))):
         for r in json.load(open(f))["per_transition"]:
             ours[r["season"]] = r
-    for r in json.load(open(os.path.join(RUNS, "backbone3way",
-                                         "theirs.json")))["per_transition"]:
+    for r in json.load(open(os.path.join(RUNS, *cfg[key])))["per_transition"]:
         theirs[r["season"]] = r
-    for f in sorted(glob.glob(os.path.join(RUNS, "vaxseer", "out", "vaxseer_2*.json"))):
+    for f in sorted(glob.glob(os.path.join(RUNS, *cfg["vaxseer"]))):
         if "theirs" in os.path.basename(f):
             continue
         d = json.load(open(f))
         vax[d["season"]] = d
-    seasons = sorted(set(ours) & set(theirs) & set(vax))
-    src = dict(ours=ours, theirs=theirs, vaxseer=vax)
-    # The three runs must agree on the panel itself or nothing here is paired: same
-    # persistence baseline, same floor, same transport solve.
+    kern = {}
+    for f in sorted(glob.glob(os.path.join(RUNS, *cfg[kkey]))):
+        for r in json.load(open(f))["per_transition"]:
+            kern[r["season"]] = r
+    seasons = sorted(set(ours) & set(theirs) & set(vax) & set(kern))
+    # The mask is applied *here*, after loading and before any average, which is the
+    # whole point of an eval-only mask: the fits behind these numbers saw the row.
+    if cfg["masked"] is not None:
+        assert cfg["masked"] in seasons, (
+            f"masked origin {cfg['masked']} absent from panel {which}; "
+            f"have {seasons}")
+        seasons = [s for s in seasons if s != cfg["masked"]]
+    src = dict(ours=ours, theirs=theirs, vaxseer=vax, kernel=kern)
+    # The four runs must agree on the panel itself or nothing here is paired: same
+    # persistence baseline, same floor, same transport solve. The kernel run is held to
+    # a stricter test than the others -- its `mlr+mom` column must reproduce `ours`
+    # EXACTLY, because mu = 0 nests the parent and the parent's fit never sees a
+    # candidate. A drift there would mean the two runs are not the same model.
     base = np.array([ours[s]["emd_season"] for s in seasons])
-    for other, key in ((theirs, "emd_season"), (vax, "emd_persistence")):
+    for other, key in ((theirs, "emd_season"), (vax, "emd_persistence"),
+                       (kern, "emd_season")):
         d = float(np.abs(np.array([other[s][key] for s in seasons]) - base).max())
         assert d < 1e-9, f"panels disagree on persistence by {d:.2e}"
+    par = float(np.abs(np.array([kern[s]["emd_mlr+mom"] for s in seasons])
+                       - np.array([ours[s]["emd_mlr+mom"] for s in seasons])).max())
+    assert par == 0.0, f"kernel run's parent differs from ours by {par:.2e}, not nested"
+    floor_ext = np.array([kern[s]["floor_ext"]["observed"] for s in seasons])
     return dict(
         name="backbone", origins=[str(s + 1) for s in seasons],
-        xlabel="target season",
+        xlabel="target season", masking=which, their_arm=their_arm,
+        kernel_arm=kernel_arm, tree=cfg["tree"],
+        blurb=f"guide tree {cfg['tree']}; " + cfg["blurb"]
+        + ("; their hyperparameters selected per origin by our "
+                              "protocol" if their_arm == "selected" else
+                              "; their hyperparameters at their published config")
+        + ("" if kernel_arm == "causal" else
+           "; mlr+mom+K at the SUPERSEDED oracle-pooled operating point"),
         base=base, floor=np.array([ours[s]["floor"] for s in seasons]),
+        floor_ext=floor_ext,
         base_label="persistence", n=len(seasons),
         rows=[(lab, cr, np.array([src[w][s][k] for s in seasons]))
               for lab, cr, (w, k) in BACKBONE_ROWS])
@@ -267,22 +436,36 @@ def write_csv(panel, rowdicts, path, extra=()):
     """
     with open(path, "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["model", "source", "sequence_only"] + panel["origins"]
+        w.writerow(["model", "source", "sequence_only", "extended_support"]
+                   + panel["origins"]
                    + ["mean_EMD_AA", "mean_skill_pct", "skill_ci_lo_pct",
                       "skill_ci_hi_pct", "beats_baseline", "n_origins", "note"])
         for r in rowdicts:
+            ext = r["label"] in EXTENDED_SUPPORT_ROWS
             w.writerow([r["label"], r["credit"],
-                        "no" if r["label"] in PHENOTYPE_ROWS else "yes"]
+                        "no" if r["label"] in PHENOTYPE_ROWS else "yes",
+                        "yes" if ext else "no"]
                        + [f"{x:.6f}" for x in r["per_origin"]]
                        + [f"{r['mean']:.6f}", f"{r['mean_skill']:.4f}",
                           f"{r['ci'][0]:.4f}", f"{r['ci'][1]:.4f}",
-                          r["wins"], panel["n"], ""])
-        for lab, v in ((panel["base_label"], panel["base"]), ("floor", panel["floor"])):
-            w.writerow([lab, "—", "yes"] + [f"{x:.6f}" for x in v]
-                       + [f"{v.mean():.6f}", "", "", "", "", panel["n"],
-                          "reference row, not a model"])
+                          r["wins"], panel["n"],
+                          "places mass on unobserved one-step neighbours; compare "
+                          "against `floor (extended support)`, not `floor`"
+                          if ext else ""])
+        refs = [(panel["base_label"], panel["base"], "reference row, not a model"),
+                ("floor", panel["floor"],
+                 "reference row: the best any REWEIGHTING of the observed support "
+                 "could do")]
+        if panel.get("floor_ext") is not None:
+            refs.append(("floor (extended support)", panel["floor_ext"],
+                         "reference row: the best any forecast on the observed support "
+                         "PLUS its one-step neighbours could do. The bar for rows with "
+                         "extended_support = yes"))
+        for lab, v, note in refs:
+            w.writerow([lab, "—", "yes", "no"] + [f"{x:.6f}" for x in v]
+                       + [f"{v.mean():.6f}", "", "", "", "", panel["n"], note])
         for lab, (mean, sk) in extra:
-            w.writerow([lab, "H2020", "no" if "cTiter" in lab else "yes"]
+            w.writerow([lab, "H2020", "no" if "cTiter" in lab else "yes", "no"]
                        + [""] * panel["n"]
                        + [f"{mean:.4f}", f"{sk:.4f}", "", "", "", panel["n"],
                           "mean only; per-origin refits were never saved. Both figures "
@@ -297,19 +480,23 @@ def write_long(panels, path):
     of the other."""
     with open(path, "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["panel", "model", "source", "sequence_only", "origin",
-                    "emd_AA", "baseline_emd_AA", "floor_emd_AA", "skill_pct"])
+        w.writerow(["panel", "model", "source", "sequence_only", "extended_support",
+                    "origin", "emd_AA", "baseline_emd_AA", "floor_emd_AA", "skill_pct"])
         for key, panel in panels:
             for r in table(panel):
                 for j, o in enumerate(panel["origins"]):
                     w.writerow([key, r["label"], r["credit"],
-                                "no" if r["label"] in PHENOTYPE_ROWS else "yes", o,
+                                "no" if r["label"] in PHENOTYPE_ROWS else "yes",
+                                "yes" if r["label"] in EXTENDED_SUPPORT_ROWS else "no",
+                                o,
                                 f"{r['per_origin'][j]:.6f}", f"{panel['base'][j]:.6f}",
                                 f"{panel['floor'][j]:.6f}", f"{r['skill'][j]:.4f}"])
-            for lab, v in ((panel["base_label"], panel["base"]),
-                           ("floor", panel["floor"])):
+            longrefs = [(panel["base_label"], panel["base"]), ("floor", panel["floor"])]
+            if panel.get("floor_ext") is not None:
+                longrefs.append(("floor (extended support)", panel["floor_ext"]))
+            for lab, v in longrefs:
                 for j, o in enumerate(panel["origins"]):
-                    w.writerow([key, lab, "—", "yes", o, f"{v[j]:.6f}",
+                    w.writerow([key, lab, "—", "yes", "no", o, f"{v[j]:.6f}",
                                 f"{panel['base'][j]:.6f}", f"{panel['floor'][j]:.6f}",
                                 f"{100 * (panel['base'][j] - v[j]) / panel['base'][j]:.4f}"])
 
@@ -354,6 +541,17 @@ def panel_levels(ax, panel, rowdicts, highlight, t, ylab="earth-mover's distance
         for v, lab in ((panel["base"], panel["base_label"]), (panel["floor"], "floor")):
             ax.plot(x, v, color=t["dim"], lw=1.4, zorder=1)
             ends.append(v[-1]); labs.append(lab); cols.append(t["muted"])
+        # The extended-support floor, drawn only when a row on the figure is entitled to
+        # it. Dashed and unlabelled at the end so it reads as a second frame line rather
+        # than a competitor: `mlr+mom+K` can reach targets the reweighting floor cannot,
+        # and showing its own bar is what stops the comparison being quietly unfair in
+        # its favour.
+        if panel.get("floor_ext") is not None and any(
+                lab in EXTENDED_SUPPORT_ROWS for lab in highlight):
+            ax.plot(x, panel["floor_ext"], color=t["dim"], lw=1.1, ls=(0, (4, 2)),
+                    zorder=1)
+            ends.append(panel["floor_ext"][-1])
+            labs.append("floor (+K)"); cols.append(t["muted"])
     for i, lab in enumerate(highlight):
         v = by[lab]["skill"] if use_skill else by[lab]["per_origin"]
         ax.plot(x, v, color=t["series"][i], lw=1.6, marker="o", ms=3.4,
@@ -554,33 +752,37 @@ def fig_backbone(panel, mode, out):
     rows = table(panel)
     fig = plt.figure(figsize=(11.6, 9.6))
     top = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.12], wspace=0.40,
-                           left=0.075, right=0.930, top=0.870, bottom=0.555)
+                           left=0.075, right=0.930, top=0.838, bottom=0.555)
     bot = fig.add_gridspec(1, 1, left=0.185, right=0.985, top=0.470, bottom=0.135)
     ax1 = fig.add_subplot(top[0, 0])
     panel_levels(ax1, panel, rows,
-                 ["mlr+mom", "distance_from_consensus", "ne_star-lbi",
+                 ["mlr+mom+K", "mlr+mom", "ne_star",
                   "VaxSeer (self-trained)"], t)
     ax1.set_title("A  error per transition", loc="left", color=t["ink"])
     ax2 = fig.add_subplot(top[0, 1])
     panel_means(ax2, panel, rows, "mlr+mom", t)
     # extra pad: the reference-line labels sit just above this axes
-    ax2.set_title("B  mean error over the 8 transitions", loc="left", color=t["ink"],
-                  pad=17)
+    ax2.set_title(f"B  mean error over the {panel['n']} transitions", loc="left",
+                  color=t["ink"], pad=17)
     ax3 = fig.add_subplot(bot[0, 0])
     cax = fig.add_axes([0.185, 0.072, 0.20, 0.011])
     panel_heat(ax3, cax, panel, rows, "mlr+mom", t)
     ax3.set_title("C  skill against persistence, transition by transition", loc="left",
                   color=t["ink"])
-    fig.suptitle("Forecast accuracy on the backbone panel, 2018-2026 "
-                 "(8 transitions, our development set)", x=0.075, ha="left",
-                 fontsize=13, fontweight="bold", color=t["ink"], y=0.975)
+    fig.suptitle(f"Forecast accuracy on the backbone panel, 2018-2026 "
+                 f"({panel['n']} transitions, our development set)", x=0.075,
+                 ha="left", fontsize=13, fontweight="bold", color=t["ink"], y=0.975)
     fig.text(0.075, 0.951,
              "Earth-mover's distance from the forecast to the observed next season; "
              "Hamming ground metric on the 566-residue SigPep+HA1+HA2 translation; one "
              "float64 transport solve throughout. Lower is better.\n"
              "Sequence-only on both sides -- `cTiter` needs titer tables that do not "
              "cover this panel. LBI is recomputed censored at each horizon, because the "
-             "values shipped on the 2026 tree would leak the future.",
+             "values shipped on the 2026 tree would leak the future.\n"
+             f"Masking: {panel['blurb']}.\n"
+             "`mlr+mom+K` convolves its parent with the consensus mutation kernel: it "
+             "alone may place mass on unobserved one-step neighbours, so the bar it is "
+             "held to is the dashed floor, not the solid one.",
              fontsize=7.5, color=t["ink2"], va="top", ha="left", linespacing=1.5)
     fig.text(0.075, 0.020,
              "Their models were never tuned here; ours was designed, selected and tuned "
@@ -684,9 +886,30 @@ def main():
     ap.add_argument("-o", "--out",
                     default=os.path.join(RUNS, "figures"))
     ap.add_argument("--modes", default="light,dark")
+    ap.add_argument("--backbone", default="evalmask",
+                    choices=sorted(BACKBONE_PANELS),
+                    help="which backbone masking to draw (see BACKBONE_PANELS). "
+                         "'evalmask' is the headline panel: season 2021 out of the "
+                         "evaluation only. 'published' is the earlier panel, 2020 out "
+                         "of the fits as well.")
+    ap.add_argument("--their-arm", default="selected", choices=THEIR_ARMS,
+                    help="whether their models get the same per-origin hyperparameter "
+                         "selector ours does ('selected', the default since 2026-09-24) "
+                         "or sit at the config their paper ships ('published', which is "
+                         "what every entry before that date reports). The default is the "
+                         "apples-to-apples comparison and it costs us two places in the "
+                         "ranking; the published arm is kept reproducible because it is "
+                         "what their papers specify")
+    ap.add_argument("--kernel-arm", default="causal", choices=KERNEL_ARMS,
+                    help="whether mlr+mom+K's (tau_e, tau_k, m) was chosen causally, per "
+                         "origin, from gate rows whose targets had closed ('causal', the "
+                         "default and the standing convention since 2026-09-28) or "
+                         "pooled from an oracle diagnostic over five of the eight scored "
+                         "transitions ('oracle', superseded, kept only to reproduce "
+                         "earlier entries)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    bb = load_backbone()
+    bb = load_backbone(a.backbone, a.their_arm, a.kernel_arm)
     h = load_h2020()
     for mode in a.modes.split(","):
         rows = fig_backbone(bb, mode, a.out)
@@ -698,7 +921,7 @@ def main():
                      for k, v in H2020_REFIT_TEST.items()])
     write_long([("backbone", bb), ("h2020_validation", h["validation"]),
                 ("h2020_test", h["test"])], os.path.join(a.out, "table_long.csv"))
-    show(bb, rows, "backbone, 2018-2026")
+    show(bb, rows, f"backbone, 2018-2026 [{bb['masking']}: {bb['blurb']}]")
     show(h["test"], tr, "h2020 test arm, 2015-2019")
     show(h["validation"], vr, "h2020 validation arm, 1996-2014")
     print(f"\nwrote figures and tables to {a.out}")

@@ -110,6 +110,11 @@ def main():
                          "the marginals are written over are the panel's, and the "
                          "consumer refuses a file built over a different set")
     ap.add_argument("--lookback", type=float, default=5.0)
+    ap.add_argument("--manifest", default=None,
+                    help="an additive panel manifest (antiGen.panel_manifest). The "
+                         "genotype set this file is written over must be the consuming "
+                         "run's, so a manifest run needs its artifacts built under the "
+                         "same manifest")
     ap.add_argument("-o", "--output", required=True)
     a = ap.parse_args()
 
@@ -118,11 +123,13 @@ def main():
     if a.tree:
         if not a.ref:
             ap.error("--tree needs --ref")
+        if a.manifest:
+            ap.error("--manifest applies to --alignment, not to a guide tree")
         tips, _ = load_tips(a.tree, a.ref)
     else:
         if not a.metadata:
             ap.error("--alignment needs --metadata")
-        tips, _ = load_alignment_dated(a.alignment, a.metadata)
+        tips, _ = load_alignment_dated(a.alignment, a.metadata, manifest=a.manifest)
     panel = TipPanel(tips, a.min_allele_freq, a.lookback)
     seqs = panel.genotypes
     print(f"{len(seqs)} distinct genotypes of length {panel.seq_len}; "

@@ -91,7 +91,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from antiGen.mutation_kernel import average
+from antiGen.mutation_kernel import Forecast, average
 from scipy import sparse
 
 from antiGen.season_momentum import (FIXED_BASELINES, MONTH, Task, TipPanel, base_grid,
@@ -268,7 +268,7 @@ class PanelTask(Task):
         # overlap window, deduplicating by (strain, sequence) leaves only 1.22x density
         # inflation in a single year of a five-year window. So `union` is the default:
         # chosen on that arithmetic, not on which one scored better.
-        self.mask = ((panel.dates <= self.horizon)
+        self.mask = (panel.observable(self.horizon)
                      & (panel.dates > self.horizon - lookback)
                      & in_sup[panel.tip_gid])
         if corpus == "build":
@@ -678,8 +678,18 @@ def rolling_panel(tasks, order, evalset, grid, families, val_folds=3, maxiter=80
             # criterion too: `d_top` is that distance for the highest-mass haplotype,
             # beside the post-hoc optimal choice and a KDE-weighted average strain.
             per_sup = task.tgt_w @ task.M.T
-            arr = np.asarray(w if not hasattr(w, "blocks") else w.x, dtype=np.float64)
+            # `Forecast.w` is the mass left on the task's own support; the attribute was
+            # written as `.x` here and never executed, because until the kernel families
+            # were wired through no family on this panel returned a `Forecast` at all.
+            # `per_sup` is indexed over the support, so `d_top` is by construction the
+            # top pick *among observed haplotypes*: for a `+K` family whose highest mass
+            # sits on a proposed one-step candidate this is not the forecast's own
+            # argmax, and the EMD column -- which does see the extended support -- is
+            # the one to read. Recorded rather than silently approximated.
+            arr = np.asarray(w.w if isinstance(w, Forecast) else w, dtype=np.float64)
             row["d_top_" + fam] = float(per_sup[int(np.argmax(arr))])
+            row["d_top_support_only_" + fam] = bool(
+                isinstance(w, Forecast) and bool(w.blocks))
             row["n_avg_" + fam] = len(preds)
             row["n_grid_" + fam] = (len(base_grid([1])) if fam == "base_sel"
                                     else len(collapse_panel(grid, fam)))
@@ -809,6 +819,23 @@ def main():
                     help="the weak penalty a family whose combo carries none falls back "
                          "to; only the no-fit rows are in that position")
     ap.add_argument("--val-folds", type=int, default=3)
+    # The mutation kernel, wired through to this panel so the consensus arms can be
+    # confirmed out of sample. `run_family` already handles the `+K` families and
+    # `PanelTask` inherits `Task.candidates`, so this is plumbing: the flags have to
+    # reach `make_grid` (which carries `mu` and the arm in every combo) and `tau_e` has
+    # to reach the panel, because `Task.candidates` resolves it off `panel.kernel_tau_e`
+    # rather than through `run_family`'s signature.
+    ap.add_argument("--kernels", default="",
+                    help="comma-separated mutation-kernel arms for the `+K` families, "
+                         "e.g. kcmom. Empty means no kernel, which is the default and "
+                         "reproduces every earlier run on this panel bit for bit")
+    ap.add_argument("--mus", default="0",
+                    help="mixing weights the selector may choose between for `+K`")
+    ap.add_argument("--kernel-tau-k", type=float, default=1.0)
+    ap.add_argument("--kernel-m", type=int, default=0)
+    ap.add_argument("--tau-e", type=float, default=None,
+                    help="the consensus arms' fast timescale in years; the slow one is "
+                         "3x it. None takes the arm's built-in default of 1.0")
     ap.add_argument("--min-train", type=int, default=2)
     ap.add_argument("--maxiter", type=int, default=80)
     ap.add_argument("--top-k", type=int, default=1)
@@ -862,13 +889,22 @@ def main():
         print(f"horizon {args.delta_months} months: their forecasts are 12-month only, "
               f"so no `theirs` columns in this run")
 
+    # `Task.candidates` reads the consensus arms' fast timescale off the panel,
+
+    # so it has to be stamped before any family asks for a proposal block.
+
+    panel.kernel_tau_e = args.tau_e
+
     grid = make_grid(tuple(float(x) for x in args.tau_f_months.split(",")),
                      tuple(float(x) for x in args.tau_s_years.split(",")),
                      tuple(float(x) for x in args.lambdas.split(",")),
                      tuple(int(x) for x in args.windows.split(",")),
                      tuple(float(x) for x in args.alphas.split(",")),
                      tuple(args.base_kinds.split(",")),
-                     gamma_pens=tuple(float(x) for x in args.gamma_pens.split(",")))
+                     gamma_pens=tuple(float(x) for x in args.gamma_pens.split(",")),
+                     mus=tuple(float(x) for x in args.mus.split(",") if x != ""),
+                     kernels=tuple(k for k in args.kernels.split(",") if k) or (None,),
+                     tau_k=args.kernel_tau_k, m_k=args.kernel_m)
     only = set(args.only.split(",")) if args.only else None
     print(f"origins: {len(order)} with a target, {len(evalset)} scored "
           f"({sum(1 for v in evalset.values() if v == 'validation')} validation, "
