@@ -318,14 +318,21 @@ col_header <- function(txt) {
 row_label <- function(txt) ggdraw() +
   draw_label(txt, fontface = "italic", size = 10.5, angle = 90)
 
-#' Stack a banner, column headers and rows, with rotated captions down the left.
+#' Stack an optional banner, column headers and rows, with rotated captions
+#' down the left.
+#'
+#' `banner = NULL` drops the title row entirely. The main figure takes that
+#' path -- its caption names the regime -- while the supplement keeps a banner,
+#' since it is otherwise structurally identical and would be unidentifiable.
 assemble <- function(banner, headers, rows, labels, heights) {
+  top <- if (is.null(banner)) list() else
+    list(ggdraw() + draw_label(banner, fontface = "bold", size = 13))
+  if (is.null(banner)) heights <- heights[-1]
   body <- plot_grid(plotlist = c(
-    list(ggdraw() + draw_label(banner, fontface = "bold", size = 13)),
-    list(plot_grid(plotlist = lapply(headers, col_header), nrow = 1)),
+    top, list(plot_grid(plotlist = lapply(headers, col_header), nrow = 1)),
     rows), ncol = 1, rel_heights = heights)
   caption <- plot_grid(plotlist = c(
-    list(ggdraw(), ggdraw()),
+    rep(list(ggdraw()), length(top) + 1),
     lapply(labels, function(l) if (is.null(l)) ggdraw() else row_label(l))),
     ncol = 1, rel_heights = heights)
   plot_grid(caption, body, nrow = 1, rel_widths = c(0.042, 1))
@@ -361,8 +368,8 @@ build <- function(eval_name, banner, letters_) {
 
 ## --- Main figure: the temporal holdout ------------------------------------
 
-save_figure(build(EVALS[2], "Temporal holdout, D = 2025-01-01", LETTERS[1:8]),
-            "multitree_results", width = 13, height = 12.5)
+save_figure(build(EVALS[2], NULL, LETTERS[1:8]),
+            "multitree_results", width = 13, height = 12.2)
 
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
