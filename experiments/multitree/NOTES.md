@@ -1921,3 +1921,99 @@ budget is being spread over them", not as ranking skill.
 This also explains the one imperfect overlap marginal: `where x which` at 1% on
 all substitutions reads 0.2299 against the ladder's 0.2317, a 0.0017 gap, which
 is its two-slot tie allocation. Every other cell matches to 0.0000.
+
+---
+
+## 17. Wider pre-D training set: task and state (2026-10-14, IN PROGRESS)
+
+**The task.** The forecast panel is nine trees because nine straddle
+D = 2025-01-01 usefully. Training is not restricted to those: any tree whose tips
+all predate D is legitimate context, since nothing post-D can reach the model
+through it. `joint_all` already does this with seven retired seasonal-flu builds
+and came out a clean null (-0.018 [-0.058, +0.024], s11). The question is
+whether a much larger pre-D corpus helps or hurts, with **the evaluation held
+exactly fixed**: the same nine-tree post-D test set, the same scoring pipeline,
+the same universe and budgets. Ebola was asked for specifically.
+
+The causally clean route is the **snapshot**, not the current build: fetch each
+dataset at `@2025-01-01`, which is pre-D by construction regardless of what the
+dataset looks like now. That is what `fetch_snapshots.py` already does for the
+panel.
+
+### Done so far
+
+- `probe_wide_snapshots.py` written. **Not run.** It takes ~40 candidate dataset
+  paths, requests each at `@2025-01-01`, and records: served or HTTP status,
+  tip and node counts, latest tip date, gene annotations and their lengths. It
+  saves each JSON and a `probe.json` manifest. Read-only.
+- Candidate list drafted, preferring gene-level builds over whole genomes
+  (the panel is gene-level and examples are per-protein): filoviruses, the four
+  seasonal coronaviruses, hMPV F/G, nipah, mumps, measles N450, RSV G,
+  zika/WNV/yellow fever, chikv, rubella, EV-D68 VP1, rabies, mpox, lassa,
+  oropouche, five hantavirus M segments, norovirus VP1, seasonal flu HA/NA and
+  avian flu NA/H7N9/H9N2.
+
+### A correction to make before trusting the listing
+
+`charon/getAvailable` has **no date parameter** -- it returns the catalogue as
+it stands today (318 datasets on 2026-10-14). Nothing about that listing is
+dated to D. Dating happens only per dataset, through the `@YYYY-MM-DD` suffix on
+`getDataset`. An earlier framing in this session implied the listing itself was
+dated; it is not, and the per-path probe is the only thing that establishes
+availability at D.
+
+This matters because the listing contains **`ebola/bdbv-drc-uganda-2026`**,
+which **is the zero-shot evaluation tree** (`recent.json`, tips 2025.94-2026.63).
+Its presence says nothing about D. It is expected to 404 at `@2025-01-01` since
+the build did not exist then -- **this is expected, not verified.**
+
+The real safeguard is therefore two checks, both of which the probe applies:
+the dated request must succeed, **and** the tree's latest tip must be < 2025.0.
+The second is not redundant: s8 records dataset paths that silently resolved to
+a redirect page rather than the build, which is exactly how a current tree would
+slip in wearing a past date.
+
+### The ebola inclusion changes what the zero-shot result means
+
+`ebola/bdbv` is historical Bundibugyo -- the same species as the zero-shot
+evaluation -- and `sudv` / `ebov-2013` / `all-outbreaks` are the same genus.
+Training on any of them at a pre-D snapshot is causally fine, because the
+outbreak being scored is 2026. But s14's claim is transfer to a virus family the
+panel has **never seen**, and that claim does not survive for the new arm:
+with `bdbv` it becomes same-species transfer, with the others within-genus.
+
+Both readings are worth having. The plan is to keep the ebola trees in, and to
+report the Bundibugyo evaluation for the new arm under its correct name rather
+than as a zero-shot number. **The nine-tree post-D evaluation is unaffected by
+any of this** -- no ebola tree overlaps it and all training is pre-D.
+
+### Also worth re-probing: s8 may be wrong about seasonal flu
+
+s8 states "Seasonal flu has no versions at any date probed" and "zero of
+Charon's 318 datasets match `flu/seasonal`". The catalogue pulled today contains
+**42 datasets under `seasonal-flu/`** (h1n1pdm, h3n2, vic, yam x ha/na x
+2y/3y/6y/12y/pandemic). The earlier search pattern `flu/seasonal` cannot match
+`seasonal-flu/...`, so that conclusion looks like a prefix mismatch rather than
+a fact about retention. **Unverified** -- whether those paths serve a
+`@2025-01-01` snapshot is exactly what the probe will answer. If they do, it
+affects more than this task: s8 ruled seasonal flu unforecastable at any date,
+and the forecast panel itself might be extendable.
+
+### Next steps, in order
+
+1. Verify the `@date` suffix is actually honoured, on one known case: fetch
+   `/ebola/bdbv@2025-01-01` and today's `/ebola/bdbv` and confirm the latest tip
+   dates differ. Without this the whole corpus rests on an assumption.
+2. Run the probe; confirm `bdbv-drc-uganda-2026` 404s at D rather than assuming.
+3. Choose the training set from paths passing both checks; regenerate examples
+   through `generate_all.py` / `make_tree_examples.py` so the new trees go
+   through the same generator as the panel.
+4. Train `joint_wide` (panel 9 + extras) x 3 seeds, matching
+   `train_forecast_esm2.sh` in every other respect.
+5. Score with the unchanged pipeline; report against `joint_panel` and
+   `joint_all`. s10's saturation result predicts a null, and `joint_all` already
+   found one at 25k training mutations; the honest prior is that this does
+   nothing, and the interesting outcome would be it hurting.
+
+Nothing in this section has been run. No data fetched beyond the undated
+catalogue listing, which is saved at `~/.charon_datasets.txt`.
