@@ -61,7 +61,7 @@ RUNG_LABELS <- c(
   where_only        = "Where only",
   pssm              = "PSSM (sequence composition)",
   substitution      = "Substitution matrix",
-  frequency         = "Frequency (memorisation)",
+  frequency         = "Frequency (memorization)",
   where_times_which = "Where x which",
   single            = "antiGen (single-tree)",
   joint             = "antiGen (multi-tree)"
@@ -72,7 +72,7 @@ RUNG_COLORS <- c(
   "Where only"               = "#b3aaaa",
   "PSSM (sequence composition)" = "#9f9a8e",
   "Substitution matrix"      = "#9aa39a",
-  "Frequency (memorisation)" = "#888f88",
+  "Frequency (memorization)" = "#888f88",
   "Where x which"            = "#555560",
   "antiGen (single-tree)"    = GATE_BLUE,
   "antiGen (multi-tree)"     = ANTIGEN_BLUE
@@ -122,9 +122,13 @@ ladder$shown_hi <- ladder$hi
 ## flush against the rung names instead of across a strip of blank panel. Only a
 ## ladder that actually goes negative (NLL on the de novo subset) gets room on
 ## the left, and only as much as its longest negative bar's label needs.
-lad_range <- function(metric, eval_name) {
+##
+## The range is per panel, not shared down a column: the de novo NLL row runs
+## to -1.08 and forcing the all-substitutions row onto that scale pushed its
+## bars a fifth of the way across the panel before they started.
+lad_range <- function(metric, eval_name, subset_key) {
   v <- ladder$shown[ladder$metric == metric & ladder$rule == MAIN_RULE &
-                    ladder$eval == eval_name]
+                    ladder$eval == eval_name & ladder$subset == subset_key]
   hi <- max(v)
   lo <- min(0, min(v))
   c(if (lo < 0) lo - 0.10 * (hi - lo) else 0, hi + 0.12 * (hi - lo))
@@ -139,7 +143,7 @@ lad_range <- function(metric, eval_name) {
 ## panel that actually carries the labels, so that panel reads as a descending
 ## ladder. A shared order cannot be monotone in both columns: the PSSM rung
 ## alone moves from the top of the random panel to the middle of the temporal
-## one. The right column is still correctly labelled row by row, which is what
+## one. The right column is still correctly labeled row by row, which is what
 ## the shared order is there to guarantee.
 ## One rung order per (metric, regime), from that panel's all-substitutions
 ## subset. Columns are now different METRICS, which genuinely order the rungs
@@ -275,7 +279,7 @@ legend_for <- function(values, df, aes_col) {
 subset_legend <- legend_for(SUBSET_COLORS, deltas[deltas$pooled == 1, ],
                             "subset_lab")
 
-## One strip carrying both keys. Two separately centred legend grobs side by
+## One strip carrying both keys. Two separately centered legend grobs side by
 ## side read as two columns; `legend.box = "horizontal"` inside a single plot
 ## keeps the four items together as one run.
 forest_legend <- extract_legend(
@@ -334,14 +338,14 @@ XLAB <- c(hit = "Multi-tree minus comparator, recall at top 10%",
 #' One regime's full eight-panel block: two ladders over two contrasts, with
 #' recall and NLL side by side.
 build <- function(eval_name, banner, letters_) {
-  rng <- list(hit = lad_range("hit", eval_name), nll = lad_range("nll", eval_name))
   row_pair <- function(f, a, b) plot_grid(f("hit"), f("nll"), nrow = 1,
                                           labels = c(a, b))
+  lad <- function(subset_key) function(m)
+    make_ladder(m, eval_name, subset_key, TRUE,
+                lad_range(m, eval_name, subset_key))
   rows <- list(
-    row_pair(function(m) make_ladder(m, eval_name, "all", TRUE, rng[[m]]),
-             letters_[1], letters_[2]),
-    row_pair(function(m) make_ladder(m, eval_name, "novel", TRUE, rng[[m]]),
-             letters_[3], letters_[4]),
+    row_pair(lad("all"), letters_[1], letters_[2]),
+    row_pair(lad("novel"), letters_[3], letters_[4]),
     forest_legend,
     row_pair(function(m) make_forest("vs single-tree model", eval_name, m,
                                      XLAB[[m]]), letters_[5], letters_[6]),

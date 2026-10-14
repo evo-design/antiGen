@@ -168,7 +168,7 @@ the three. **Read this as a tie: training across trees neither helped nor hurt.*
 earlier joint run showed was that ESM-2 can fit several phylogenies at once, not that
 anything transfers between them.
 
-The one suggestive detail is early-epoch behaviour: at epoch 0 the joint model is ahead on
+The one suggestive detail is early-epoch behavior: at epoch 0 the joint model is ahead on
 every tree (ncov 8.04 vs 8.10, h3n2 7.17 vs 7.34, h1n1pdm 7.44 vs 7.67), i.e. the extra
 trees act as a mild warm start, but the single-tree runs catch up within a few epochs.
 

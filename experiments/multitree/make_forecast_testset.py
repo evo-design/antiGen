@@ -21,7 +21,7 @@ pre-D descendant tips (median 0 for both h5nx and ncov at D=2025-01-01), so only
 branches could be matched, and datasets whose tips Nextstrain renamed between builds
 (RSV, measles, mumps all migrated identifier schemes) could not be matched at all.
 
-The leak does not touch training or model selection. It does mildly favour
+The leak does not touch training or model selection. It does mildly favor
 *query-dependent* predictors (the model, substitution, where_times_which) over
 fixed-map ones (frequency, where_only), which is worth stating when the ladder is
 reported.

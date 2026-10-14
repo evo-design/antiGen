@@ -36,7 +36,7 @@ The random split is **not forecast-valid** and every run from it is tagged
 | `baseline_ladder.py` | the uniform -> where -> which -> where x which -> frequency -> model ladder |
 | `context_ablation.py` | re-scores with context destroyed outside a window; H1 vs H2 probe |
 
-**Inside the package** (all flag-gated; existing behaviour byte-identical):
+**Inside the package** (all flag-gated; existing behavior byte-identical):
 
 - `antiGen/batching.py` — `LengthBucketBatchSampler`, so a batch never mixes lengths.
   Chosen over padding because padding would change the published single-tree numbers
@@ -94,13 +94,13 @@ Gotchas found:
 | h1n1pdm | −0.118 | [−0.200, −0.028] | joint better |
 | h3n2 | −0.100 | [−0.189, −0.006] | joint better |
 | ncov | −0.037 | [−0.124, +0.048] | indistinguishable |
-| **POOLED** | **−0.125** | **[−0.169, −0.076]** | 14/15 cells favour joint |
+| **POOLED** | **−0.125** | **[−0.169, −0.076]** | 14/15 cells favor joint |
 
 Joint training helps 4 of 5 trees. The two same-protein pairs (HA, RSV F) gain most; ncov
 spike — biggest tree, no family — is the sole null.
 
 **joint5 vs joint3** (does adding RSV help the original three): pooled −0.045
-[−0.095, +0.004], 7/9 cells favour joint5. Suggestive, underpowered — this is what
+[−0.095, +0.004], 7/9 cells favor joint5. Suggestive, underpowered — this is what
 motivated the scaling sweep.
 
 **The scaling ladder is flat** (array 3273505, complete; all arms vs joint5 on the five
@@ -114,7 +114,7 @@ shared evaluation trees, 3 seeds, paired bootstrap):
 
 No monotone trend. Everything past joint5 sits in a −0.02..−0.05 band — about a third of
 the joint-vs-single effect — and going from 5 trees to 23 buys no more than adding the
-first two did. **Which arm clears zero is an artefact of the epoch rule:** joint23 is
+first two did. **Which arm clears zero is an artifact of the epoch rule:** joint23 is
 significant under per-tree and not under overall, joint17 the exact opposite. Same data,
 opposite verdicts. Treat the whole ladder above joint5 as null; do not quote either
 significant cell alone.
@@ -163,7 +163,7 @@ RNA-virus range) from amino-acid data alone, with `w_codon` ~0.85 and `w_blosum`
 **Where the signal actually is.** `where_only` is startlingly weak — only 0.27–0.57 nats
 better than uniform, against 1.3–1.6 nats for `substitution` alone. Knowing *which* residue
 appears is worth far more than knowing *where* it lands, on every tree. The earlier note
-here that "on ncov the signal is *where*" was an artefact of reading `frequency` as a
+here that "on ncov the signal is *where*" was an artifact of reading `frequency` as a
 positional baseline; ncov simply has the weakest substitution signal (0.83 nats), not the
 strongest positional one.
 
@@ -315,7 +315,7 @@ factors exactly into `-log P(i)` + `-log P(a|i)`, so the delta decomposes additi
 | which, `-log P(a\|i)` | **−0.076** | [−0.108, −0.042] |
 | total | −0.069 | [−0.110, −0.026] |
 
-The where term is indistinguishable from zero and faintly favours *single*. Every tree's
+The where term is indistinguishable from zero and faintly favors *single*. Every tree's
 which term is negative except ncov (the sole null in §4 as well); h3n2 −0.127
 [−0.199, −0.059] and rsv_b −0.181 [−0.278, −0.092] clear zero on their own. No tree's
 where term clears zero.
@@ -365,7 +365,7 @@ Pooled over 15 tree x seed cells:
 The ordering codon > BLOSUM > ts/tv holds on every one of the 30 run-tree cells. Four
 controls, all of which the earlier note lacked:
 
-1. *Not an additive artefact.* A matrix that merely made some residues popular targets
+1. *Not an additive artifact.* A matrix that merely made some residues popular targets
    (`log P(a|wt) = u_wt + v_a`) would correlate with any reference sharing those
    marginals. Only 28% of joint5's variance is row+column main effects, and projecting
    them out of **both sides** raises the codon correlation to **0.791** (BLOSUM 0.479).
@@ -376,7 +376,7 @@ controls, all of which the earlier note lacked:
    at 0.617). Single-tree models drift toward "some residues are popular"; joint
    training restores the pairwise term. That is a concrete mechanism for the which-term
    gain in the table above.
-3. *Averaging artefact ruled out* — the open item from the earlier draft. Re-running
+3. *Averaging artifact ruled out* — the open item from the earlier draft. Re-running
    with the geometric mean over positions (`--mean geometric`), which is not dominated
    by a few confident sites, moves nothing: codon 0.635/0.477, BLOSUM 0.387/0.444,
    R^2 codon+BLOSUM 0.479/0.360 for joint5/single.
@@ -426,7 +426,7 @@ roughly 80% of the reproducible residual is virus-independent. The flu and RSV t
 agree most (0.80-0.97), ncov sits apart (~0.59-0.62). It does *not* load on simple
 physicochemistry — |delta hydropathy| −0.02..−0.11, |delta volume| +0.08..+0.11. So
 there is a real, largely virus-independent substitution term here that neither reference
-captures, and it remains uncharacterised.
+captures, and it remains uncharacterized.
 
 Open: what that shared residual is. Ruled out so far: row/col marginals, hydropathy,
 volume, and per-tree idiosyncrasy.
@@ -466,7 +466,7 @@ measuring it:
 
 Accepted cost: today's ancestral reconstruction used post-D tips, so the query genotype
 is mildly hindsight-informed. It never touches training or epoch selection. It does
-mildly favour query-dependent predictors (model, substitution, where_times_which) over
+mildly favor query-dependent predictors (model, substitution, where_times_which) over
 fixed-map ones (frequency, where_only) — state this when reporting the ladder.
 
 ### Data built
@@ -521,7 +521,7 @@ Pooled NLL/mutation deltas, paired bootstrap over test examples, 3 seeds:
 
 | contrast | pooled delta | 95% CI | |
 |---|---|---|---|
-| `joint_panel` - its single-tree control | **−0.266** | [−0.392, −0.152] | 26/27 cells favour joint |
+| `joint_panel` - its single-tree control | **−0.266** | [−0.392, −0.152] | 26/27 cells favor joint |
 | `joint_panel` - `where_times_which` | **−0.429** | [−0.565, −0.300] | beats the best factored baseline |
 | `joint_panel` - `frequency` | **−0.703** | [−0.858, −0.544] | beats the memorization ceiling |
 | `joint_all` - `joint_panel` | −0.018 | [−0.058, +0.024] | **null** |
@@ -537,8 +537,8 @@ holdout at roughly twice the magnitude (−0.266 here against −0.125 in s4).
 **`joint_all` is a clean null, and it is the causal version of the scaling question.**
 Adding 8,607 training mutations from seven unrelated seasonal-flu trees moves nothing:
 −0.018 [−0.058, +0.024] pooled, +0.001 [−0.077, +0.089] on novel, and the only cell that
-clears zero (measles, +0.152) favours *fewer* trees. All seven frozen trees were verified
-pre-D before inclusion (latest tip 2024.27 < 2025.00), so this is not a leak artefact.
+clears zero (measles, +0.152) favors *fewer* trees. All seven frozen trees were verified
+pre-D before inclusion (latest tip 2024.27 < 2025.00), so this is not a leak artifact.
 s10 predicted exactly this: both arms carry 16.6k and 25.3k training mutations, far past
 the ~7k knee where the `P(a|i)` term saturates. The saturation story now has a causal
 confirmation, not just a random-split one.
@@ -547,7 +547,7 @@ confirmation, not just a random-split one.
 
 | contrast | pooled delta | 95% CI | |
 |---|---|---|---|
-| `joint_panel` - its single-tree control | **−0.775** | [−0.962, −0.586] | 22/24 cells favour joint |
+| `joint_panel` - its single-tree control | **−0.775** | [−0.962, −0.586] | 22/24 cells favor joint |
 | `joint_panel` - `frequency` | −0.321 | [−0.625, −0.020] | |
 | `joint_panel` - `where_times_which` | **+0.738** | [+0.529, +0.919] | **the model loses** |
 | `joint_all` - `joint_panel` | +0.001 | [−0.077, +0.089] | null |
@@ -589,7 +589,7 @@ is true of NLL and false of ranking, and should not be quoted without the distin
   9.167, measles 8.912 vs substitution 8.245, denv1 7.723 vs 7.332) and win on the other
   six. Single-tree forecasting is not reliably better than a fitted substitution matrix;
   the joint arms are what clear the bar.
-- **Query anchoring** (s11, today's tree) mildly favours query-dependent predictors. Both
+- **Query anchoring** (s11, today's tree) mildly favors query-dependent predictors. Both
   the model and `where_times_which` are query-dependent, so the headline model-vs-wxw
   comparison is unaffected; the model-vs-`frequency` and model-vs-`where_only` ones are
   flattered by it.
@@ -662,7 +662,7 @@ novel subset it halves the deficit — +0.738 becomes +0.362 — but **does not 
 The novel-optimal lambda is ~0.95, i.e. "discard the model", and that costs 0.4+ nats on
 the full set.
 
-**What this means.** The novel-subset gap is not a mass-allocation artefact that
+**What this means.** The novel-subset gap is not a mass-allocation artifact that
 calibration can dissolve; it is a genuine knowledge gap *within* the unseen cells. The
 model knows roughly how much mass to put on novel territory, and ranks within it about as
 well as the factored baseline (hit@10% 0.52 vs 0.50), but its ordering there is not good
@@ -882,7 +882,7 @@ Added to Figure 5's ladders because the `frequency` rung was being read as "the 
 baseline used elsewhere in the paper". It is not. Both are parameter-free log-count maps
 over (position, alt AA), but:
 
-| | `pssm_root` (Fig 4's "PSSM") | `frequency (memorisation)` |
+| | `pssm_root` (Fig 4's "PSSM") | `frequency (memorization)` |
 |---|---|---|
 | counts | **sequences** carrying each residue at each position | **branch events**: substitutions to that residue on training branches |
 | source | precomputed `<data_dir>/pssms/root.csv` | computed from the arm's own training split |
@@ -923,7 +923,7 @@ model's 0.86) and only mid-table on the temporal one (0.64 against 0.81).
 Consequence for the figure: a shared rung order cannot be monotone in both columns, since
 the PSSM moves from first to fifth between them. The ladders are ordered by the left
 column, which is the one carrying the rung names; the right column is still correctly
-labelled row by row, which is what the shared order exists to guarantee.
+labeled row by row, which is what the shared order exists to guarantee.
 
 **Consequence: the random holdout is demoted out of the main figure (2026-10-14).**
 If more than half of what a de novo split calls "never seen" is sitting in the training
@@ -947,7 +947,7 @@ subset as a forecast.
 The event-based rule called a cell de novo when no training branch mutated to that
 residue there. It had a systematic hole: the consensus residue at a position is
 inherited from the root, never mutated into, so it leaves no event. A post-D reversion
-from a rare derived state back to consensus was therefore labelled de novo despite being
+from a rare derived state back to consensus was therefore labeled de novo despite being
 the single most predictable cell at that position. All 12 such targets on the temporal
 panel were exactly this, with the "novel" residue carried by 65-99.5% of training
 sequences -- and a pure composition baseline called all 12 correctly, recall 1.000.
@@ -964,7 +964,7 @@ any training sequence carries it there. Effects:
 
 Three things to note.
 
-**The PSSM now lands below uniform, which is the correct behaviour**, not a bug. Its
+**The PSSM now lands below uniform, which is the correct behavior**, not a bug. Its
 nonzero cells (3.7% of the map) outrank every zero cell and consume the first 3.7 points
 of the 10% budget, so a genuinely unseen cell can only claim
 (0.10 - 0.037)/(1 - 0.037) = 0.065. Measured 0.066 temporally and 0.071 randomly. A

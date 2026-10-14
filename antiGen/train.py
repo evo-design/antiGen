@@ -404,7 +404,7 @@ def write_manifest(args, model_config, output_dir, run_prefix,
                 "denv2" if args.denv2 else
                 "sc2"
             ),
-            # schema_version 2: multi-source training and experimental-arm labelling.
+            # schema_version 2: multi-source training and experimental-arm labeling.
             "sources": source_summary,
             "seq_lens": (sorted({s["seq_len"] for s in source_summary})
                          if source_summary else None),

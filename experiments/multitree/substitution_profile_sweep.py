@@ -16,11 +16,11 @@ it can be believed:
    therefore also scored after row and column effects are projected out of both sides,
    which leaves only genuine wt x alt interaction.
 
-3. *The averaging artefact* flagged as open in NOTES.md s10: the arithmetic mean of
+3. *The averaging artifact* flagged as open in NOTES.md s10: the arithmetic mean of
    conditionals over positions is dominated by the most confident positions. The
    geometric mean (`--mean geometric`) is the robustness check.
 
-Residual structure is characterised two ways: how much of it is shared across trees
+Residual structure is characterized two ways: how much of it is shared across trees
 (a chemistry term the references miss) versus tree-specific, and whether it loads on
 hydrophobicity or volume.
 

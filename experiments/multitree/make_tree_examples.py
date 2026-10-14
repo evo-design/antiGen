@@ -3,7 +3,7 @@
 
 This is the *attachment-free, cutoff-free* counterpart to ``antiGen-data`` (the C++
 generator). It walks the guide tree only: no MSA is attached, no metadata/dates are
-read, and every example is labelled ``TRAINING``. The output file is byte-compatible
+read, and every example is labeled ``TRAINING``. The output file is byte-compatible
 with ``antiGen.load.load_examples`` / ``antiGen-validate-examples``.
 
 Emission mirrors ``antiGen-data/src/main.cpp`` (``prune_branches_without_mutations``,

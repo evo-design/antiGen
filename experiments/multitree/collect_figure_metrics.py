@@ -136,7 +136,7 @@ def seen_cells(train_ex, L):
     The second clause is not redundant. The consensus residue at a position is
     inherited from the root, not mutated into, so it leaves no event -- and a
     post-D reversion from a rare derived state back to consensus would then be
-    labelled de novo despite being the single most predictable cell at that
+    labeled de novo despite being the single most predictable cell at that
     position. On the D = 2025-01-01 panel that was 12 of 157 event-novel
     targets, every one a reversion to a residue carried by 65-99.5% of the
     training sequences, and a pure composition baseline called all 12 correctly.
@@ -171,7 +171,7 @@ def score_tree(model_scores, tg, aa, mask_stop, novel):
 def _resample(parts, nb, seed):
     """Pooled bootstrap: resample examples within each tree, then pool.
 
-    `parts` is a list of (numerator, denominator) arrays, one per tree. Vectorised
+    `parts` is a list of (numerator, denominator) arrays, one per tree. Vectorized
     because the ladder alone needs 128 of these and the pure-Python version was the
     slowest step in the script by an order of magnitude.
     """

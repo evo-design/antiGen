@@ -154,11 +154,11 @@ def main(argv=None):
         print("-" * (10 + 17 * len(seeds) + 34))
         print(f"{'POOLED':<10} " + " ".join(f"{'':>16}" for _ in seeds)
               + f"   {point:+14.3f}  [{low:+.3f}, {high:+.3f}] {verdict}")
-        print(f"{'':<10} {negative}/{len(cell_signs)} (tree, seed) cells favour {arm}")
+        print(f"{'':<10} {negative}/{len(cell_signs)} (tree, seed) cells favor {arm}")
 
     print(f"\ncells are arm/baseline validation NLL per held-out mutation at each run's "
           f"scored epoch; lower is better.\npooled delta = arm - baseline over all seeds; "
-          f"negative favours {arm}.")
+          f"negative favors {arm}.")
     return 0
 
 

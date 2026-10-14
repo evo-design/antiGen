@@ -144,7 +144,7 @@ def main():
         print(f"{'ALL TREES':25s} {pw:+7.3f} [{lw:+6.3f},{hw:+6.3f}] "
               f"{ph:+7.3f} [{lh:+6.3f},{hh:+6.3f}]")
         print(f"{'  total':25s} {pt:+7.3f} [{lt:+6.3f},{ht:+6.3f}]  "
-              f"(negative favours {args.arm})")
+              f"(negative favors {args.arm})")
 
 
 if __name__ == '__main__':
