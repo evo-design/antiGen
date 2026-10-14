@@ -151,16 +151,36 @@ def score_tree(model_scores, tg, aa, mask_stop, novel):
     return out
 
 
-def boot(A, B, N, nb=10000, sd=0, higher_better=False):
-    n = len(A)
+def _resample(parts, nb, seed):
+    """Pooled bootstrap: resample examples within each tree, then pool.
+
+    `parts` is a list of (numerator, denominator) arrays, one per tree. Vectorised
+    because the ladder alone needs 128 of these and the pure-Python version was the
+    slowest step in the script by an order of magnitude.
+    """
+    rng = np.random.default_rng(seed)
+    num = np.zeros(nb)
+    den = np.zeros(nb)
+    for a, n in parts:
+        idx = rng.integers(0, len(a), size=(nb, len(a)))
+        num += a[idx].sum(axis=1)
+        den += n[idx].sum(axis=1)
+    return num / np.maximum(den, 1e-9)
+
+
+def boot(A, B, N, nb=10000, sd=0):
+    """95% interval for a paired difference, pooled over one tree or many."""
     pt = (A.sum() - B.sum()) / max(N.sum(), 1e-9)
-    rng = random.Random(sd)
-    d = []
-    for _ in range(nb):
-        i = [rng.randrange(n) for _ in range(n)]
-        d.append(sum(A[k] - B[k] for k in i) / max(sum(N[k] for k in i), 1e-9))
-    d.sort()
-    return pt, d[int(.025 * nb)], d[int(.975 * nb)]
+    d = _resample([(A - B, N)], nb, sd)
+    return pt, float(np.percentile(d, 2.5)), float(np.percentile(d, 97.5))
+
+
+def boot_pooled(parts, nb=10000, sd=0):
+    """Same, resampling within each tree before pooling across them."""
+    num = sum(float(a.sum()) for a, _ in parts)
+    den = sum(float(n.sum()) for _, n in parts)
+    d = _resample(parts, nb, sd)
+    return num / max(den, 1e-9), float(np.percentile(d, 2.5)), float(np.percentile(d, 97.5))
 
 
 def main():
@@ -250,7 +270,8 @@ def main():
     # ---- ladder.csv
     with open(f'{args.out}/ladder.csv', 'w', newline='') as fh:
         w = csv.writer(fh)
-        w.writerow(['eval', 'rule', 'subset', 'metric', 'rung', 'value', 'n_mutations'])
+        w.writerow(['eval', 'rule', 'subset', 'metric', 'rung', 'value',
+                    'lo', 'hi', 'n_mutations'])
         for regime in ('Random holdout', 'Temporal holdout'):
             for rule in RULES:
                 for subset in ('all', 'novel'):
@@ -264,9 +285,27 @@ def main():
                                   for t in trees]
                             if any(k not in mean for k in ks):
                                 continue
-                            tot = sum(mean[k].sum() for k in ks)
+                            ## NLL is reported as nats better than uniform. That
+                            ## is a PAIRED difference -- uniform and the rung score
+                            ## the same examples -- so the interval must be taken
+                            ## on the difference. Bootstrapping the raw NLL and
+                            ## then subtracting uniform's point estimate instead
+                            ## carries uniform's own sampling variance, which gives
+                            ## the uniform rung a wide interval around a quantity
+                            ## that is identically zero.
+                            if metric == 'nll':
+                                parts = [
+                                    (mean[(regime, rule, t, subset, 'uniform',
+                                           metric)] - mean[k],
+                                     nvec[(regime, t, subset)])
+                                    for k, t in zip(ks, trees)]
+                            else:
+                                parts = [(mean[k], nvec[(regime, t, subset)])
+                                         for k, t in zip(ks, trees)]
+                            est, lo, hi = boot_pooled(parts)
                             w.writerow([regime, rule, subset, metric, rung,
-                                        f'{tot / N:.6f}', f'{N:.0f}'])
+                                        f'{est:.6f}', f'{lo:.6f}', f'{hi:.6f}',
+                                        f'{N:.0f}'])
 
     # ---- deltas.csv
     with open(f'{args.out}/deltas.csv', 'w', newline='') as fh:
@@ -293,11 +332,15 @@ def main():
                             A.append(a); B.append(b); N.append(n)
                         if not A:
                             continue
-                        est, lo, hi = boot(np.concatenate(A), np.concatenate(B),
-                                           np.concatenate(N))
+                        est, lo, hi = boot_pooled(
+                            [(a - b, n) for a, b, n in zip(A, B, N)])
                         w.writerow([regime, rule, subset, metric, contrast, 'POOLED',
                                     f'{est:.6f}', f'{lo:.6f}', f'{hi:.6f}', 1])
-    print(f"wrote {args.out}/ladder.csv and {args.out}/deltas.csv")
+    np.savez_compressed(
+        f'{args.out}/per_example.npz',
+        **{'|'.join(k): v for k, v in mean.items()},
+        **{'n|' + '|'.join(k): v for k, v in nvec.items()})
+    print(f"wrote {args.out}/ladder.csv, {args.out}/deltas.csv and per_example.npz")
 
 
 if __name__ == '__main__':

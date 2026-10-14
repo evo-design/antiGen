@@ -9,7 +9,7 @@
 ##      independent. On de novo substitutions that advantage does not survive,
 ##      and the figure shows that rather than hiding it.
 ##
-## Main text  (multitree_results):      hit@10%, the ranking metric.
+## Main text  (multitree_results):      recall at top 10%, the ranking metric.
 ## Supplement (supp_multitree_results): the same structure in NLL per mutation,
 ##      plus the epoch-rule sensitivity panels.
 ##
@@ -36,11 +36,6 @@ source("R/common.R")
 apply_paper_defaults()
 
 EVALS <- c("Random holdout", "Temporal holdout")
-EVAL_SUBTITLE <- c(
-  "Random holdout"   = "held-out nodes, same trees",
-  "Temporal holdout" = "D = 2025-01-01, unseen future"
-)
-
 ## Rows A-H read the pooled-validation epoch, the single checkpoint you would
 ## deploy. The per-tree rule appears only in the supplement's sensitivity row.
 MAIN_RULE <- "pooled"
@@ -89,7 +84,7 @@ TREE_LABELS <- c(
 )
 FOREST_LEVELS <- c("Pooled", rev(unname(TREE_LABELS[TREE_ORDER])))
 
-METRIC_LABELS <- c(nll = "NLL per mutation", hit = "hit@10%")
+METRIC_LABELS <- c(nll = "NLL per mutation", hit = "Recall at top 10%")
 
 ladder <- read.csv("data/multitree/ladder.csv")
 deltas <- read.csv("data/multitree/deltas.csv")
@@ -107,22 +102,20 @@ deltas$clears <- (deltas$hi < 0) | (deltas$lo > 0)
 ## instead of a truncated axis. The range must admit negatives: on the de novo
 ## subset the frequency baseline is genuinely worse than uniform, and clipping
 ## that bar would hide the most informative failure in the ladder.
-ladder <- do.call(rbind, lapply(
-  split(ladder, list(ladder$eval, ladder$rule, ladder$subset, ladder$metric),
-        drop = TRUE),
-  function(d) {
-    d$shown <- if (d$metric[1] == "nll") d$value[d$rung == "uniform"] - d$value
-               else d$value
-    d
-  }))
+## collect_figure_metrics.py already reports NLL as nats better than uniform,
+## with the interval taken on that paired difference, so nothing is transformed
+## here -- doing the subtraction at plot time would strand the interval in the
+## wrong space.
+ladder$shown <- ladder$value
+ladder$shown_lo <- ladder$lo
+ladder$shown_hi <- ladder$hi
 
-## Headroom on both sides for the value labels, which sit just outside the bar
-## end: a negative bar's label is drawn to its left and would otherwise be
-## clipped by the panel edge (the de novo single-tree bar is negative).
 lad_range <- function(metric) {
-  v <- ladder$shown[ladder$metric == metric & ladder$rule == MAIN_RULE]
-  span <- max(v) - min(0, min(v))
-  c(min(0, min(v)) - 0.13 * span, max(v) + 0.13 * span)
+  k <- ladder$metric == metric & ladder$rule == MAIN_RULE
+  lo <- min(0, min(ladder$shown_lo[k]))
+  hi <- max(ladder$shown_hi[k])
+  span <- hi - lo
+  c(lo - 0.13 * span, hi + 0.13 * span)
 }
 
 ## ONE rung order per metric, shared by every ladder panel. The panels in the
@@ -149,20 +142,19 @@ make_ladder <- function(metric, eval_name, subset_key, show_y, rng) {
   d <- ladder[ladder$metric == metric & ladder$eval == eval_name &
               ladder$rule == MAIN_RULE & ladder$subset == subset_key, ]
   d$rung_lab <- factor(as.character(d$rung_lab), levels = rung_order(metric))
-  wxw <- d$shown[d$rung == "where_times_which"]
-
   p <- ggplot(d, aes(y = rung_lab, x = shown, fill = rung_lab)) +
     geom_vline(xintercept = 0, color = "grey70", linewidth = 0.3) +
-    geom_vline(xintercept = wxw, linetype = "dashed",
-               color = "#555560", linewidth = 0.4) +
     geom_col(width = 0.74) +
-    geom_text(aes(label = sprintf("%.2f", shown)),
-              hjust = ifelse(d$shown >= 0, -0.15, 1.15),
+    geom_errorbarh(aes(xmin = shown_lo, xmax = shown_hi),
+                   height = 0.26, linewidth = 0.4, colour = "grey25") +
+    geom_text(aes(x = ifelse(shown >= 0, shown_hi, shown_lo),
+                  label = sprintf("%.2f", shown)),
+              hjust = ifelse(d$shown >= 0, -0.18, 1.18),
               size = 2.4, color = "grey25") +
     scale_fill_manual(values = RUNG_COLORS) +
     scale_x_continuous(limits = rng, expand = expansion(0)) +
-    xlab(if (metric == "nll") "Nats better than uniform (higher is better)"
-         else "hit@10% (higher is better)") +
+    xlab(if (metric == "nll") "Nats better than uniform"
+         else "Recall at top 10%") +
     theme_paper() +
     theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank())
@@ -186,7 +178,12 @@ make_forest <- function(contrast_name, eval_name, metric, xlab_txt) {
   d$tree_lab <- factor(d$tree_lab, levels = FOREST_LEVELS)
   dodge <- position_dodge(width = 0.6)
 
-  ggplot(d, aes(y = tree_lab, x = est, color = subset_lab)) +
+  ## `group` must be set explicitly and identically on both layers: mapping
+  ## shape and size on the points alone makes ggplot build finer dodge groups
+  ## for them than for the intervals, which slides the markers off their own
+  ## error bars.
+  ggplot(d, aes(y = tree_lab, x = est, color = subset_lab,
+                group = subset_lab)) +
     geom_vline(xintercept = 0, color = "grey55", linewidth = 0.4) +
     geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0,
                    linewidth = 0.5, position = dodge) +
@@ -222,7 +219,7 @@ make_rule_panel <- function(eval_name) {
     facet_wrap(~ metric_lab, nrow = 1, scales = "free_x") +
     scale_color_manual(values = RULE_COLORS) +
     scale_y_discrete(expand = expansion(add = 0.7)) +
-    xlab("Pooled estimate (NLL: lower better / hit: higher better)") +
+    xlab("Pooled estimate") +
     theme_paper() +
     theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank(),
@@ -248,6 +245,25 @@ legend_for <- function(values, df, aes_col) {
 
 subset_legend <- legend_for(SUBSET_COLORS, deltas[deltas$pooled == 1, ],
                             "subset_lab")
+
+## Filled vs hollow carries the only significance statement in the forests, so
+## it needs a key of its own.
+sig_legend <- extract_legend(
+  ggplot(data.frame(x = 1:2, y = 1:2,
+                    s = factor(c("TRUE", "FALSE"), levels = c("TRUE", "FALSE"))),
+         aes(x, y, shape = s)) +
+    geom_point(size = 2.2, colour = "grey25", fill = "white", stroke = 0.7) +
+    scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 21),
+                       labels = c(`TRUE` = "95% interval excludes zero",
+                                  `FALSE` = "interval includes zero")) +
+    theme_paper() + labs(shape = NULL) +
+    guides(shape = guide_legend(nrow = 1)) +
+    theme(legend.position = "top", legend.direction = "horizontal",
+          legend.justification = "center",
+          legend.key.height = unit(0.6, "lines"),
+          legend.margin = margin(0, 0, 0, 0)))
+
+forest_legend <- plot_grid(subset_legend, sig_legend, nrow = 1)
 rule_legend <- legend_for(
   RULE_COLORS,
   transform(deltas[deltas$pooled == 1, ],
@@ -257,10 +273,8 @@ rule_legend <- legend_for(
 
 header <- function(i) {
   ggdraw() +
-    draw_label(EVALS[i], fontface = "bold", size = 12, y = 0.70) +
-    draw_label(EVAL_SUBTITLE[[EVALS[i]]], fontface = "italic",
-               size = 9, colour = "grey35", y = 0.30) +
-    draw_line(x = c(0.03, 0.97), y = c(0.02, 0.02),
+    draw_label(EVALS[i], fontface = "bold", size = 12, y = 0.58) +
+    draw_line(x = c(0.03, 0.97), y = c(0.04, 0.04),
               color = "black", linewidth = 0.5)
 }
 row_label <- function(txt) ggdraw() +
@@ -279,10 +293,10 @@ assemble <- function(rows, labels, heights) {
 }
 
 
-## --- Main figure: hit@10% --------------------------------------------------
+## --- Main figure: recall at top 10% --------------------------------------------------
 
 HIT_RANGE <- lad_range("hit")
-DELTA_HIT_XLAB <- "Multi-tree minus comparator, hit@10% (positive = better)"
+DELTA_HIT_XLAB <- "Multi-tree minus comparator, recall at top 10%"
 
 main_rows <- list(
   plot_grid(make_ladder("hit", EVALS[1], "all", TRUE, HIT_RANGE),
@@ -291,6 +305,7 @@ main_rows <- list(
   plot_grid(make_ladder("hit", EVALS[1], "novel", TRUE, HIT_RANGE),
             make_ladder("hit", EVALS[2], "novel", FALSE, HIT_RANGE),
             nrow = 1, labels = c("C", "D"), rel_widths = c(1.3, 1)),
+  forest_legend,
   plot_grid(make_forest("vs single-tree model", EVALS[1], "hit", DELTA_HIT_XLAB),
             make_forest("vs single-tree model", EVALS[2], "hit", DELTA_HIT_XLAB),
             nrow = 1, labels = c("E", "F")),
@@ -298,15 +313,12 @@ main_rows <- list(
             make_forest("vs where x which", EVALS[2], "hit", DELTA_HIT_XLAB),
             nrow = 1, labels = c("G", "H"))
 )
-MAIN_H <- c(0.26, 1.15, 1.15, 1.55, 1.55)
+MAIN_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55)
 
-main <- plot_grid(
-  subset_legend,
-  assemble(main_rows,
-           list("Ladder: all substitutions", "Ladder: de novo only",
-                "vs single-tree", "vs where x which"),
-           MAIN_H),
-  ncol = 1, rel_heights = c(0.045, 1))
+main <- assemble(main_rows,
+                 list("All substitutions", "De novo only", NULL,
+                      "Vs single-tree", "Vs where x which"),
+                 MAIN_H)
 
 save_figure(main, "multitree_results", width = 11.5, height = 12)
 
@@ -314,7 +326,7 @@ save_figure(main, "multitree_results", width = 11.5, height = 12)
 ## --- Supplement: NLL, plus the epoch rule ----------------------------------
 
 NLL_RANGE <- lad_range("nll")
-DELTA_NLL_XLAB <- "Multi-tree minus comparator, NLL (negative = better)"
+DELTA_NLL_XLAB <- "Multi-tree minus comparator, NLL per mutation"
 
 supp_rows <- list(
   plot_grid(make_ladder("nll", EVALS[1], "all", TRUE, NLL_RANGE),
@@ -323,6 +335,7 @@ supp_rows <- list(
   plot_grid(make_ladder("nll", EVALS[1], "novel", TRUE, NLL_RANGE),
             make_ladder("nll", EVALS[2], "novel", FALSE, NLL_RANGE),
             nrow = 1, labels = c("C", "D"), rel_widths = c(1.3, 1)),
+  forest_legend,
   plot_grid(make_forest("vs single-tree model", EVALS[1], "nll", DELTA_NLL_XLAB),
             make_forest("vs single-tree model", EVALS[2], "nll", DELTA_NLL_XLAB),
             nrow = 1, labels = c("E", "F")),
@@ -333,14 +346,11 @@ supp_rows <- list(
   plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
             nrow = 1, labels = c("I", "J"))
 )
-SUPP_H <- c(0.26, 1.15, 1.15, 1.55, 1.55, 0.10, 1.25)
+SUPP_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55, 0.10, 1.25)
 
-supp <- plot_grid(
-  subset_legend,
-  assemble(supp_rows,
-           list("Ladder: all substitutions", "Ladder: de novo only",
-                "vs single-tree", "vs where x which", NULL, "Epoch rule"),
-           SUPP_H),
-  ncol = 1, rel_heights = c(0.045, 1))
+supp <- assemble(supp_rows,
+                 list("All substitutions", "De novo only", NULL,
+                      "Vs single-tree", "Vs where x which", NULL, "Epoch rule"),
+                 SUPP_H)
 
 save_figure(supp, "supp_multitree_results", width = 11.5, height = 16)
