@@ -146,12 +146,25 @@ def main():
             alphabet=AlphabetConfig(amino_acids=AL), codon=CodonConfig()), dev)
         _, _, wt = collect(cm, ex, dev)
 
+        ## EVERY rung goes through `logp_model`, which zeroes the wild-type cell
+        ## before normalizing. Routing only some of them through it is a real
+        ## error with a large effect: `sub_mat` includes its DIAGONAL, the
+        ## largest entry in each row, so an unmasked substitution rung spends
+        ## ~48% of its probability on cells that are wild type by construction
+        ## and can never be a target -- and is charged 0.655 nats for it. That
+        ## alone reversed this script's headline NLL result (the model read
+        ## -0.392 against the substitution matrix and actually loses by +0.263).
+        ## Recall never saw the bug, because `per_example_hits` NaNs the
+        ## wild-type cells itself, which is why the two metrics disagreed.
         rungs = {
-            'uniform': (torch.zeros((len(ex), L, E), device=dev), False),
+            'uniform': (torch.tensor(
+                logp_model(np.zeros((len(ex), L, E), dtype=np.float32), wt),
+                device=dev, dtype=torch.float32), False),
             'codon': (torch.tensor(logp_model(collect(cm, ex, dev)[0], wt),
                                    device=dev, dtype=torch.float32), False),
             'substitution (panel-transferred)': (
-                sub_mat[aa].float(), False),
+                torch.tensor(logp_model(sub_mat[aa].float().cpu().numpy(), wt),
+                             device=dev, dtype=torch.float32), False),
             'joint_panel (8-seed ens)': (ens(joint, ex, aa), True),
             'joint_all (3-seed ens)': (ens(jall, ex, aa), True),
         }
@@ -193,7 +206,9 @@ def main():
                     torch.log1p(torch.tensor(pssm, device=dev)
                                 ).unsqueeze(0).expand(len(te), -1, -1), False),
                 'joint_panel ZERO-SHOT': (ens(joint, te, aa2), True),
-                'substitution (panel-transferred)  ': (sub_mat[aa2].float(), False),
+                'substitution (panel-transferred)  ': (
+                    torch.tensor(logp_model(sub_mat[aa2].float().cpu().numpy(), wt2),
+                                 device=dev, dtype=torch.float32), False),
             }
             for nm, (sc, ms) in r2.items():
                 per2[(nm, gene)] = per_example_hits(sc, tg2, aa2, ms).cpu().numpy()

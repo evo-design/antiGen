@@ -1541,3 +1541,195 @@ then submit to the single best one rather than a list.
   contrast against `wxw` is the one being watched to clear zero. If it does at
   K = 8, it needs a second forecast date to be worth much, and s12 found
   D = 2024-07-01 unavailable.
+
+---
+
+## 16. Alphabet and probability-floor audit: a real bug, and a correction (2026-10-14)
+
+Asked why the model wins on NLL zero-shot (s14: 8.096 against the substitution
+matrix's 8.488) when on the de novo subset -- the closest analogue, both denying
+it any positional memorization -- it loses badly (9.524 against 8.787). Two
+regimes that should agree did not, so one number was measuring something else.
+
+**It was. `zeroshot_eval.py` had a wild-type leak and its headline NLL result
+reverses.** `zeroshot_probe.py` rescores all rungs under one convention:
+
+| contrast (zero-shot, n=129) | convention | joint_panel - substitution |
+|---|---|---|
+| published (s14) | as-is | **−0.392** [−0.544, −0.055] model better |
+| corrected | wild type masked, no floor | **+0.359** [+0.153, +0.596] model worse |
+| corrected | wild type masked + 1e-8 floor | **+0.263** [+0.108, +0.599] model worse |
+
+The cause: that script turns scores into probabilities with a plain
+`softmax(sc.reshape(B, -1))`. For the ESM-2 and codon rungs `sc` had already
+been through `logp_model`, which zeroes the wild-type cell; for
+`substitution (panel-transferred)` it was `sub_mat[aa]` -- the raw matrix,
+**including its diagonal**, which is the largest entry in each row. So that rung
+spent **48% of its probability on cells that are wild type by construction** and
+was charged 0.655 nats for it (8.488 -> 7.833 once masked). Recall never saw the
+bug, because `per_example_hits` NaN-masks the wild-type cells itself -- which is
+exactly why the two metrics disagreed only here. Fixed: every rung in
+`zeroshot_eval.py` now goes through `logp_model`. **s14's zero-shot NLL table and
+the sentence "the model wins decisively on NLL" are retracted.**
+
+With that fixed the two regimes agree: on genuinely novel territory the model
+loses to a factored/substitution baseline on NLL, zero-shot and de novo alike.
+
+### The figure's NLL column: wild type is fine, the floor is not
+
+`figure_nll_audit.py` reruns the temporal panel under four conventions.
+
+**Wild type is masked correctly in Figure 5.** Every rung goes through
+`temp_probs(sc, wtm, 1.0)`, whose `p * wt` zeroes the query's own residue, and
+`wtm` comes from `collect`. No rung is exempt. So the zero-shot bug is not in
+the figure.
+
+**But the 1e-8 floor is applied BEFORE renormalization, which makes its
+protection proportional to how much mass a rung wasted on wild type.** The
+effective floor is `1e-8 / Z`, where Z is the mass surviving the mask. Measured
+on the degenerate targets below, which every rung is forced to the floor on and
+which therefore read out Z directly:
+
+| rung | softmax mass on WT | implied Z | NLL on a floored cell |
+|---|---|---|---|
+| uniform | 4.5% | 0.955 | 18.37 |
+| `where x which` | 48.6% | 0.514 | 17.56 |
+| **joint** | **98.8%** | **0.012** | **13.05** |
+
+The model puts 98.8% of its softmax on wild-type cells, so after masking its
+surviving mass is ~1%, and renormalizing inflates its floored cells ~80x
+relative to uniform. **A catastrophic cell costs the model 13.1 nats and the
+baseline 17.6.** That is the mechanism behind s11's "the floor rescues peaked
+predictors" and it is worth a lot:
+
+| `joint - where x which`, all substitutions | estimate |
+|---|---|
+| figure convention (floored) | **−0.399** [−0.552, −0.262] model better |
+| unfloored | **+0.004** [−0.315, +0.335] dead heat |
+
+**The model's NLL advantage over the factored baseline on all substitutions is
+entirely the floor.** On de novo the floor also helps it (+0.762 floored,
++1.94 unfloored), reproducing s11's 1.06-nat measurement. The floor is the
+training objective (`compute_probs` is the loss path), so scoring through it is
+defensible -- but it is not a neutral choice between predictors, and every NLL
+number in this arm leans on it.
+
+### Degenerate wild-type-to-wild-type targets exist
+
+Found by chasing an impossible number: unfloored `uniform` read 12.16 when a
+uniform distribution cannot exceed log(21L) ~ 10.19, and it was wrong on `all`
+but exact on `novel`.
+
+    test  : 2 of 564 targets are wt -> wt   (both h5nx)
+    train : 0 of 16643
+
+Every rung masks those cells to zero, so **no predictor can ever score them**:
+they cost ~18 nats each under the floor and ~700 unfloored, and they cap every
+rung's recall at 562/564. The effect is symmetric so contrasts survive, but
+absolute NLLs are inflated for everyone. They should be dropped in
+`make_forecast_testset.py` rather than scored. Why h5nx produces them is open;
+first suspect is the snapshot/current coordinate mismatch s13 flagged for
+measles.
+
+### The alphabet, rung by rung
+
+`ACDEFGHIKLMNPQRSTVWY*-` is identical in all 14 places it is defined, package
+and experiments, and `AlphabetConfig.vocab_size` derives from it. No re-indexing
+bug. What differs is which columns each rung may legitimately use, and what is
+actually masked:
+
+| rung | gap `-` | stop `*` | masked in recall | masked in NLL |
+|---|---|---|---|---|
+| ESM-2 (`single`, `joint`) | legit | **sentinel** (`<unk>` logit reused) | stop | nothing |
+| `codon` | **floor, not a prediction** | legit | **nothing** | nothing |
+| `substitution`, `where x which` | legit | legit | nothing | nothing |
+| `frequency`, `where_only`, `pssm` | counts | counts | nothing | nothing |
+
+Three findings:
+
+1. **The stop sentinel costs nothing.** ESM-2 puts **0.0000%** of its mass
+   there -- it was trained with that column in the softmax for 20 epochs and
+   learned to zero it. Masking stop for the ESM-2 rungs in NLL changes every
+   number by 0.000. Worth recording as measured-and-dismissed.
+2. **`codon`'s gap column is masked nowhere**, in either metric, although it
+   declares `OUTPUTS_LEGITIMATE_GAP = False`. `per_example_hits` implements only
+   the stop half of `build_model_gap_stop_mask`'s contract; the gap half is
+   silently dropped in every experiment script.
+3. **Recall@10% is not the same budget for every rung.** `n_valid` is counted
+   after masking, so the model gets 20L cells and every baseline 21L. At q = 0.1
+   that is 2.0L against 2.1L selected cells over a near-identical useful
+   universe -- **a systematic 5% larger budget for every baseline**. This one
+   runs against the model, so the reported margins over `where x which` are if
+   anything understated. It also affects s15's overlap panels, whose two circles
+   are drawn from different-sized budgets.
+
+### Is the gap column a prediction target?
+
+Targets by class, and what each rung scores on them:
+
+| | all (529) | de novo (140) |
+|---|---|---|
+| standard residues | 513 (97.0%) | 129 (92.1%) |
+| gap | 13 (2.5%) | **10 (7.1%)** |
+| stop | 1 (0.2%) | 1 (0.7%) |
+| degenerate wt->wt | 2 (0.4%) | 0 |
+
+Gap is three times commoner among de novo targets, because a deletion at a given
+position is almost always a cell no training branch has visited. The ESM-2 arms
+put **0.00%** of their mass on the gap column while the baselines put 2.5-4.1%,
+so the model scores those targets at 12.5 nats against `where x which`'s 10.8.
+
+**Correcting an overstatement made mid-session:** the claim that "more than half
+the de novo NLL deficit is one column" came from reading the `all masked`
+convention, which masks gap for BOTH predictors and so forces both to the floor,
+diluting the contrast rather than isolating it. The correct decomposition of the
++0.762 de novo deficit is:
+
+| class | n | contributes | share |
+|---|---|---|---|
+| standard | 129 | +0.644 | **84.6%** |
+| gap | 10 | +0.122 | 16.1% |
+| stop | 1 | −0.005 | −0.6% |
+
+**On standard-residue targets alone the model still loses +0.699
+[+0.463, +0.908]**, significant under every convention. The de novo density
+deficit is real and is not an alphabet artifact.
+
+Open question for the arm: ESM-2 declares gap legitimate, `-` is a real learned
+token in its vocabulary, and 2.2% of *training* mutations go to gap -- so it had
+both the capacity and the signal to put mass there and emits ~0. That looks more
+like a vocabulary-mapping bug in `esm2_fitness_predictor.py` than a learned
+preference, and is worth checking before the gap targets are read as a genuine
+model weakness.
+
+### Recall at other budgets, zero-shot
+
+s14 read recall at 10% alone. Sweeping q (n = 129, chance = q):
+
+| rung | 1% | 2% | 5% | 10% | 20% | 30% | 50% |
+|---|---|---|---|---|---|---|---|
+| codon | 0.043 | 0.059 | 0.133 | 0.299 | 0.632 | 0.871 | 0.994 |
+| substitution (panel) | 0.074 | 0.185 | **0.470** | **0.752** | **0.915** | **0.969** | 0.992 |
+| joint_panel (8-seed) | **0.124** | 0.194 | 0.419 | 0.674 | 0.829 | 0.930 | 0.977 |
+| joint_all (3-seed) | 0.109 | 0.194 | 0.411 | 0.674 | 0.884 | 0.938 | 0.977 |
+
+**The model is the better ranker at the head of the list and the worse one
+everywhere else.** At q = 1% it leads by +0.050 (not significant at n = 129),
+they tie at 2%, and from 5% on the substitution matrix wins, significantly at
+10%, 20% and 30%. So s14's "a 25-parameter substitution matrix beats the joint
+model" is true at the budget it was measured at and false at the smallest ones.
+This is the decision-relevant cut: with a handful of candidates to test the
+model is the better choice, with a broad budget it is not.
+
+### Code added
+
+| file | purpose |
+|---|---|
+| `zeroshot_probe.py` | three conventions x the zero-shot ladder, plus recall vs q |
+| `figure_nll_audit.py` | the figure's NLL column under four conventions, by target class |
+| `run_zeroshot_probe.sh`, `run_nll_audit.sh` | submitters (both run in ~1 min on CPU) |
+
+Both probes normalize in log space when unfloored. Doing it in probability space
+divides by a denominator that underflows to zero whenever one cell holds nearly
+all the mass -- `pssm` puts 93% on wild type, the ESM-2 arms 99% -- and returns
+NaN for the whole example. That bit the first run of each.
