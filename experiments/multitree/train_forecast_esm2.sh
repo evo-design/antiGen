@@ -78,7 +78,7 @@ python "$REPO/experiments/multitree/run_train.py" \
     --val-mode random --val-frac 0.1 --split-seed "$SEED" --seed "$((42 + SEED))" \
     --ignore-dead-ends \
     --epochs 20 --batch-size 8 --max-batch-tokens 8192 --lr 1e-4 \
-    --save-best --dump-cells \
+    --save-best --save-best-per-source --dump-cells \
     --experiment "forecast@${D}" \
     --output-dir "$OUT"
 

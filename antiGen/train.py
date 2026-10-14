@@ -92,6 +92,13 @@ def parse_args():
                              "validation score is not a forecast.")
     parser.add_argument('--val-frac', type=float, default=0.1,
                         help='Validation fraction per source (--val-mode random only)')
+    parser.add_argument('--test-frac', type=float, default=0.0,
+                        help='Carve a third, selection-free split of this size per '
+                             'source (--val-mode random only). Nothing in training or '
+                             'epoch selection reads it; it exists so reported numbers '
+                             'come from data that had no part in choosing the model. '
+                             'Without it the epoch is chosen on val and reported on '
+                             'val, which is not a held-out estimate.')
     parser.add_argument('--split-seed', type=int, default=0,
                         help='Seed for the random split, independent of --seed so the split is '
                              'stable across training seeds (--val-mode random only)')
@@ -108,6 +115,14 @@ def parse_args():
                              'validation NLL, as fitness_<prefix>_best.pt. Without this '
                              'only the final epoch is kept, which is typically well past '
                              'the best epoch.')
+    parser.add_argument('--save-best-per-source', action='store_true',
+                        help='Also save, for every source, the checkpoint at THAT '
+                             'source\'s best validation epoch, as '
+                             'fitness_<prefix>_best_<source>.pt. A joint run\'s trees '
+                             'peak at different epochs, so the pooled --save-best '
+                             'checkpoint is not the best one for any single tree; this '
+                             'is what the per-tree epoch rule needs. Selection uses '
+                             'validation data only, exactly as --save-best does.')
     parser.add_argument('--experiment', type=str, default=None,
                         help='Free-text tag marking an experimental arm; recorded in the '
                              'manifest and train_args, and skipped by antiGen-eval unless it '
@@ -217,6 +232,46 @@ def build_checkpoint(model, model_config, args, run_prefix, seq_len_by_source,
     return checkpoint
 
 
+def held_out_split(examples_by_source, val_frac, test_frac, split_seed):
+    """Three-way ``(train, val, test)`` split of the TRAINING pool, per source.
+
+    The two-way :func:`split_examples` gives no set that is untouched by model
+    selection: the epoch is chosen on ``val`` and then reported on ``val``. Any
+    number read off that set is the minimum of a noisy curve over ~20 epochs, not an
+    estimate of held-out performance. This carves a third split that nothing in
+    training or tuning is allowed to see, so reported numbers come from data that
+    had no part in choosing the model.
+
+    The test block is taken from the FRONT of the permutation, so for a fixed
+    ``split_seed`` a run's test set does not move when ``val_frac`` changes.
+
+    Returns three dicts keyed by source name.
+    """
+    train_by, val_by, test_by = {}, {}, {}
+    for name, examples in examples_by_source.items():
+        pool = [e for e in examples if e.is_training]
+        dropped = len(examples) - len(pool)
+        if dropped:
+            print(f"  [{name}] dropped {dropped} TESTING example(s); post-cutoff data "
+                  f"is not used in this arm")
+        rng = np.random.default_rng([int(split_seed), zlib.crc32(name.encode())])
+        perm = rng.permutation(len(pool))
+        n_test = int(round(test_frac * len(pool)))
+        n_val = int(round(val_frac * len(pool)))
+        # Never starve training, however small the tree.
+        n_test = min(n_test, max(len(pool) - 2, 0))
+        n_val = min(n_val, max(len(pool) - n_test - 1, 0))
+        test_idx = set(perm[:n_test].tolist())
+        val_idx = set(perm[n_test:n_test + n_val].tolist())
+        train_by[name] = [e for i, e in enumerate(pool)
+                          if i not in test_idx and i not in val_idx]
+        val_by[name] = [e for i, e in enumerate(pool) if i in val_idx]
+        test_by[name] = [e for i, e in enumerate(pool) if i in test_idx]
+        print(f"  [{name}] train={len(train_by[name])} val={len(val_by[name])} "
+              f"test={len(test_by[name])} (test is never read during training)")
+    return train_by, val_by, test_by
+
+
 def split_examples(examples_by_source, mode, val_frac, split_seed):
     """Return ``(train_by_source, val_by_source)``.
 
@@ -227,6 +282,10 @@ def split_examples(examples_by_source, mode, val_frac, split_seed):
                  hyperparameter choice. The TRAINING pool is then split per source, each
                  source drawing from its own stream so adding or removing one tree does
                  not perturb another tree's split.
+
+    NOTE: this yields no selection-free set — the epoch is chosen on ``val`` and
+    reported on ``val``. Use :func:`held_out_split` with ``--test-frac`` for anything
+    whose numbers are reported.
     """
     train_by, val_by = {}, {}
     for name, examples in examples_by_source.items():
@@ -450,8 +509,18 @@ def main():
                 f"--model-type {args.model_type} predicts on a fixed coordinate frame and "
                 f"cannot train on mixed sequence lengths {seq_lens}. Use --model-type esm2.")
 
-    train_by_source, val_by_source = split_examples(
-        examples_by_source, args.val_mode, args.val_frac, args.split_seed)
+    if args.test_frac > 0:
+        if args.val_mode != 'random':
+            raise SystemExit('--test-frac requires --val-mode random')
+        train_by_source, val_by_source, _test_by_source = held_out_split(
+            examples_by_source, args.val_frac, args.test_frac, args.split_seed)
+        # Deliberately dropped on the floor: the test split is reconstructed from
+        # (split_seed, val_frac, test_frac) at scoring time and must not be touched
+        # here, not even to report its size beyond the line held_out_split prints.
+        del _test_by_source
+    else:
+        train_by_source, val_by_source = split_examples(
+            examples_by_source, args.val_mode, args.val_frac, args.split_seed)
 
     training_examples = [e for n in sources for e in train_by_source[n]]
     total_mutations_train = sum(float(e.mat.sum()) for e in training_examples)
@@ -690,6 +759,7 @@ def main():
     avg_train_loss = float('nan')
     optimizer_state = None
     best_val_nll, best_epoch = float('inf'), None
+    best_val_nll_by_source, best_epoch_by_source = {}, {}
 
     skip_training = args.model_type in ('blosum62', 'codon', 'pssm', 'evcouplings') or \
         (args.model_type == 'eve' and args.freeze_backbone) or \
@@ -840,6 +910,24 @@ def main():
 
                 # The final epoch is typically well past the best one, so without this
                 # the saved weights and cells are the overfit model, not the scored one.
+                # Per-source best epochs, for the per-tree epoch rule. A joint run's
+                # sources peak at different epochs, so the pooled checkpoint above is
+                # not the best one for any particular tree. Selection still uses only
+                # validation data, so this is as causally clean as --save-best.
+                if args.save_best_per_source:
+                    for src, stats in val['per_source'].items():
+                        s_nll = stats['nll_per_mutation']
+                        if s_nll < best_val_nll_by_source.get(src, float('inf')):
+                            best_val_nll_by_source[src] = s_nll
+                            best_epoch_by_source[src] = epoch
+                            torch.save(
+                                build_checkpoint(model, model_config, args, run_prefix,
+                                                 seq_len_by_source, source_summary,
+                                                 epoch, global_step, avg_train_loss,
+                                                 None),
+                                os.path.join(args.output_dir,
+                                             f"fitness_{run_prefix}_best_{src}.pt"))
+
                 pooled = val['overall']['nll_per_mutation']
                 improved = pooled < best_val_nll
                 if improved:
@@ -879,6 +967,9 @@ def main():
                                   epoch, global_step, avg_train_loss, optimizer_state)
     torch.save(checkpoint, output_path)
 
+    if best_epoch_by_source:
+        print("Per-source best epochs: " + ', '.join(
+            f"{k}={v}" for k, v in sorted(best_epoch_by_source.items())))
     if best_epoch is not None and args.save_best:
         print(f"Best pooled validation NLL {best_val_nll:.8f} at epoch {best_epoch} "
               f"(saved separately as fitness_{run_prefix}_best.pt)")

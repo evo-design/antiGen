@@ -492,6 +492,9 @@ examples must share coordinates.
 | `calibrate_forecast.py` | mass-allocation diagnostic + temperature / novelty / mixture corrections |
 | `forecast_hit_summary.py` | the contrast tables under hit@10% instead of NLL |
 | `forecast_precision.py` | precision@k and precision@q alongside recall; `run_precision.sh` submits it |
+| `train_matched_esm2.sh` | random-split arms on the nine forecast trees, three-way split (s12) |
+| `collect_figure_metrics.py` | scores both regimes x both epoch rules x both metrics x both subsets -> Figure 5 CSVs |
+| `prune_stale_runs.py` | drops superseded attempts from an output dir |
 | `substitution_profile_sweep.py` | the same across 5 trees x 3 seeds, with the empirical / additive / geometric-mean controls (s10) |
 
 `joint_all` adds the 7 retired seasonal-flu trees as training-only context — delisted and
@@ -796,3 +799,79 @@ reads 0.358 here against the canonical 0.300, and `frequency` on novel reads 0.0
 against 0.054, because Laplace smoothing gives every unseen cell an identical score and
 the tie-break then decides. **Prefer the canonical numbers for those rungs**; the P@k
 columns carry the same caveat for codon / where_only / frequency-on-novel.
+
+---
+
+## 12. Matched-panel comparison and a corrected epoch rule (2026-10-13)
+
+Built for Figure 5. Two changes to how the random regime is run, both of which move
+numbers, so earlier sections' random-split figures are superseded for anything reported.
+
+### The random regime had no selection-free set
+
+`split_examples` returns only `(train, val)`. The epoch was chosen on `val` and then
+reported on `val`, so every random-split number above is a minimum over ~20 epochs of
+the very curve being reported, not a held-out estimate. The temporal regime never had
+this problem: selection is on the pre-D snapshot split, scoring on post-D, and
+`score_forecast.py` is the only reader of the latter.
+
+Fixed with `held_out_split()` / `--test-frac`: train 80%, select on val 10%, report on
+test 10% that training and tuning never touch. The test block is taken from the front of
+the permutation so changing `val_frac` cannot silently move what is reported on, and it
+is dropped on the floor inside the training function. Six invariants pinned in
+`antiGen/tests/test_held_out_split.py`.
+
+**How much did the old setup inflate things?** Measured before fixing, on the 5-tree
+decomp panel, by selecting the epoch on half of val and reporting on the other half:
+
+| rule | joint - single |
+|---|---|
+| pooled epoch, report full val | −0.069 |
+| per-tree epoch, report full val | −0.125 |
+| pooled epoch, select on A report on B | −0.074 |
+| per-tree epoch, select on A report on B | −0.131 |
+
+So the *deltas* were barely biased -- the optimism hits joint and single alike and
+cancels. The absolute NLLs were not trustworthy, but the contrasts were.
+
+### The two panels now match
+
+s4's random panel (5 trees) and s11's forecast panel (9 trees) shared only three trees:
+seasonal flu is delisted from Nextstrain and cannot be forecast at any date, while the
+forecast panel added snapshot-bearing trees. `train_matched_esm2.sh` closes this from the
+random side -- `joint9` plus all nine single-tree controls, three seeds, three-way split.
+All nine controls were retrained, not six: the ncov/rsv_a/rsv_b controls under `decomp/`
+used the two-way split, so their validation examples overlap the new test block.
+
+Pooled NLL on the matched nine trees, all substitutions:
+
+| contrast | rule | Random holdout | Temporal holdout |
+|---|---|---|---|
+| vs single-tree | pooled | **−0.162** [−0.219, −0.116] | **−0.266** [−0.395, −0.151] |
+| vs single-tree | per-tree | −0.151 [−0.204, −0.107] | −0.234 [−0.316, −0.155] |
+| vs `where x which` | pooled | **−0.632** [−0.751, −0.533] | **−0.429** [−0.574, −0.300] |
+| vs `where x which` | per-tree | −0.621 [−0.741, −0.523] | −0.397 [−0.578, −0.222] |
+
+Both claims hold in both regimes under both rules, with every interval clear of zero.
+
+### Correction: the epoch rule no longer matters
+
+s9 flagged that per-tree vs pooled epoch selection "materially changes small effects",
+and on the old 5-tree two-way panel it did (−0.125 vs −0.069, the per-tree rule looking
+roughly twice as good). On the matched nine-tree panel with a selection-free test set the
+two rules are **indistinguishable, and pooled is marginally the better of the two** in
+every cell above. The earlier gap was a property of that panel and that setup, not a
+general advantage of per-tree selection. Both rules are reported in Figure 5 row I/J
+rather than one being chosen.
+
+Note the per-tree rule only affects the joint arm: a single-tree run has one source, so
+its pooled best epoch already is its per-tree best, and one checkpoint serves both.
+`--save-best-per-source` supplies the joint arm's per-tree checkpoints.
+
+### Housekeeping
+
+`prune_stale_runs.py` removed 7.6 GB of superseded artifacts from `matched/`. Re-running
+an arm into an existing `--output-dir` leaves the previous attempt's files beside the new
+ones, distinguished only by a timestamp; readers take `sorted(glob(...))[-1]`, which is
+fine until two attempts used *different splits*, as happened here when the arm moved from
+a two-way to a three-way split.

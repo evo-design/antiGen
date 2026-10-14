@@ -1,24 +1,35 @@
 ## ---------------------------------------------------------------------------
 ## Figure 5: training across phylogenies, under two evaluation regimes.
 ##
-## Two claims, one column each for the regime that tests them:
+## Two claims, tested under both regimes, both metrics and both target subsets:
 ##   1. the model trained across trees beats one trained on the tree alone;
-##   2. it beats `where x which`, the strongest predictor that assumes where a
-##      mutation lands and which residue appears are independent.
+##   2. on all substitutions it beats `where x which`, the strongest predictor
+##      that assumes where a mutation lands and which residue appears are
+##      independent. On the novel subset that advantage does not survive, and
+##      the figure shows that rather than hiding it.
 ##
-## Left column  -- random held-out split. Not forecast-valid: a held-out node's
-##   parent is usually in the training half, so absolute scores are optimistic.
-##   Every rung shares that leak, so the comparison is fair, but it is not a
-##   forecast.
-## Right column -- temporal holdout at D = 2025-01-01. Trained only on builds as
-##   published at D, scored on substitutions that did not exist then.
+## Both columns are scored on the SAME nine trees. Seasonal flu is delisted
+## from Nextstrain and cannot be forecast, so the forecast panel fixes the tree
+## set and the random-split arm was re-run to match it (joint9 + nine
+## single-tree controls). What is deliberately not matched: the random arm
+## trains on today's full builds, the temporal arm on the build as published at
+## D. That difference is the comparison, not a confound.
 ##
-## Both regimes are read at the pooled-validation best epoch, which is what
-## --save-best ships. That is the conservative rule for the joint model: it must
-## compromise across trees where a single-tree run cannot.
+## Rows:  A/B  baseline ladder, NLL per mutation
+##        C/D  baseline ladder, hit@10%
+##        E/F  multi-tree vs its single-tree control, per tree
+##        G/H  multi-tree vs where x which, per tree
+##        I/J  epoch-rule sensitivity: the pooled estimate of both contrasts under
+##             both rules. Rows A-H use the POOLED-validation epoch, the single
+##             checkpoint you would deploy; the per-tree rule reads each tree at its
+##             own best validation epoch and gives a larger effect.
+##
+## In BOTH regimes the epoch is chosen on a validation split and reported on a
+## separate set that training and tuning never saw: post-D substitutions for the
+## temporal column, and a third held-out block (--test-frac 0.1) for the random one.
 ##
 ## Data: data/multitree/{ladder,deltas}.csv, written by
-##       experiments/multitree/figure_data.py in the main repo.
+##       experiments/multitree/collect_figure_metrics.py in the main repo.
 ##
 ## Output: figs/multitree_results.png, figs_vector/multitree_results.pdf
 ## ---------------------------------------------------------------------------
@@ -35,7 +46,7 @@ EVAL_SUBTITLE <- c(
 
 ## antiGen blue for the multi-tree model, the muted companion blue for its
 ## single-tree control, greys for the baselines -- darkest for `where x which`,
-## the one rung the second claim is about.
+## the rung the second claim is about.
 RUNG_LEVELS <- c("uniform", "codon", "where_only", "substitution",
                  "frequency", "where_times_which", "single", "joint")
 RUNG_LABELS <- c(
@@ -48,158 +59,235 @@ RUNG_LABELS <- c(
   single            = "antiGen (single-tree)",
   joint             = "antiGen (multi-tree)"
 )
-RUNG_COLORS <- c(
-  "Uniform"                  = "#c6bbbb",
-  "Codon accessibility"      = "#c6bbbb",
-  "Where only"               = "#c6bbbb",
-  "Substitution matrix"      = "#888f88",
-  "Frequency (memorisation)" = "#888f88",
-  "Where x which"       = "#555560",
-  "antiGen (single-tree)"    = GATE_BLUE,
-  "antiGen (multi-tree)"     = ANTIGEN_BLUE
-)
+
+SUBSET_LABELS <- c(all = "All substitutions", novel = "Novel only")
+SUBSET_COLORS <- c("All substitutions" = ANTIGEN_BLUE, "Novel only" = "#9bb8d4")
 
 TREE_LABELS <- c(
-  ncov = "SARS-CoV-2 S", h3n2 = "H3N2 HA", h1n1pdm = "H1N1pdm HA",
-  rsv_a = "RSV A F", rsv_b = "RSV B F", h5nx = "H5Nx HA",
-  measles = "Measles", denv1 = "DENV1 E", denv2 = "DENV2 E",
-  denv3 = "DENV3 E", denv4 = "DENV4 E", POOLED = "Pooled"
+  ncov = "SARS-CoV-2 S", rsv_a = "RSV A F", rsv_b = "RSV B F",
+  h5nx = "H5Nx HA", measles = "Measles", denv1 = "DENV1 E",
+  denv2 = "DENV2 E", denv3 = "DENV3 E", denv4 = "DENV4 E", POOLED = "Pooled"
 )
+
+METRIC_LABELS <- c(nll = "NLL per mutation", hit = "hit@10%")
 
 ladder <- read.csv("data/multitree/ladder.csv")
 deltas <- read.csv("data/multitree/deltas.csv")
 
+## Rows A-H show the deployable rule; row I/J is where both appear.
+MAIN_RULE <- "pooled"
+RULE_LABELS <- c("pooled" = "Pooled-validation epoch (deployed)",
+                 "per-tree" = "Per-tree best epoch")
+RULE_COLORS <- c("Pooled-validation epoch (deployed)" = ANTIGEN_BLUE,
+                 "Per-tree best epoch" = "#b5651d")
 
-## --- Panels A, B: the baseline ladder --------------------------------------
+ladder <- ladder[ladder$rule == MAIN_RULE, ]
+ladder$rung_lab <- factor(unname(RUNG_LABELS[ladder$rung]),
+                          levels = unname(RUNG_LABELS[RUNG_LEVELS]))
+ladder$subset_lab <- factor(unname(SUBSET_LABELS[ladder$subset]),
+                            levels = unname(SUBSET_LABELS))
+deltas$tree_lab   <- unname(TREE_LABELS[deltas$tree])
+deltas$subset_lab <- factor(unname(SUBSET_LABELS[deltas$subset]),
+                            levels = unname(SUBSET_LABELS))
 
-## Plotted as nats *better than uniform* rather than raw NLL, so the bars are
-## anchored at a real zero instead of a truncated axis.
-ladder$label <- unname(RUNG_LABELS[ladder$rung])
-ladder <- do.call(rbind, lapply(split(ladder, ladder$eval), function(d) {
-  d$gain <- d$nll[d$rung == "uniform"] - d$nll
-  d
-}))
-## Shared x range across the two regimes, so the drop from random to temporal
-## is visible rather than rescaled away.
-LADDER_XMAX <- max(ladder$gain) * 1.14
 
-make_ladder <- function(d, show_y) {
-  ## Sorted by value: it is a ladder, so it should read as one.
-  d <- d[order(d$gain), ]
-  d$label <- factor(as.character(d$label), levels = as.character(d$label))
-  wxw <- d$gain[d$rung == "where_times_which"]
-  p <- ggplot(d, aes(y = label, x = gain, fill = label)) +
-    ## The second claim is "clears this line", so draw the line.
+## --- Rows A-D: the baseline ladder -----------------------------------------
+
+## NLL is plotted as nats *better than uniform* so the bars are anchored at a
+## real zero rather than a truncated axis; hit@10% already has one (0.1 is
+## chance, drawn as a rule).
+ladder <- do.call(rbind, lapply(
+  split(ladder, list(ladder$eval, ladder$subset, ladder$metric), drop = TRUE),
+  function(d) {
+    d$shown <- if (d$metric[1] == "nll") d$value[d$rung == "uniform"] - d$value
+               else d$value
+    d
+  }))
+
+## Range must admit negatives: on the novel subset the frequency baseline is
+## genuinely *worse* than uniform, and clipping that bar would hide the single
+## most informative failure in the ladder.
+LAD_RANGE <- lapply(c(nll = "nll", hit = "hit"), function(m) {
+  v <- ladder$shown[ladder$metric == m]
+  c(min(0, min(v) * 1.16), max(v) * 1.16)
+})
+
+make_ladder <- function(metric, eval_name, show_y) {
+  d <- ladder[ladder$metric == metric & ladder$eval == eval_name, ]
+  ## Rung order is taken from the `all` subset so the two subsets stay aligned.
+  ord <- d[d$subset == "all", ]
+  d$rung_lab <- factor(as.character(d$rung_lab),
+                       levels = as.character(ord$rung_lab[order(ord$shown)]))
+  wxw <- d$shown[d$rung == "where_times_which" & d$subset == "all"]
+
+  p <- ggplot(d, aes(y = rung_lab, x = shown, fill = subset_lab)) +
     geom_vline(xintercept = wxw, linetype = "dashed",
                color = "#555560", linewidth = 0.4) +
-    geom_col(width = 0.72) +
-    geom_text(aes(label = sprintf("%.2f", gain)),
-              hjust = -0.15, size = 2.5, color = "grey25") +
-    scale_fill_manual(values = RUNG_COLORS) +
-    scale_x_continuous(limits = c(0, LADDER_XMAX), expand = expansion(0)) +
-    xlab("Nats better than uniform (higher is better)") +
+    geom_col(position = position_dodge(width = 0.78), width = 0.74) +
+    scale_fill_manual(values = SUBSET_COLORS) +
+    scale_x_continuous(limits = LAD_RANGE[[metric]], expand = expansion(0)) +
+    geom_vline(xintercept = 0, color = "grey70", linewidth = 0.3) +
+    xlab(if (metric == "nll") "Nats better than uniform (higher is better)"
+         else "hit@10% (higher is better)") +
     theme_paper() +
-    theme(legend.position = "none",
-          axis.title.y    = element_blank(),
+    theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank())
+  if (metric == "hit") {
+    p <- p + geom_vline(xintercept = 0.1, linetype = "dotted",
+                        color = "grey45", linewidth = 0.4)
+  }
   if (!show_y) p <- p + theme(axis.text.y = element_blank(),
                               axis.ticks.y = element_blank())
   p
 }
 
 
-## --- Panels C-F: paired deltas ---------------------------------------------
+## --- Rows E-H: paired deltas, per tree -------------------------------------
 
-deltas$label <- unname(TREE_LABELS[deltas$tree])
-## Blue where the interval clears zero, grey where it does not -- the figure
-## should not imply an effect the bootstrap does not support.
-deltas$sig <- ifelse(deltas$hi < 0, "better",
-                     ifelse(deltas$lo > 0, "worse", "ns"))
-SIG_COLORS <- c(better = ANTIGEN_BLUE, worse = "#9b2226", ns = "#b9b2b2")
+## Solid where the 95% interval clears zero, hollow where it does not, so the
+## figure cannot imply an effect the bootstrap does not support.
+deltas$clears <- (deltas$hi < 0) | (deltas$lo > 0)
 
-make_forest <- function(d, show_y, xlab, lev) {
-  ## `lev` is fixed per regime by the caller, so a virus sits on the same row
-  ## in both forest panels of its column and can be tracked between them.
-  d$label <- factor(d$label, levels = lev)
-  d$is_pooled <- d$pooled == 1
+make_forest <- function(contrast_name, eval_name, lev) {
+  d <- deltas[deltas$contrast == contrast_name & deltas$eval == eval_name &
+              deltas$rule == MAIN_RULE, ]
+  d$tree_lab <- factor(d$tree_lab, levels = lev)
+  d$metric_lab <- factor(unname(METRIC_LABELS[d$metric]),
+                         levels = unname(METRIC_LABELS))
+  dodge <- position_dodge(width = 0.62)
 
-  ggplot(d, aes(y = label, x = est, color = sig)) +
+  ggplot(d, aes(y = tree_lab, x = est, color = subset_lab)) +
     geom_vline(xintercept = 0, color = "grey55", linewidth = 0.4) +
-    geom_errorbarh(aes(xmin = lo, xmax = hi, linewidth = is_pooled),
-                   height = 0, show.legend = FALSE) +
-    geom_point(aes(size = is_pooled), show.legend = FALSE) +
-    ## The two columns need different x ranges (the random-split effects are
-    ## several times smaller), so the pooled estimate is also printed: the
-    ## reader should not have to compare two differently scaled axes by eye.
-    geom_text(data = d[d$is_pooled, ],
-              aes(label = sprintf("%+.3f [%+.3f, %+.3f]", est, lo, hi)),
-              vjust = -1.25, size = 2.4, color = "grey25",
-              show.legend = FALSE) +
-    scale_color_manual(values = SIG_COLORS, guide = "none") +
-    scale_size_manual(values = c(`FALSE` = 1.7, `TRUE` = 2.9)) +
-    scale_linewidth_manual(values = c(`FALSE` = 0.5, `TRUE` = 0.9)) +
-    scale_y_discrete(expand = expansion(add = c(0.9, 0.6))) +
-    xlab(xlab) +
+    geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0,
+                   linewidth = 0.5, position = dodge) +
+    geom_point(aes(shape = clears, size = pooled == 1), position = dodge,
+               fill = "white", stroke = 0.7) +
+    facet_wrap(~ metric_lab, nrow = 1, scales = "free_x") +
+    scale_color_manual(values = SUBSET_COLORS) +
+    scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 21), guide = "none") +
+    scale_size_manual(values = c(`FALSE` = 1.6, `TRUE` = 2.6), guide = "none") +
+    scale_y_discrete(expand = expansion(add = 0.7)) +
+    xlab("Multi-tree minus comparator (NLL: lower better / hit: higher better)") +
     theme_paper() +
-    theme(axis.title.y = element_blank(),
+    theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank(),
-          axis.text.y = if (show_y) {
-            element_text(face = ifelse(lev == "Pooled", "bold", "plain"))
-          } else element_blank(),
-          axis.ticks.y = if (show_y) element_line() else element_blank())
+          strip.text = element_text(size = 9, face = "italic"),
+          axis.text.y = element_text(
+            face = ifelse(levels(d$tree_lab) == "Pooled", "bold", "plain")))
 }
 
-DELTA_XLAB <- "Delta NLL per mutation (negative = multi-tree better)"
+## One row order per regime, from the vs-single NLL contrast on all
+## substitutions, reused by both forests so a virus keeps its row.
+row_levels <- function(eval_name) {
+  d <- deltas[deltas$eval == eval_name & deltas$metric == "nll" &
+              deltas$subset == "all" & deltas$pooled == 0 &
+              deltas$rule == MAIN_RULE &
+              deltas$contrast == "vs single-tree model", ]
+  c("Pooled", d$tree_lab[order(d$est, decreasing = TRUE)])
+}
+
+## Row I/J: does the epoch rule change the answer? Pooled estimates only, both
+## contrasts, both subsets, both metrics.
+make_rule_panel <- function(eval_name) {
+  d <- deltas[deltas$eval == eval_name & deltas$pooled == 1, ]
+  d$rule_lab <- factor(unname(RULE_LABELS[d$rule]), levels = unname(RULE_LABELS))
+  d$row <- paste0(sub("vs ", "", d$contrast), "\n", d$subset_lab)
+  d$row <- factor(d$row, levels = rev(sort(unique(d$row))))
+  d$metric_lab <- factor(unname(METRIC_LABELS[d$metric]),
+                         levels = unname(METRIC_LABELS))
+  ggplot(d, aes(y = row, x = est, color = rule_lab)) +
+    geom_vline(xintercept = 0, color = "grey55", linewidth = 0.4) +
+    geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0, linewidth = 0.5,
+                   position = position_dodge(width = 0.6)) +
+    geom_point(size = 2.1, position = position_dodge(width = 0.6)) +
+    facet_wrap(~ metric_lab, nrow = 1, scales = "free_x") +
+    scale_color_manual(values = RULE_COLORS) +
+    scale_y_discrete(expand = expansion(add = 0.7)) +
+    xlab("Pooled estimate (NLL: lower better / hit: higher better)") +
+    theme_paper() +
+    theme(legend.position = "none", axis.title.y = element_blank(),
+          panel.grid.major.y = element_blank(),
+          axis.text.y = element_text(size = 7.5),
+          strip.text = element_text(size = 9, face = "italic"))
+}
 
 panel <- function(eval_name, ladder_y) {
-  d <- deltas[deltas$eval == eval_name, ]
-  vs_single <- d[d$contrast == "vs single-tree model" & d$pooled == 0, ]
-  ## One row order per regime, taken from the vs-single contrast and reused by
-  ## both forests; pooled pinned to the bottom of the axis.
-  lev <- c("Pooled", vs_single$label[order(vs_single$est, decreasing = TRUE)])
+  lev <- row_levels(eval_name)
   list(
-    lad = make_ladder(ladder[ladder$eval == eval_name, ], ladder_y),
-    d1  = make_forest(d[d$contrast == "vs single-tree model", ],
-                      TRUE, DELTA_XLAB, lev),
-    d2  = make_forest(d[d$contrast == "vs where x which", ],
-                      TRUE, DELTA_XLAB, lev)
+    nll = make_ladder("nll", eval_name, ladder_y),
+    hit = make_ladder("hit", eval_name, ladder_y),
+    f1  = make_forest("vs single-tree model", eval_name, lev),
+    f2  = make_forest("vs where x which", eval_name, lev),
+    rp  = make_rule_panel(eval_name)
   )
 }
 
-## The two ladders share their rungs, so only the left one is labelled.
 L <- panel(EVALS[1], TRUE)
 R <- panel(EVALS[2], FALSE)
 
-## Column headers: regime name over a rule, as in Figure 4.
+legend_plot <- ggplot(deltas[deltas$pooled == 1, ],
+                      aes(x = est, y = tree_lab, color = subset_lab)) +
+  geom_point(size = 2.4) +
+  scale_color_manual(values = SUBSET_COLORS) +
+  theme_paper() + labs(color = NULL) +
+  guides(color = guide_legend(nrow = 1)) +
+  theme(legend.position = "top", legend.direction = "horizontal",
+        legend.justification = "center",
+        legend.key.height = unit(0.6, "lines"),
+        legend.margin = margin(0, 0, 0, 0))
+shared_legend <- extract_legend(legend_plot)
+
+## Row I/J uses a different colour mapping (epoch rule, not target subset), so it
+## needs its own key; a single legend would silently mislabel those points.
+rule_legend <- extract_legend(
+  ggplot(transform(deltas[deltas$pooled == 1, ],
+                   rule_lab = factor(unname(RULE_LABELS[rule]),
+                                     levels = unname(RULE_LABELS))),
+         aes(x = est, y = tree_lab, color = rule_lab)) +
+    geom_point(size = 2.4) +
+    scale_color_manual(values = RULE_COLORS) +
+    theme_paper() + labs(color = NULL) +
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "top", legend.direction = "horizontal",
+          legend.justification = "center",
+          legend.key.height = unit(0.6, "lines"),
+          legend.margin = margin(0, 0, 0, 0)))
+
 header <- function(i) {
   ggdraw() +
-    draw_label(EVALS[i], fontface = "bold", size = 12, y = 0.72) +
+    draw_label(EVALS[i], fontface = "bold", size = 12, y = 0.70) +
     draw_label(EVAL_SUBTITLE[[EVALS[i]]], fontface = "italic",
-               size = 9, colour = "grey35", y = 0.34) +
-    draw_line(x = c(0.03, 0.97), y = c(0.04, 0.04),
+               size = 9, colour = "grey35", y = 0.30) +
+    draw_line(x = c(0.03, 0.97), y = c(0.02, 0.02),
               color = "black", linewidth = 0.5)
 }
+row_label <- function(txt) ggdraw() +
+  draw_label(txt, fontface = "italic", size = 10.5, angle = 90)
 
-row_label <- function(txt) {
-  ggdraw() + draw_label(txt, fontface = "italic", size = 11, angle = 90)
-}
+HEIGHTS <- c(0.26, 1.15, 1.15, 1.75, 1.75, 0.10, 1.25)
 
 body <- plot_grid(
   plot_grid(header(1), header(2), nrow = 1),
-  plot_grid(L$lad, R$lad, nrow = 1, labels = c("A", "B"),
-            rel_widths = c(1.26, 1)),
-  plot_grid(L$d1, R$d1, nrow = 1, labels = c("C", "D")),
-  plot_grid(L$d2, R$d2, nrow = 1, labels = c("E", "F")),
-  ncol = 1,
-  rel_heights = c(0.34, 1.55, 1.25, 1.25)
+  plot_grid(L$nll, R$nll, nrow = 1, labels = c("A", "B"), rel_widths = c(1.3, 1)),
+  plot_grid(L$hit, R$hit, nrow = 1, labels = c("C", "D"), rel_widths = c(1.3, 1)),
+  plot_grid(L$f1, R$f1, nrow = 1, labels = c("E", "F")),
+  plot_grid(L$f2, R$f2, nrow = 1, labels = c("G", "H")),
+  rule_legend,
+  plot_grid(L$rp, R$rp, nrow = 1, labels = c("I", "J")),
+  ncol = 1, rel_heights = HEIGHTS
 )
 
 labels_col <- plot_grid(
-  ggdraw(), row_label("Baseline ladder"),
+  ggdraw(), row_label("Ladder: NLL"), row_label("Ladder: hit@10%"),
   row_label("vs single-tree"), row_label("vs where x which"),
-  ncol = 1, rel_heights = c(0.34, 1.55, 1.25, 1.25)
+  ggdraw(), row_label("Epoch rule"),
+  ncol = 1, rel_heights = HEIGHTS
 )
 
-figure <- plot_grid(labels_col, body, nrow = 1, rel_widths = c(0.045, 1))
+figure <- plot_grid(
+  shared_legend,
+  plot_grid(labels_col, body, nrow = 1, rel_widths = c(0.04, 1)),
+  ncol = 1, rel_heights = c(0.05, 1)
+)
 
-save_figure(figure, "multitree_results", width = 10, height = 9.5)
+save_figure(figure, "multitree_results", width = 13, height = 17)
