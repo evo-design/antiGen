@@ -1733,3 +1733,63 @@ Both probes normalize in log space when unfloored. Doing it in probability space
 divides by a denominator that underflows to zero whenever one cell holds nearly
 all the mass -- `pssm` puts 93% on wild type, the ESM-2 arms 99% -- and returns
 NaN for the whole example. That bit the first run of each.
+
+### Panels A and B hold, and the figure understates them (2026-10-14)
+
+Recall was audited the same way as NLL: the same four conventions, plus the
+budget question, plus a target-class split.
+
+**The floor does not touch recall at all** -- `unfloored` reproduces `figure` to
+three decimals in every cell. Ranking is what recall reads, the floor is monotone
+apart from the ties it creates, and the top decile sits well above it. So the
+whole floor story in this section is an NLL story.
+
+**The budget asymmetry is real and costs the model.** `n_valid` is counted after
+masking, so at q = 10%:
+
+| | cells rankable | budget |
+|---|---|---|
+| baselines (stop not masked) | 14,357 | **1,436** |
+| ESM-2 arms (stop masked) | 13,673 | **1,367** |
+
+Every baseline selects 69 more cells than the model from a useful universe that
+is identical for practical purposes. Giving every rung the same universe:
+
+| `joint - where x which`, recall@10% | all (529) | de novo (140) |
+|---|---|---|
+| figure convention | +0.089 [+0.053, +0.124] * | +0.022 [−0.080, +0.110] |
+| common budget | **+0.100** [+0.064, +0.136] * | **+0.036** [−0.065, +0.124] |
+| standard-residue targets only | **+0.121** [+0.082, +0.159] * | **+0.085** [−0.018, +0.176] |
+| gap targets only | −0.692 [−1.000, −0.357] * | −0.600 [−1.000, −0.167] * |
+
+**So yes, the model is still winning on recall, by more than the figure says.**
+Every correction runs in its favour -- the opposite of NLL, where the floor was
+propping it up. `joint - single` is unchanged by all of this (+0.051 all,
++0.171 de novo), since both sides are ESM-2 and share every convention.
+
+**The gap column matters far more to recall than to NLL.** It was 16% of the de
+novo NLL deficit; here it is most of the erasure of the model's lead. Recall by
+class, de novo:
+
+| rung | standard | gap |
+|---|---|---|
+| `where x which` | 0.493 | **0.642** |
+| joint | **0.566** | **0.000** |
+| single | 0.380 | 0.000 |
+
+The ESM-2 arms rank **no gap cell at all** in their top 10% -- 0 of 13 on all
+substitutions, 0 of 10 on de novo -- while `where x which` catches two thirds of
+them. Decomposing the de novo +0.022: standard contributes +0.078 and the ten
+gap targets take back −0.043. **The near-tie in panel B is mostly ten deletion
+targets.** On the other 129 the model leads by +0.085, which still does not
+clear zero at this n, but more than doubles the headline number.
+
+**It is not a mapping bug.** `-` maps to ESM-2 token id 30, a genuine `-` token
+(only `*` is routed to `<unk>`). ESM-2 was pretrained on ungapped UniRef, so the
+gap logit starts near zero and four finetuned layers over 370 gap mutations do
+not lift it. A real property of the backbone, not of this code.
+
+**Do not fix this by dropping gap targets.** That is choosing the convention that
+flatters the model, which is the error this whole section exists to catch. The
+honest presentation is standard and gap reported separately, with the gap
+deficit stated as a known limitation of an ungapped-pretrained backbone.

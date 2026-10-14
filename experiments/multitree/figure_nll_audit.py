@@ -132,6 +132,31 @@ def mass_on(logits, wt):
             float(p[:, :, GAP].sum() / B))
 
 
+def hits_at_q(scores, tg, aa, cols, q=0.1):
+    """compute_hit_rate's fractional tie-breaking, with explicit column masking.
+
+    `cols` is what this rung may NOT use. The figure passes (STOP,) for the
+    ESM-2 rungs and () for the baselines, which is the asymmetry being tested:
+    n_valid is counted after masking, so the two get different budgets from the
+    same q.
+    """
+    s = scores.clone()
+    for c in cols:
+        s[:, :, c] = float('nan')
+    s.scatter_(2, aa.unsqueeze(-1), float('nan'))
+    s = torch.where(torch.isneginf(s), torch.full_like(s, float('nan')), s)
+    B = s.shape[0]
+    fl = s.reshape(B, -1).float()
+    n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
+    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    above, at = s > vb, s == vb
+    n_above = above.reshape(B, -1).sum(1).float()
+    frac = ((q * n_valid - n_above)
+            / at.reshape(B, -1).sum(1).float().clamp(min=1)).clamp(0.0, 1.0)
+    sel = above.float() + frac.view(-1, 1, 1) * at.float()
+    return sel, float(n_valid.float().mean())
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -150,6 +175,7 @@ def main():
 
     CONV = ['figure', '+stop legit', 'all masked', 'unfloored']
     nll, nvec, mass = {}, {}, {}
+    rec, nvalid = {}, {}
 
     for tree in panel:
         train_ex, eval_ex = split_temporal(tree, 0)
@@ -242,6 +268,24 @@ def main():
                 for (sub, cls), tt in targets.items():
                     nll[(cname, nm, tree, sub, cls)] = (
                         -(tt * t).sum((1, 2)).cpu().numpy())
+                ## Recall on the same map. `figure` reproduces today's rule --
+                ## the stop column removed for the ESM-2 rungs only, so each
+                ## rung's budget is q * ITS OWN n_valid. `common` gives every
+                ## rung the same universe and therefore the same budget;
+                ## `common nogap` additionally drops the gap column, which only
+                ## the baselines can score.
+                if cname in ('figure', 'unfloored'):
+                    for rc, cols_r in (
+                            (cname, (STOP,) if nm in ESM2_RUNGS else ()),
+                            (cname + ' common', (STOP,)),
+                            (cname + ' common nogap', (STOP, GAP))):
+                        if cname == 'unfloored' and 'common' in rc:
+                            continue
+                        sel, nv = hits_at_q(t, tg, aa, cols_r)
+                        nvalid[(rc, nm, tree)] = nv
+                        for (sub, cls), tt in targets.items():
+                            rec[(rc, nm, tree, sub, cls)] = (
+                                (sel * tt).sum((1, 2)).cpu().numpy())
                 del t
         print(f'  {tree}  L={L}', flush=True)
 
@@ -326,6 +370,69 @@ def main():
                       nvec[(t, sub, 'any')]) for t in trees])
                 star = '' if lo <= 0 <= hi else '  *'
                 print(f'    {cname:14s} {d:+7.3f} [{lo:+.3f},{hi:+.3f}]{star}')
+
+    RCONV = ['figure', 'figure common', 'figure common nogap', 'unfloored']
+
+    print('\n== cells each rung may rank, and the budget q=10% buys ==')
+    print(f'{"rung":22s} {"n_valid (figure)":>18s} {"budget":>9s}'
+          f'   {"n_valid (common)":>18s} {"budget":>9s}')
+    for nm in rungs:
+        a = np.mean([nvalid[('figure', nm, t)] for t in trees])
+        b = np.mean([nvalid[('figure common', nm, t)] for t in trees])
+        print(f'{nm:22s} {a:18.0f} {0.1 * a:9.0f}   {b:18.0f} {0.1 * b:9.0f}')
+
+    for sub in ('all', 'novel'):
+        n = sum(nvec[(t, sub, 'any')].sum() for t in trees)
+        print(f'\n== RECALL at top 10%, {sub} (n={n:.0f}) ==')
+        print(f'{"rung":22s}' + ''.join(f'{c:>22s}' for c in RCONV))
+        for nm in rungs:
+            row = ''
+            for rc in RCONV:
+                est, lo, hi = boot_pooled([(rec[(rc, nm, t, sub, 'any')],
+                                            nvec[(t, sub, 'any')]) for t in trees])
+                row += f'{est:8.3f} [{lo:.2f},{hi:.2f}]'
+            print(f'{nm:22s}{row}')
+        for other in ('where_times_which', 'single'):
+            print(f'  paired joint - {other}, {sub} (positive = multi-tree better):')
+            for rc in RCONV:
+                d, lo, hi = boot_pooled(
+                    [(rec[(rc, 'joint', t, sub, 'any')]
+                      - rec[(rc, other, t, sub, 'any')],
+                      nvec[(t, sub, 'any')]) for t in trees])
+                star = '' if lo <= 0 <= hi else '  *'
+                print(f'    {rc:22s} {d:+7.3f} [{lo:+.3f},{hi:+.3f}]{star}')
+
+        ## The contrast restricted to standard-residue targets. The gap column
+        ## is the whole story on this subset: the ESM-2 arms rank NO gap cell in
+        ## their top 10% while `where x which` catches most of them, so a
+        ## handful of targets can erase a lead that is real on the other 92%.
+        print(f'  paired joint - where_times_which by class, {sub}:')
+        for cls in ('standard', 'gap'):
+            ks = [t for t in trees if nvec[(t, sub, cls)].sum() > 0]
+            if not ks:
+                continue
+            d, lo, hi = boot_pooled(
+                [(rec[('figure common', 'joint', t, sub, cls)]
+                  - rec[('figure common', 'where_times_which', t, sub, cls)],
+                  nvec[(t, sub, cls)]) for t in ks])
+            n = sum(nvec[(t, sub, cls)].sum() for t in ks)
+            star = '' if lo <= 0 <= hi else '  *'
+            print(f'    {cls:10s} n={n:4.0f}  {d:+7.3f} [{lo:+.3f},{hi:+.3f}]{star}')
+
+        print(f'  -- recall by target class, {sub}, figure convention --')
+        print(f'{"rung":22s}' + ''.join(f'{c:>12s}' for c in
+                                        ('standard', 'gap', 'stop')))
+        for nm in rungs:
+            row = ''
+            for cls in ('standard', 'gap', 'stop'):
+                ks = [t for t in trees if nvec[(t, sub, cls)].sum() > 0]
+                if not ks:
+                    row += f'{"--":>12s}'
+                    continue
+                est, _, _ = boot_pooled([(rec[('figure', nm, t, sub, cls)],
+                                          nvec[(t, sub, cls)]) for t in ks])
+                row += f'{est:12.3f}'
+            print(f'{nm:22s}{row}')
 
     with open(f'{args.out}/figure_nll_audit.json', 'w') as fh:
         json.dump({'mass': {f'{k[0]}|{k[1]}': v for k, v in mass.items()},
