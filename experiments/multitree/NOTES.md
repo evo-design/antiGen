@@ -942,3 +942,49 @@ both sides and largely cancels -- which is why the temporal arm reproduces it
 is reading any *absolute* random-split number, and in particular reading its de novo
 subset as a forecast.
 
+### De novo redefined against sequence composition (2026-10-14)
+
+The event-based rule called a cell de novo when no training branch mutated to that
+residue there. It had a systematic hole: the consensus residue at a position is
+inherited from the root, never mutated into, so it leaves no event. A post-D reversion
+from a rare derived state back to consensus was therefore labelled de novo despite being
+the single most predictable cell at that position. All 12 such targets on the temporal
+panel were exactly this, with the "novel" residue carried by 65-99.5% of training
+sequences -- and a pure composition baseline called all 12 correctly, recall 1.000.
+
+`seen_cells` now marks a cell seen if a training branch mutated to that residue **or**
+any training sequence carries it there. Effects:
+
+| | n (de novo) | PSSM | uniform | joint | single | `where x which` |
+|---|---|---|---|---|---|---|
+| temporal, event-based | 157 | 0.138 | 0.100 | 0.511 | 0.387 | 0.500 |
+| temporal, composition-aware | **145** | **0.066** | 0.100 | 0.501 | 0.370 | 0.497 |
+| random, event-based | 412 | 0.562 | 0.099 | 0.450 | 0.360 | 0.450 |
+| random, composition-aware | **175** | **0.071** | 0.101 | 0.482 | 0.354 | 0.494 |
+
+Three things to note.
+
+**The PSSM now lands below uniform, which is the correct behaviour**, not a bug. Its
+nonzero cells (3.7% of the map) outrank every zero cell and consume the first 3.7 points
+of the 10% budget, so a genuinely unseen cell can only claim
+(0.10 - 0.037)/(1 - 0.037) = 0.065. Measured 0.066 temporally and 0.071 randomly. A
+baseline that has by construction never seen the answer should do *worse* than chance
+once it has spent its budget elsewhere.
+
+**It removes most of the random holdout's de novo leak.** The 0.562 that made the random
+split indefensible on this subset was almost entirely these reversions; under the
+composition rule the random de novo subset drops from 412 to 175 targets and its PSSM
+falls to 0.071. The two regimes now agree closely on de novo (joint 0.482 random vs
+0.501 temporal). **The all-substitutions subset is untouched by this change and remains
+leaky on the random split** -- the PSSM is still its top rung at 0.88 against the model's
+0.86 -- so Figure 5 stays temporal-only.
+
+**The model barely moves.** joint 0.511 -> 0.501 temporally: the 12 removed targets were
+easy for everything, so dropping them costs every rung about equally and changes no
+conclusion. The de novo subset is simply smaller and means what it says.
+
+Note this diverges from the `n_novel` recorded in the `*_test_novelty.json` sidecars
+(156 for the panel), which still use the event-based tree-derived rule from
+`make_forecast_testset.py`. The figure computes its own subsets, so the two are
+independent; the sidecar is the stale one.
+

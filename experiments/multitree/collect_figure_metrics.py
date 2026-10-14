@@ -128,10 +128,27 @@ def split_temporal(tree, _seed):
 
 
 def seen_cells(train_ex, L):
+    """Cells already present in training, by EITHER route.
+
+    A cell counts as seen if some training branch mutated to that residue there,
+    *or* if any training sequence simply carries that residue there.
+
+    The second clause is not redundant. The consensus residue at a position is
+    inherited from the root, not mutated into, so it leaves no event -- and a
+    post-D reversion from a rare derived state back to consensus would then be
+    labelled de novo despite being the single most predictable cell at that
+    position. On the D = 2025-01-01 panel that was 12 of 157 event-novel
+    targets, every one a reversion to a residue carried by 65-99.5% of the
+    training sequences, and a pure composition baseline called all 12 correctly.
+    De novo has to mean "this residue has not been seen here", not merely "no
+    branch in the training window happened to mutate into it".
+    """
     m = np.zeros((L, E), dtype=bool)
+    idx = np.arange(L)
     for ex in train_ex:
+        m[idx, ex.aa_idx.numpy()] = True                 # carried by this sequence
         for pos, alt in (ex.mat > 0).nonzero().tolist():
-            m[pos, alt] = True
+            m[pos, alt] = True                           # mutated to on this branch
     return m
 
 
