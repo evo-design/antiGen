@@ -1455,9 +1455,79 @@ single-tree task that is not requeued leaves an undertrained `_best.pt` that the
 collector's existence check would accept. `run_collect_metrics.sh` now lists
 `gpu` first.
 
+### Overlap panels, and the main figure demoted to one metric (2026-10-14)
+
+Two changes to Figure 5 on top of the ensembling.
+
+**The main figure is now recall only.** NLL moves to the supplement as its own
+single-column block (A-D there), not dropped. It is not redundant with recall --
+s11 established that on de novo substitutions the two disagree systematically
+and in one direction, every ESM-2 arm placing higher on recall than on NLL and
+every count-based baseline lower, which is the evidence that the de novo deficit
+is a density failure rather than a ranking one. But the claims are stated in
+recall, and two eight-panel columns with different rung orders cost a reader
+more than they buy. Supplement letters shift: temporal NLL A-D, random holdout
+E-L, epoch rule M-N.
+
+**Two overlap panels (E, F) ask whether the model and `wxw` are the same
+predictor.** The ladders say which scores higher and the forests say by how
+much; neither separates a model that learned something the baseline did not from
+one that rediscovered it, and on de novo targets their recalls are close enough
+(0.566 against 0.503) that the distinction carries weight. `agreement.csv`
+(new, from `collect_figure_metrics.py`) counts, per tree and subset, how many
+observed substitutions fall in both top-10% sets, exactly one, or neither.
+
+Temporal holdout, pooled rule, K = 3:
+
+| subset | both | model only | `wxw` only | neither | n |
+|---|---|---|---|---|---|
+| all | 391 (69%) | **81 (14%)** | 28 (5%) | 64 (11%) | 564 |
+| de novo | 54 (37%) | **28 (19%)** | 18 (12%) | 45 (31%) | 145 |
+
+**On de novo targets 46 of 145 -- 32% -- are caught by exactly one of the two**,
+and the model catches 28 the baseline misses outright against 18 the other way.
+That reproduces s14's cell-level finding (both 0.331, model only 0.170, `wxw`
+only 0.159) on the ensembled predictors and at target level. The near-tie in de
+novo recall is two different predictors coinciding on a total, not on a list.
+
+Two things about how the panels are drawn:
+
+- **Area-proportional, solved not sketched.** Radii come from the caught counts
+  and the centre distance is solved with `uniroot` on the lens-area formula so
+  the overlap region's area equals the shared count. A fixed-overlap cartoon
+  could be made to look as similar or as different as one liked. Both predictors
+  spend the same budget -- 10% of valid cells -- so the circles differ in size
+  only because one catches more, which is the ladder's recall.
+- **The counts use a different tie rule from the ladder, and it is checked.**
+  `compute_hit_rate` splits a tied block at the budget boundary fractionally,
+  which is right for a rate but cannot say whether one cell was selected, and a
+  Venn must label cells. `caught_mask` takes the strictly-above set. The
+  collector prints each circle's marginal against the ladder's recall:
+
+      Temporal  all    joint  0.8369 vs 0.8369  (+0.0000)
+      Temporal  all    wxw    0.7429 vs 0.7446  (-0.0017)
+      Temporal  novel  joint  0.5655 vs 0.5655  (+0.0000)
+      Temporal  novel  wxw    0.4966 vs 0.5031  (-0.0066)
+
+  Exact for the model, within 0.007 for `wxw`. **The random regime is not:** its
+  all-substitutions marginals are 0.04 low for both rungs, because its larger
+  example count puts heavy tie blocks at the boundary. No panel uses it, but any
+  future overlap panel on the random split must not assume the two rules agree.
+
+### Cluster note, part two: list ONE partition
+
+Listing several partitions makes the job schedule against the most contended
+member, not the least. Job 3300348 sat PENDING with an estimate of 15:26 on
+`Partition=gpu,gpu_batch,gpu_high_mem` while `sbatch --test-only
+--partition=gpu` for the identical request said it would start immediately.
+`scontrol update jobid=... Partition=gpu` started it within seconds. The same
+move on the 3299597 array released its queued tasks. So: test the partitions,
+then submit to the single best one rather than a list.
+
 ### Open
 
-- **Rerun at the matched K = 8 and regenerate** once job 3299597 finishes. That
+- **Rerun at the matched K = 8 and regenerate** once job 3299597 finishes.
+  This now moves the overlap panels as well as the ladders and forests. That
   is one `sbatch experiments/multitree/run_collect_metrics.sh` (default
   `--ens-seeds 0,...,7`, ~3 min) plus `antiGen-figures/run_all.R`.
 - The figure's caption must state the convention -- the two antiGen rungs are

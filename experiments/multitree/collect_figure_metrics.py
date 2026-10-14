@@ -52,6 +52,14 @@ Epoch rules, both reported because the choice materially changes the effect size
             both rules. Baselines do not depend on the epoch at all.
 Selection uses validation data only under both rules, in both regimes.
 
+Outputs `ladder.csv`, `deltas.csv`, `per_example.npz` and `agreement.csv`. The
+last is for the overlap panels: per tree and subset, how many observed
+substitutions fall in BOTH the model's and `where x which`'s top 10%, in exactly
+one of them, or in neither. The ladders say which predictor scores higher and the
+forests say by how much, but neither can tell a model that learned something the
+baseline did not from one that rediscovered the baseline -- and on de novo
+substitutions their recalls are close enough for that to matter.
+
 Usage:
     python experiments/multitree/collect_figure_metrics.py [--out DIR]
 """
@@ -82,7 +90,7 @@ from antiGen.eval_utils import (fit_substitution_baseline,                 # noq
 from antiGen.load import load_examples                                     # noqa: E402
 from antiGen.models.factory import create_model                            # noqa: E402
 from calibrate_forecast import collect, temp_probs, AL, E                  # noqa: E402
-from forecast_hit_summary import per_example_hits                          # noqa: E402
+from forecast_hit_summary import per_example_hits, Q, STOP                # noqa: E402
 
 PANEL = ['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
          'denv1', 'denv2', 'denv3', 'denv4']
@@ -212,6 +220,28 @@ def score_tree(model_scores, tg, aa, mask_stop, novel):
     return out
 
 
+def caught_mask(scores, aa, mask_stop):
+    """Per-cell boolean: does this cell fall inside the predictor's top-10% budget?
+
+    The ladder's `compute_hit_rate` splits a tied block at the budget boundary
+    fractionally, which is the right answer for a rate but cannot say whether one
+    particular cell was selected -- and an overlap panel has to label individual
+    cells. This takes the strictly-above set instead. Where the scores are
+    continuous the two decisions coincide; the marginals this produces are checked
+    against the ladder's recall in main() and the gap is printed, so the panel
+    cannot quietly drift from the column it sits under.
+    """
+    s = scores.clone()
+    if mask_stop:
+        s[:, :, STOP] = float('nan')
+    s.scatter_(2, aa.unsqueeze(-1), float('nan'))
+    s = torch.where(torch.isneginf(s), torch.full_like(s, float('nan')), s)
+    B = s.shape[0]
+    fl = s.reshape(B, -1).float()
+    vb = torch.nanquantile(fl, 1.0 - Q, dim=1, interpolation='lower').view(B, 1, 1)
+    return s > vb
+
+
 def _resample(parts, nb, seed):
     """Pooled bootstrap: resample examples within each tree, then pool.
 
@@ -272,6 +302,10 @@ def main():
     # throughout before ensembling (see the module docstring for why that regime
     # cannot ensemble).
     acc, nvec = {}, {}
+    # agree[(regime, rule, tree, subset)] = [both, model only, wxw only, neither],
+    # summed over jobs; agree_n counts them so the random regime's three per-seed
+    # splits are averaged rather than tripled.
+    agree, agree_n = {}, {}
     for regime, joint_root, single_root in (
             ('Random holdout', f'{MATCHED}/joint9', MATCHED),
             ('Temporal holdout', f'{FORECAST_PT}/joint_panel', FORECAST)):
@@ -383,6 +417,30 @@ def main():
                     if len(dirs) > 1:
                         base, _, rl = nm.partition('@')
                         scores[f'{base}_arith' + (f'@{rl}' if rl else '')] = (am, True)
+
+                ## Overlap of the two top-10% sets. The question this answers is
+                ## not "which predictor is better" -- that is the forest rows --
+                ## but whether they are the SAME predictor wearing two hats. A
+                ## large `model only` / `wxw only` pair says they disagree about
+                ## which amino-acid changes to flag, which is what makes their
+                ## similar recalls a coincidence of totals rather than of content.
+                cw = caught_mask(scores['where_times_which'][0], aa, False)
+                nv = torch.tensor(novel, device=dev, dtype=tg.dtype).unsqueeze(0)
+                for rule in RULES:
+                    cm = caught_mask(scores[f'joint@{rule}'][0], aa, True)
+                    for subset, t in (('all', tg), ('novel', tg * nv)):
+                        if float(t.sum()) == 0:
+                            continue
+                        cell = [float((t * (cm & cw)).sum()),
+                                float((t * (cm & ~cw)).sum()),
+                                float((t * (~cm & cw)).sum()),
+                                float((t * (~cm & ~cw)).sum())]
+                        k = (regime, rule, tree, subset)
+                        agree[k] = [a + b for a, b in
+                                    zip(agree.get(k, [0.0] * 4), cell)]
+                        agree_n[k] = agree_n.get(k, 0) + 1
+                    del cm
+                del cw, nv
 
                 for rung, (sc, mask_stop) in scores.items():
                     pr = torch.tensor(temp_probs(sc.cpu().numpy(), wtm, 1.0), device=dev)
@@ -501,11 +559,60 @@ def main():
                             [(a - b, n) for a, b, n in zip(A, B, N)])
                         w.writerow([regime, rule, subset, metric, contrast, 'POOLED',
                                     f'{est:.6f}', f'{lo:.6f}', f'{hi:.6f}', 1])
+    # ---- agreement.csv: how much of each top-10% budget the two share
+    with open(f'{args.out}/agreement.csv', 'w', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(['eval', 'rule', 'subset', 'tree',
+                    'both', 'model_only', 'wxw_only', 'neither', 'n_mutations'])
+        for regime in ('Random holdout', 'Temporal holdout'):
+            for rule in RULES:
+                for subset in ('all', 'novel'):
+                    tot = [0.0] * 4
+                    for tree in PANEL:
+                        k = (regime, rule, tree, subset)
+                        if k not in agree:
+                            continue
+                        v = [x / agree_n[k] for x in agree[k]]
+                        tot = [a + b for a, b in zip(tot, v)]
+                        w.writerow([regime, rule, subset, tree]
+                                   + [f'{x:.4f}' for x in v] + [f'{sum(v):.4f}'])
+                    if sum(tot):
+                        w.writerow([regime, rule, subset, 'POOLED']
+                                   + [f'{x:.4f}' for x in tot]
+                                   + [f'{sum(tot):.4f}'])
+
+    ## The panel's circles must agree with the bars above them. caught_mask uses
+    ## the strictly-above set while the ladder splits ties fractionally, so the
+    ## two can differ wherever scores tie at the budget boundary; print the gap
+    ## rather than trusting that they do not.
+    print('\n== overlap marginals vs ladder recall (should match to ~0.001) ==')
+    for regime in ('Random holdout', 'Temporal holdout'):
+        for subset in ('all', 'novel'):
+            tot = [0.0] * 4
+            for tree in PANEL:
+                k = (regime, 'pooled', tree, subset)
+                if k in agree:
+                    tot = [a + b / agree_n[k] for a, b in zip(tot, agree[k])]
+            n = sum(tot)
+            if not n:
+                continue
+            for rung, got in (('joint', (tot[0] + tot[1]) / n),
+                              ('where_times_which', (tot[0] + tot[2]) / n)):
+                ks = [(regime, 'pooled', t, subset, rung, 'hit') for t in PANEL
+                      if (regime, 'pooled', t, subset, rung, 'hit') in mean]
+                ref = (sum(float(mean[k].sum()) for k in ks)
+                       / max(sum(float(nvec[(regime, k[2], subset)].sum())
+                                 for k in ks), 1e-9))
+                print(f'  {regime:18s} {subset:6s} {rung:18s} '
+                      f'overlap {got:.4f}  ladder {ref:.4f}  '
+                      f'delta {got - ref:+.4f}')
+
     np.savez_compressed(
         f'{args.out}/per_example.npz',
         **{'|'.join(k): v for k, v in mean.items()},
         **{'n|' + '|'.join(k): v for k, v in nvec.items()})
-    print(f"wrote {args.out}/ladder.csv, {args.out}/deltas.csv and per_example.npz")
+    print(f"wrote {args.out}/ladder.csv, {args.out}/deltas.csv, "
+          f"{args.out}/agreement.csv and per_example.npz")
 
 
 if __name__ == '__main__':

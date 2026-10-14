@@ -9,12 +9,26 @@
 ##      independent. On de novo substitutions that advantage does not survive,
 ##      and the figure shows that rather than hiding it.
 ##
-## Main text  (multitree_results): the TEMPORAL holdout only, both metrics.
-##      Columns are recall at top 10% and NLL per mutation; rows are the two
-##      target subsets and then the two contrasts.
-## Supplement (supp_multitree_results): the random holdout, same structure,
-##      kept as the evidence for why it is not the main result, plus the
-##      epoch-rule sensitivity panels.
+## Main text  (multitree_results): the TEMPORAL holdout, RECALL at top 10%
+##      only. Rows are the ladder on all substitutions, the ladder on de novo
+##      only, then the two per-tree contrasts -- and last, two overlap panels
+##      (E, F) showing that the model and `where x which` flag different amino
+##      acid changes. The ladders and forests say which predictor scores higher
+##      and by how much; only the overlap panels distinguish a model that has
+##      learned something the baseline has not from one that has rediscovered
+##      it. On de novo targets their recalls are close, so that matters.
+## Supplement (supp_multitree_results): the same four panels in NLL per
+##      mutation (A-D), the random holdout in both metrics (E-L), kept as the
+##      evidence for why it is not the main result, and the epoch-rule
+##      sensitivity panels (M, N).
+##
+## Why NLL is not in the main figure. It is not redundant -- on de novo
+## substitutions the two metrics disagree systematically, every ESM-2 arm
+## placing higher on recall than on NLL and every count-based baseline lower,
+## which is what shows the de novo deficit to be a probability-mass failure
+## rather than a ranking one. But the claims are stated in recall, and asking a
+## reader to hold two eight-panel columns with different rung orders in their
+## head at once buys less than it costs.
 ##
 ## Why the random holdout is not in the main figure. "De novo" means no training
 ## mutation EVENT at that (position, alt) cell. Under a random split of one tree
@@ -112,6 +126,7 @@ METRIC_LABELS <- c(nll = "NLL per mutation", hit = "Recall at top 10%")
 
 ladder <- read.csv("data/multitree/ladder.csv")
 deltas <- read.csv("data/multitree/deltas.csv")
+agreement <- read.csv("data/multitree/agreement.csv")
 
 ladder$rung_lab <- factor(unname(RUNG_LABELS[ladder$rung]),
                           levels = unname(RUNG_LABELS[RUNG_LEVELS]))
@@ -277,6 +292,129 @@ make_rule_panel <- function(eval_name) {
 }
 
 
+## --- Overlap panels --------------------------------------------------------
+
+## Do the model and `where x which` flag the SAME amino-acid changes?
+##
+## The ladders answer "which scores higher" and the forests answer "by how
+## much"; neither can distinguish a model that has learned something the
+## baseline has not from one that has rediscovered the baseline. Their recalls
+## are close on de novo substitutions, so that distinction carries real weight:
+## two predictors agreeing on a total is not the same as agreeing on a list.
+##
+## Each circle is the set of observed substitutions that predictor caught in its
+## top 10%. Circles are drawn AREA-PROPORTIONAL -- radius from the count, and
+## the centre distance solved so the lens area equals the shared count -- so the
+## picture cannot overstate the overlap. Both predictors spend the same budget
+## (10% of the valid cells) by construction, so the circles differ in size only
+## because one catches more targets, which is exactly the ladder's recall.
+
+#' Area of the lens where two circles of radii r1, r2 at distance d overlap.
+lens_area <- function(d, r1, r2) {
+  if (d >= r1 + r2) return(0)
+  if (d <= abs(r1 - r2)) return(pi * min(r1, r2)^2)
+  r1^2 * acos((d^2 + r1^2 - r2^2) / (2 * d * r1)) +
+    r2^2 * acos((d^2 + r2^2 - r1^2) / (2 * d * r2)) -
+    0.5 * sqrt((-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2))
+}
+
+#' Centre distance giving a lens of exactly `target` area.
+solve_d <- function(target, r1, r2) {
+  lo <- abs(r1 - r2) + 1e-9
+  hi <- r1 + r2 - 1e-9
+  if (target <= 0) return(hi)
+  if (target >= pi * min(r1, r2)^2) return(lo)
+  uniroot(function(d) lens_area(d, r1, r2) - target, c(lo, hi), tol = 1e-9)$root
+}
+
+circle_df <- function(cx, r, id, n = 200) {
+  th <- seq(0, 2 * pi, length.out = n)
+  data.frame(x = cx + r * cos(th), y = r * sin(th), id = id)
+}
+
+make_venn <- function(eval_name, subset_key) {
+  d <- agreement[agreement$eval == eval_name & agreement$rule == MAIN_RULE &
+                 agreement$subset == subset_key & agreement$tree == "POOLED", ]
+  n_tot <- d$n_mutations
+  n_m <- d$both + d$model_only
+  n_w <- d$both + d$wxw_only
+  ## Radius from area, then rescaled so the wider of the two panels fills the
+  ## same width -- the two subsets have very different n (564 against 145) and
+  ## drawing them on one absolute scale would shrink the de novo panel to a dot.
+  k <- 1 / sqrt(max(n_m, n_w) / pi)
+  r1 <- sqrt(n_m / pi) * k
+  r2 <- sqrt(n_w / pi) * k
+  dd <- solve_d(d$both * k^2, r1, r2)       # circle area is count * k^2
+
+  polys <- rbind(circle_df(-dd / 2, r1, "antiGen (multi-tree)"),
+                 circle_df(dd / 2, r2, "Where x which"))
+  polys$id <- factor(polys$id, levels = c("antiGen (multi-tree)",
+                                          "Where x which"))
+  pct <- function(x) sprintf("%.0f%%", 100 * x / n_tot)
+  ## The two crescents can be very thin -- on all substitutions `where x which`
+  ## is 93% contained in the model's set -- so their counts are set outside the
+  ## diagram on leader lines rather than inside the region, which would put them
+  ## in the lens and read as part of the overlap. The lens itself is always
+  ## roomy enough to carry its own label. Both panels use the same layout so
+  ## they can be read against each other.
+  rmax <- max(r1, r2)
+  x_only <- c(-(r1 + r2) / 2, (r1 + r2) / 2)      # crescent midpoints at y = 0
+  y_lab <- rmax * 1.34
+  labs <- data.frame(
+    x = c(x_only[1] - rmax * 0.22, (r1 - r2) / 2, x_only[2] + rmax * 0.22),
+    y = c(y_lab, 0, y_lab),
+    lab = c(sprintf("%.0f\n%s", d$model_only, pct(d$model_only)),
+            sprintf("%.0f\n%s", d$both, pct(d$both)),
+            sprintf("%.0f\n%s", d$wxw_only, pct(d$wxw_only))))
+  leads <- data.frame(
+    x = c(x_only[1] - rmax * 0.19, x_only[2] + rmax * 0.19),
+    xend = x_only, y = y_lab - rmax * 0.16, yend = rmax * 0.04)
+
+  rng <- rmax + dd / 2
+  ggplot() +
+    geom_polygon(data = polys, aes(x, y, fill = id, color = id),
+                 alpha = 0.42, linewidth = 0.5) +
+    geom_segment(data = leads, aes(x = x, y = y, xend = xend, yend = yend),
+                 linewidth = 0.3, color = "grey45") +
+    geom_text(data = labs, aes(x, y, label = lab), size = 3.1,
+              color = "grey15", lineheight = 0.95) +
+    annotate("text", x = 0, y = -rmax * 1.28, size = 2.9,
+             color = "grey35",
+             label = sprintf("caught by neither: %.0f (%s) of %.0f",
+                             d$neither, pct(d$neither), n_tot)) +
+    scale_fill_manual(values = c("antiGen (multi-tree)" = ANTIGEN_BLUE,
+                                 "Where x which" = "#555560")) +
+    scale_color_manual(values = c("antiGen (multi-tree)" = ANTIGEN_BLUE,
+                                  "Where x which" = "#555560")) +
+    coord_fixed(xlim = c(-rng * 1.34, rng * 1.34),
+                ylim = c(-rmax * 1.44, rmax * 1.62)) +
+    labs(subtitle = SUBSET_LABELS[[subset_key]]) +
+    theme_paper() +
+    theme(legend.position = "none",
+          axis.title = element_blank(), axis.text = element_blank(),
+          axis.ticks = element_blank(), panel.grid = element_blank(),
+          plot.subtitle = element_text(size = 9.5, face = "italic",
+                                       hjust = 0.5),
+          plot.margin = margin(t = 12, r = 6, b = 4, l = 4))
+}
+
+venn_legend <- extract_legend(
+  ggplot(data.frame(x = 1:2, y = 1:2,
+                    id = factor(c("antiGen (multi-tree)", "Where x which"),
+                                levels = c("antiGen (multi-tree)",
+                                           "Where x which"))),
+         aes(x, y, fill = id)) +
+    geom_col() +
+    scale_fill_manual(values = c("antiGen (multi-tree)" = ANTIGEN_BLUE,
+                                 "Where x which" = "#555560")) +
+    theme_paper() + labs(fill = NULL) +
+    guides(fill = guide_legend(nrow = 1)) +
+    theme(legend.position = "top", legend.direction = "horizontal",
+          legend.justification = "center",
+          legend.key.height = unit(0.6, "lines"),
+          legend.margin = margin(0, 0, 0, 0)))
+
+
 ## --- Shared furniture ------------------------------------------------------
 
 legend_for <- function(values, df, aes_col) {
@@ -354,41 +492,79 @@ assemble <- function(banner, headers, rows, labels, heights) {
   plot_grid(caption, body, nrow = 1, rel_widths = c(0.042, 1))
 }
 
+#' A plot preceded by the same empty left gutter `assemble` uses, so blocks
+#' appended below the main grid line up with the panels above them.
+gutter <- function(left, right) plot_grid(left, right, nrow = 1,
+                                          rel_widths = c(0.042, 1))
+
 HEADERS <- c("Recall at top 10%", "NLL per mutation")
 XLAB <- c(hit = "Multi-tree minus comparator, recall at top 10%",
           nll = "Multi-tree minus comparator, NLL per mutation")
 
-#' One regime's full eight-panel block: two ladders over two contrasts, with
-#' recall and NLL side by side.
-build <- function(eval_name, banner, letters_) {
-  row_pair <- function(f, a, b) plot_grid(f("hit"), f("nll"), nrow = 1,
-                                          labels = c(a, b))
+#' One regime's block: two ladders over two contrasts, for the metrics asked for.
+#'
+#' `metrics` is one or both of "hit" and "nll". The main figure takes recall
+#' alone -- it is the metric the claims are stated in, and a reader comparing
+#' two columns of eight panels has to hold the rung order of both in their head
+#' at once. NLL moves to the supplement as its own single-column block rather
+#' than being dropped: it is what shows the de novo density failure, which
+#' recall by construction cannot see.
+build <- function(eval_name, banner, letters_, metrics = c("hit", "nll")) {
+  used <- 0
+  row_of <- function(f) {
+    labs <- letters_[used + seq_along(metrics)]
+    used <<- used + length(metrics)
+    plot_grid(plotlist = lapply(metrics, f), nrow = 1, labels = labs)
+  }
   lad <- function(subset_key) function(m)
     make_ladder(m, eval_name, subset_key, TRUE,
                 lad_range(m, eval_name, subset_key))
   rows <- list(
-    row_pair(lad("all"), letters_[1], letters_[2]),
-    row_pair(lad("novel"), letters_[3], letters_[4]),
+    row_of(lad("all")),
+    row_of(lad("novel")),
     forest_legend,
-    row_pair(function(m) make_forest("vs single-tree model", eval_name, m,
-                                     XLAB[[m]]), letters_[5], letters_[6]),
-    row_pair(function(m) make_forest("vs where x which", eval_name, m,
-                                     XLAB[[m]]), letters_[7], letters_[8])
+    row_of(function(m) make_forest("vs single-tree model", eval_name, m,
+                                   XLAB[[m]])),
+    row_of(function(m) make_forest("vs where x which", eval_name, m,
+                                   XLAB[[m]]))
   )
-  assemble(banner, HEADERS, rows,
+  assemble(banner, HEADERS[match(metrics, c("hit", "nll"))], rows,
            list("All substitutions", "De novo only", NULL,
                 "Versus single-tree", "Versus where x which"),
            c(0.16, 0.20, 1.15, 1.15, 0.10, 1.55, 1.55))
 }
 
 
-## --- Main figure: the temporal holdout ------------------------------------
+## --- Main figure: the temporal holdout, recall only -----------------------
 
-save_figure(build(EVALS[2], NULL, LETTERS[1:8]),
-            "multitree_results", width = 13, height = 12.2)
+## The overlap row sits below the ladder/forest block rather than inside it: its
+## two panels are the two target SUBSETS, not two metrics, so it must not
+## inherit the column header. Same construction as the supplement's epoch row.
+venn_block <- plot_grid(
+  gutter(ggdraw(), venn_legend),
+  gutter(row_label("Which changes are flagged"),
+         plot_grid(make_venn(EVALS[2], "all"), make_venn(EVALS[2], "novel"),
+                   nrow = 1, labels = c("E", "F"))),
+  ncol = 1, rel_heights = c(0.16, 1.5))
+
+save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit"),
+                      venn_block, ncol = 1, rel_heights = c(8.0, 2.5)),
+            "multitree_results", width = 7.4, height = 14.4)
 
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
+
+## The NLL column the main figure no longer carries. It is not redundant with
+## recall: on de novo substitutions the two disagree systematically and in one
+## direction -- every ESM-2 arm places higher on recall than on NLL and every
+## count-based baseline lower -- which is the evidence that the de novo problem
+## is where the model puts its probability mass, not how it orders cells. The
+## main figure states the claims in recall; this block is why that is not the
+## whole story.
+## Banner names the regime only -- the column header below it already carries
+## the metric, and repeating it reads as two different things.
+supp_nll <- build(EVALS[2], "Temporal holdout (the main figure's regime)",
+                  LETTERS[1:4], metrics = "nll")
 
 ## Kept because it is the evidence for the main figure's scope, not because it
 ## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
@@ -401,20 +577,24 @@ supp_main <- build(
   EVALS[1],
   paste("Random holdout (not forecast-valid; see PSSM rung);",
         "per-seed scoring, no seed ensemble"),
-  LETTERS[1:8])
+  LETTERS[5:12])
 
 ## The epoch-rule row spans both regimes, so it sits below the block rather
 ## than inside it. Give it the same caption gutter so its panels line up with
 ## the ones above.
-gutter <- function(left, right) plot_grid(left, right, nrow = 1,
-                                          rel_widths = c(0.042, 1))
 epoch_block <- plot_grid(
   gutter(ggdraw(), rule_legend),
   gutter(row_label("Epoch rule"),
          plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
-                   nrow = 1, labels = c("I", "J"))),
+                   nrow = 1, labels = c("M", "N"))),
   ncol = 1, rel_heights = c(0.18, 1.5))
 
-supp <- plot_grid(supp_main, epoch_block, ncol = 1, rel_heights = c(8.0, 1.68))
+## The NLL block is one column against the random block's two, so it is padded
+## to the same width rather than stretched across it -- a single ladder blown up
+## to 13 inches would not share a rung scale with anything.
+supp <- plot_grid(
+  plot_grid(supp_nll, ggdraw(), nrow = 1, rel_widths = c(0.58, 0.42)),
+  supp_main, epoch_block,
+  ncol = 1, rel_heights = c(8.0, 8.0, 1.68))
 
-save_figure(supp, "supp_multitree_results", width = 13, height = 16)
+save_figure(supp, "supp_multitree_results", width = 13, height = 30)
