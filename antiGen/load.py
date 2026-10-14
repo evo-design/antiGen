@@ -19,6 +19,7 @@ class Example:
     parent_mutation: tuple = None  # (pos, alt_idx)
     is_testing_root: bool = False
     is_descended_from_variant: bool = False
+    source: str = None   # name of the examples file this came from (multi-source training)
 
 
 def _match_variant(label, variant):
@@ -26,7 +27,7 @@ def _match_variant(label, variant):
     return label == variant or f"({variant})" in label
 
 
-def load_examples(filepath, allowed_aas, variant):
+def load_examples(filepath, allowed_aas, variant, source=None):
     """Load pre-computed training/testing examples from a text file.
 
     Reads is_testing_root and is_descended_from_variant directly from
@@ -121,6 +122,7 @@ def load_examples(filepath, allowed_aas, variant):
             parent_mutation=parent_mutation,
             is_testing_root=is_testing_root,
             is_descended_from_variant=is_descended_from_variant,
+            source=source,
         ))
 
         i += 1

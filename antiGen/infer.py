@@ -33,6 +33,8 @@ from antiGen.models.factory import load_model
 VARIABLE_LENGTH_OK = {
     ModelType.ESM2_FITNESS_PREDICTOR,
     ModelType.BLOSUM62,
+    ModelType.CODON,
+    ModelType.SUBSTITUTION,
 }
 
 

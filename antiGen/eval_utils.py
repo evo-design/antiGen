@@ -15,6 +15,7 @@ import os
 import torch
 
 from antiGen.config import ModelConfig
+from antiGen.models.base import BaseFitnessPredictor
 
 
 # ── Loss / probability helpers ─────────────────────────────────────────────────
@@ -111,6 +112,285 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None)
 
     return n_hits, n_mutations
 
+
+
+# ── Per-source epoch validation (multi-tree training) ─────────────────────────
+
+class CellDumper:
+    """Collects one epoch's per-source validation probability maps, then writes an .npz.
+
+    Use as the ``cell_sink`` of :func:`validate_per_source`. Stored as float16 — these
+    are probabilities read back for ranking and decomposition, where float16 is ample,
+    and it halves what is already the largest artifact a run produces.
+
+    The saved arrays are indexed ``[example, position, amino_acid]`` with example order
+    equal to the validation loader's order, which is the same order as the
+    ``per_example`` arrays in the metrics JSON.
+    """
+
+    def __init__(self):
+        self.by_source = {}
+
+    def __call__(self, name, probs):
+        self.by_source.setdefault(name, []).append(
+            probs.detach().to(torch.float16).cpu().numpy())
+
+    def save(self, path, **metadata):
+        import numpy as np
+        arrays = {name: np.concatenate(chunks, axis=0)
+                  for name, chunks in self.by_source.items()}
+        for key, value in metadata.items():
+            arrays[f"meta_{key}"] = np.asarray(value)
+        np.savez_compressed(path, **arrays)
+        return sum(a.nbytes for a in arrays.values())
+
+
+@torch.no_grad()
+def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
+                        cell_sink=None):
+    """Validation NLL per observed mutation, overall and per source phylogeny.
+
+    ``loaders_by_source`` maps a source name to a DataLoader. Each loader must be
+    length-homogeneous (one phylogeny is one protein, so one L), which is automatic when
+    sources are split by file.
+
+    Hit rates use ``eval_range=range(L)``: the module default ``RBD_RANGE`` is spike-
+    specific and would otherwise be applied silently to a 566-residue HA.
+
+    ``n_mutations`` is accumulated here rather than taken from ``compute_loss_full``,
+    whose per-batch count is ``clamp(min=1)`` and would inflate the denominator for a
+    batch with no observed mutations.
+
+    ``cell_sink``, if given, is called as ``cell_sink(source_name, probs)`` once per
+    batch with the full wild-type-masked ``(batch, L, E)`` probability tensor, before any
+    reduction. Scoring is unchanged whether or not it is supplied — it only observes.
+    """
+    import math
+
+    was_training = model.training
+    model.eval()
+    vocab = model.config.alphabet.vocab_size
+    stop_idx = model.config.alphabet.amino_acids.index('*')
+    mask_stop = not getattr(model, 'OUTPUTS_LEGITIMATE_STOP', True)
+
+    per_source, total_loss, total_n = {}, 0.0, 0.0
+    for name, loader in loaders_by_source.items():
+        loss_sum = n_mutations = 0.0
+        hits = {q: 0.0 for q in qtiles}
+        seq_len = None
+        example_loss, example_n = [], []
+        for aa_batch, target_batch in loader:
+            aa_batch = aa_batch.to(device)
+            target_batch = target_batch.to(device)
+            seq_len = aa_batch.shape[1]
+            logits = model(aa_batch).float()
+            probs = compute_probs(logits, target_batch, aa_batch)
+            batch_loss, _ = compute_loss_full(probs, target_batch)
+            loss_sum += batch_loss.item()
+            n_mutations += target_batch.sum().item()
+
+            # Per-example NLL, so two runs over the same (deterministically ordered)
+            # validation set can be compared example-by-example rather than only in
+            # aggregate. The loader is shuffle=False, so index i is the same example
+            # in every run that used the same --split-seed and source name.
+            normalized = probs / probs.sum(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+            example_loss.extend(
+                (-(target_batch * torch.log(normalized))).sum(dim=(1, 2)).tolist())
+            example_n.extend(target_batch.sum(dim=(1, 2)).tolist())
+
+            if cell_sink is not None:
+                # The renormalized map, so a consumer can reproduce per_example.loss
+                # exactly as -(target * log(cells)).sum() and know the dump is faithful.
+                cell_sink(name, normalized)
+
+            scores = logits.clone()
+            if mask_stop:
+                scores[:, :, stop_idx] = float('nan')
+            full_range = list(range(seq_len))
+            for q in qtiles:
+                n_hits, _ = compute_hit_rate(scores, target_batch, aa_batch,
+                                             qtile=q, eval_range=full_range)
+                hits[q] += n_hits
+
+        per_source[name] = {
+            'seq_len': seq_len,
+            'n_mutations': n_mutations,
+            'nll_per_mutation': loss_sum / max(n_mutations, 1.0),
+            # A uniform predictor over the non-wild-type cells scores exactly this,
+            # because compute_probs zeroes the WT cell and the loss renormalizes.
+            'uniform_nll_per_mutation': (math.log(seq_len * (vocab - 1))
+                                         if seq_len else float('nan')),
+            'hit_rate': {f"{q:g}": hits[q] / max(n_mutations, 1.0) for q in qtiles},
+            'per_example': {'loss': example_loss, 'n_mutations': example_n},
+        }
+        total_loss += loss_sum
+        total_n += n_mutations
+
+    if was_training:
+        model.train()
+    return {
+        'overall': {'nll_per_mutation': total_loss / max(total_n, 1.0),
+                    'n_mutations': total_n},
+        'per_source': per_source,
+    }
+
+
+def fit_substitution_baseline(train_examples, device, alphabet, steps=300, lr=0.05,
+                              batch_size=16, use_blosum=True, seed=0):
+    """Fit the learned codon x BLOSUM62 substitution matrix on one source's TRAIN half.
+
+    This is the strong substitution-level baseline: 25 free scalars (a transition/
+    transversion ratio, two mixing weights and a 22-dim amino-acid background) on top of
+    the genetic code and BLOSUM62, fitted with the same objective the models are trained
+    with. It knows nothing about position, so beating it is evidence that a model has
+    learned where mutations happen, and failing to beat it means a model has not learned
+    more than substitution chemistry.
+
+    Returns the fitted model, in eval mode.
+    """
+    import torch.optim as optim
+
+    from antiGen.config import (AlphabetConfig, ModelConfig, ModelType,
+                                SubstitutionConfig)
+    from antiGen.models.factory import create_model
+
+    seq_len = len(train_examples[0].aa_idx)
+    model = create_model(
+        ModelConfig(model_type=ModelType.SUBSTITUTION, seq_len=seq_len,
+                    alphabet=AlphabetConfig(amino_acids=alphabet),
+                    substitution=SubstitutionConfig(use_blosum=use_blosum)),
+        device)
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    generator = torch.Generator().manual_seed(seed)
+
+    n = len(train_examples)
+    for step in range(steps):
+        idx = torch.randint(0, n, (min(batch_size, n),), generator=generator).tolist()
+        aa_batch = torch.stack([train_examples[i].aa_idx for i in idx]).to(device)
+        target_batch = torch.stack([train_examples[i].mat for i in idx]).to(device)
+        optimizer.zero_grad()
+        loss = compute_loss_batch(
+            compute_probs(model(aa_batch), target_batch, aa_batch), target_batch)
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    return model
+
+
+def frequency_baseline_scores(examples, seq_len, vocab_size, alpha=0.5):
+    """Laplace-smoothed per-position child-mutation counts from one source's TRAIN half.
+
+    Returned as counts; take ``log()`` before feeding them through ``compute_probs``,
+    since ``softmax(log c) == c / sum(c)``, so the baseline is scored by exactly the same
+    wild-type-masked, renormalized machinery as the model.
+    """
+    counts = torch.zeros(seq_len, vocab_size)
+    for example in examples:
+        counts += example.mat
+    return counts + alpha
+
+
+def positional_marginal_counts(examples, seq_len, vocab_size, alpha=0.5):
+    """Train-half child-mutation counts collapsed onto positions — the pure "where" signal.
+
+    Returns a ``(seq_len,)`` tensor of each position's total smoothed count, i.e. the row
+    sums of ``frequency_baseline_scores``. Factored out so the where-only map and the
+    factorized where x which predictor share one definition of "where".
+    """
+    return frequency_baseline_scores(examples, seq_len, vocab_size, alpha).sum(dim=1)
+
+
+def where_only_baseline_scores(examples, seq_len, vocab_size, alpha=0.5):
+    """The frequency baseline with its amino-acid axis flattened to uniform.
+
+    Each row keeps the total mass ``frequency_baseline_scores`` gave that position but
+    spreads it evenly over the vocabulary, so this baseline knows *where* mutations
+    happen and nothing about *which* residue appears. The gap between this and the
+    frequency baseline is therefore exactly the value of the alt-AA distribution.
+
+    Note that ``frequency_baseline_scores`` is the empirical *joint* over
+    (position, alt_aa) despite being described elsewhere as a per-position map; this is
+    the position-only object that name suggests.
+
+    Returned as counts, like ``frequency_baseline_scores``: take ``log()`` before
+    scoring, so the same wild-type-masked renormalization applies.
+    """
+    per_position = positional_marginal_counts(examples, seq_len, vocab_size, alpha)
+    return (per_position / vocab_size).unsqueeze(1).expand(-1, vocab_size).contiguous()
+
+
+class WhereTimesWhichPredictor(BaseFitnessPredictor):
+    """Factorized ``P(i, a) = P(i) * P(a | wt_i)`` — the independence reference.
+
+    ``P(i)`` is the train-half positional marginal (the "where" term, the same one
+    ``where_only_baseline_scores`` uses). ``P(a | wt_i)`` is the fitted substitution
+    model's row for the wild-type residue at ``i`` (the "which" term, which knows the
+    genetic code and BLOSUM62 but not the position).
+
+    This is the strongest predictor that assumes where and which are *independent*. A
+    trained model that does not beat it has learned no position-specific substitution
+    preference, which is the central thing we want to know.
+
+    Scores are example-dependent (the which term is indexed by the example's own
+    residues), so unlike the other map-shaped baselines this cannot go through
+    ``fixed_map_metrics`` — it implements the model interface and is scored by
+    ``validate_per_source`` instead.
+    """
+
+    # Inherited from the substitution model: both special columns carry a learned bias.
+    OUTPUTS_LEGITIMATE_GAP = True
+    OUTPUTS_LEGITIMATE_STOP = True
+
+    def __init__(self, config, positional_counts, substitution_model):
+        super().__init__(config)
+        self.register_buffer(
+            'log_position', torch.log(positional_counts.clamp(min=1e-12)).float())
+        self.substitution = substitution_model
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        # log_softmax over the destination axis makes the which term a proper
+        # conditional, so the product is a genuine factorization rather than two
+        # score scales added together.
+        which = torch.log_softmax(self.substitution.score_matrix()[x], dim=-1)
+        return which + self.log_position.view(1, -1, 1)
+
+
+@torch.no_grad()
+def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
+    """NLL per mutation and hit rates of a fixed ``(seq_len, vocab)`` score map."""
+    log_map = torch.log(score_map.to(device))
+    loss_sum = n_mutations = 0.0
+    hits = {q: 0.0 for q in qtiles}
+    example_loss, example_n = [], []
+    for aa_batch, target_batch in loader:
+        aa_batch = aa_batch.to(device)
+        target_batch = target_batch.to(device)
+        logits = log_map.unsqueeze(0).expand(aa_batch.shape[0], -1, -1).contiguous()
+        probs = compute_probs(logits, target_batch, aa_batch)
+        batch_loss, _ = compute_loss_full(probs, target_batch)
+        loss_sum += batch_loss.item()
+        n_mutations += target_batch.sum().item()
+
+        # Per-example NLL, on the same renormalized footing as validate_per_source, so a
+        # baseline and a model can be compared example-by-example over a shuffle=False
+        # loader. Observational: nothing above depends on it.
+        normalized = probs / probs.sum(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+        example_loss.extend(
+            (-(target_batch * torch.log(normalized))).sum(dim=(1, 2)).tolist())
+        example_n.extend(target_batch.sum(dim=(1, 2)).tolist())
+
+        full_range = list(range(aa_batch.shape[1]))
+        for q in qtiles:
+            n_hits, _ = compute_hit_rate(logits, target_batch, aa_batch,
+                                         qtile=q, eval_range=full_range)
+            hits[q] += n_hits
+    return {
+        'nll_per_mutation': loss_sum / max(n_mutations, 1.0),
+        'hit_rate': {f"{q:g}": hits[q] / max(n_mutations, 1.0) for q in qtiles},
+        'per_example': {'loss': example_loss, 'n_mutations': example_n},
+    }
 
 @torch.no_grad()
 def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets=10,

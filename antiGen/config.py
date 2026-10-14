@@ -20,6 +20,8 @@ class ModelType(str, Enum):
     ESM2_FITNESS_PREDICTOR = "esm2_fitness_predictor"
     BLOSUM62 = "blosum62"  # BLOSUM62 substitution matrix (no training)
     PSSM = "pssm"  # Per-position log(count+1) from variant-root PSSM (no training)
+    CODON = "codon"  # Genetic-code single-nucleotide accessibility (no training)
+    SUBSTITUTION = "substitution"  # Learned codon x BLOSUM62 log-linear mixture (5 params)
     EVCOUPLINGS = "evcouplings"  # EVcouplings mean-field DCA (no training)
     EVE = "eve"  # EVE VAE (pre-train on MSA, optional finetune)
     TRANCEPTION = "tranception"  # Tranception autoregressive LM (pre-train on MSA, optional finetune)
@@ -197,6 +199,35 @@ class TranceptionConfig:
 
 
 @dataclass(frozen=True)
+class CodonConfig:
+    """Configuration for the codon-accessibility predictor.
+
+    Attributes:
+        kappa: Transition/transversion ratio. 1.0 counts every nucleotide change
+            equally; >1 up-weights transitions (A<->G, C<->T).
+        pseudocount: Floor added to every entry so inaccessible substitutions rank
+            last without becoming -inf.
+    """
+    kappa: float = 1.0
+    pseudocount: float = 0.01
+
+
+@dataclass(frozen=True)
+class SubstitutionConfig:
+    """Configuration for the learned codon x BLOSUM62 substitution baseline.
+
+    Attributes:
+        init_kappa: Starting transition/transversion ratio; it is then fitted.
+        pseudocount: Floor inside the log of the codon accessibility counts.
+        use_blosum: Include the BLOSUM62 term. False leaves a pure learned-kappa codon
+            model, which is the useful ablation.
+    """
+    init_kappa: float = 1.0
+    pseudocount: float = 0.01
+    use_blosum: bool = True
+
+
+@dataclass(frozen=True)
 class PSSMConfig:
     """Configuration for the PSSM (per-position log-count) predictor.
 
@@ -252,6 +283,8 @@ class ModelConfig:
     eve: EVEConfig = field(default_factory=EVEConfig)
     tranception: TranceptionConfig = field(default_factory=TranceptionConfig)
     pssm: PSSMConfig = field(default_factory=PSSMConfig)
+    codon: CodonConfig = field(default_factory=CodonConfig)
+    substitution: SubstitutionConfig = field(default_factory=SubstitutionConfig)
     gated: GatedFitnessConfig = field(default_factory=GatedFitnessConfig)
 
     def to_dict(self) -> dict[str, Any]:
@@ -311,6 +344,15 @@ class ModelConfig:
                 "freeze_backbone": self.tranception.freeze_backbone,
                 "max_seqs": self.tranception.max_seqs,
                 "scoring_direction": self.tranception.scoring_direction,
+            },
+            "codon": {
+                "kappa": self.codon.kappa,
+                "pseudocount": self.codon.pseudocount,
+            },
+            "substitution": {
+                "init_kappa": self.substitution.init_kappa,
+                "pseudocount": self.substitution.pseudocount,
+                "use_blosum": self.substitution.use_blosum,
             },
             "pssm": {
                 "path": self.pssm.path,
@@ -375,6 +417,19 @@ class ModelConfig:
             scoring_direction=tc_dict.get("scoring_direction", "both"),
         )
 
+        codon_dict = d.get("codon", {})
+        codon_config = CodonConfig(
+            kappa=codon_dict.get("kappa", 1.0),
+            pseudocount=codon_dict.get("pseudocount", 0.01),
+        )
+
+        sub_dict = d.get("substitution", {})
+        substitution_config = SubstitutionConfig(
+            init_kappa=sub_dict.get("init_kappa", 1.0),
+            pseudocount=sub_dict.get("pseudocount", 0.01),
+            use_blosum=sub_dict.get("use_blosum", True),
+        )
+
         pssm_dict = d.get("pssm", {})
         pssm_config = PSSMConfig(
             path=pssm_dict.get("path"),
@@ -398,6 +453,8 @@ class ModelConfig:
             eve=eve_config,
             tranception=tranception_config,
             pssm=pssm_config,
+            codon=codon_config,
+            substitution=substitution_config,
             gated=gated_config,
         )
 

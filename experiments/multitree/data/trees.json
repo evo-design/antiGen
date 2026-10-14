@@ -1,0 +1,217 @@
+{
+  "bvic_ha": {
+    "dataset": "flu_seasonal_vic_ha_12y",
+    "examples": 332,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_bvic_ha_nocutoff.txt",
+    "seq_len": 585
+  },
+  "bvic_na": {
+    "dataset": "flu_seasonal_vic_na_12y",
+    "examples": 495,
+    "genes": [
+      "NA"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_bvic_na_nocutoff.txt",
+    "seq_len": 467
+  },
+  "byam_ha": {
+    "dataset": "flu_seasonal_yam_ha_12y",
+    "examples": 320,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_byam_ha_nocutoff.txt",
+    "seq_len": 585
+  },
+  "denv1": {
+    "dataset": "dengue_denv1",
+    "examples": 564,
+    "genes": [
+      "E"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_denv1_nocutoff.txt",
+    "seq_len": 495
+  },
+  "denv2": {
+    "dataset": "dengue_denv2",
+    "examples": 569,
+    "genes": [
+      "E"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_denv2_nocutoff.txt",
+    "seq_len": 495
+  },
+  "denv3": {
+    "dataset": "dengue_denv3",
+    "examples": 318,
+    "genes": [
+      "E"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_denv3_nocutoff.txt",
+    "seq_len": 493
+  },
+  "denv4": {
+    "dataset": "dengue_denv4",
+    "examples": 303,
+    "genes": [
+      "E"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_denv4_nocutoff.txt",
+    "seq_len": 495
+  },
+  "evd68": {
+    "dataset": "enterovirus_d68_genome",
+    "examples": 381,
+    "genes": [
+      "VP1"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_evd68_nocutoff.txt",
+    "seq_len": 309
+  },
+  "h1n1pdm": {
+    "dataset": "flu_seasonal_h1n1pdm_ha_12y",
+    "examples": 662,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h1n1pdm_nocutoff.txt",
+    "seq_len": 566
+  },
+  "h1n1pdm_na": {
+    "dataset": "flu_seasonal_h1n1pdm_na_12y",
+    "examples": 559,
+    "genes": [
+      "NA"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h1n1pdm_na_nocutoff.txt",
+    "seq_len": 470
+  },
+  "h3n2": {
+    "dataset": "flu_seasonal_h3n2_ha_12y",
+    "examples": 817,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h3n2_nocutoff.txt",
+    "seq_len": 566
+  },
+  "h3n2_na": {
+    "dataset": "flu_seasonal_h3n2_na_12y",
+    "examples": 663,
+    "genes": [
+      "NA"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h3n2_na_nocutoff.txt",
+    "seq_len": 470
+  },
+  "h5n1": {
+    "dataset": "flu_avian_h5n1_ha",
+    "examples": 3242,
+    "genes": [
+      "HA"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h5n1_nocutoff.txt",
+    "seq_len": 569
+  },
+  "h5nx": {
+    "dataset": "flu_avian_h5nx_ha",
+    "examples": 4530,
+    "genes": [
+      "HA"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_h5nx_nocutoff.txt",
+    "seq_len": 569
+  },
+  "measles": {
+    "dataset": "measles_genome",
+    "examples": 456,
+    "genes": [
+      "H"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_measles_nocutoff.txt",
+    "seq_len": 618
+  },
+  "mpox": {
+    "dataset": "mpox_all-clades",
+    "examples": 3189,
+    "genes": [
+      "OPG210"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_mpox_nocutoff.txt",
+    "seq_len": 1881
+  },
+  "mumps": {
+    "dataset": "mumps_global",
+    "examples": 218,
+    "genes": [
+      "HN"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_mumps_nocutoff.txt",
+    "seq_len": 583
+  },
+  "ncov": {
+    "dataset": "ncov_open_global_all-time",
+    "examples": 1515,
+    "genes": [
+      "S"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_ncov_nocutoff.txt",
+    "seq_len": 1273
+  },
+  "rabies": {
+    "dataset": "rabies",
+    "examples": 3018,
+    "genes": [
+      "RABVgp4"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_rabies_nocutoff.txt",
+    "seq_len": 525
+  },
+  "rsv_a": {
+    "dataset": "nextstrain_rsv_a_F_all-time",
+    "examples": 501,
+    "genes": [
+      "F"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_rsv_a_nocutoff.txt",
+    "seq_len": 574
+  },
+  "rsv_b": {
+    "dataset": "nextstrain_rsv_b_F_all-time",
+    "examples": 414,
+    "genes": [
+      "F"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_rsv_b_nocutoff.txt",
+    "seq_len": 574
+  },
+  "wnv": {
+    "dataset": "WNV_all-lineages",
+    "examples": 553,
+    "genes": [
+      "env"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_wnv_nocutoff.txt",
+    "seq_len": 501
+  },
+  "zika": {
+    "dataset": "zika",
+    "examples": 55,
+    "genes": [
+      "ENV"
+    ],
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/examples_zika_nocutoff.txt",
+    "seq_len": 504
+  }
+}

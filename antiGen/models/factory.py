@@ -45,6 +45,12 @@ def create_model(
     elif config.model_type == ModelType.BLOSUM62:
         from antiGen.models.blosum62_fitness_predictor import BLOSUM62FitnessPredictor
         model = BLOSUM62FitnessPredictor(config)
+    elif config.model_type == ModelType.CODON:
+        from antiGen.models.codon_fitness_predictor import CodonFitnessPredictor
+        model = CodonFitnessPredictor(config)
+    elif config.model_type == ModelType.SUBSTITUTION:
+        from antiGen.models.substitution_fitness_predictor import SubstitutionFitnessPredictor
+        model = SubstitutionFitnessPredictor(config)
     elif config.model_type == ModelType.PSSM:
         from antiGen.models.pssm_fitness_predictor import PSSMFitnessPredictor
         model = PSSMFitnessPredictor(config)

@@ -5,8 +5,10 @@ Simple fitness training: predict which mutations were observed from each ancestr
 
 import os
 import gc
+import json
 import random
 import math
+import zlib
 
 import argparse
 import numpy as np
@@ -14,10 +16,15 @@ from datetime import datetime
 import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from antiGen.config import ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config, EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, GatedFitnessConfig
+from antiGen.config import ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config, EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig, SubstitutionConfig, GatedFitnessConfig
 from antiGen.models.factory import create_model
 from antiGen.load import load_examples
-from antiGen.eval_utils import compute_probs, compute_loss_batch
+from antiGen.batching import LengthBucketBatchSampler
+from antiGen.eval_utils import (compute_probs, compute_loss_batch, compute_hit_rate,
+                                validate_per_source, frequency_baseline_scores,
+                                fixed_map_metrics, fit_substitution_baseline,
+                                where_only_baseline_scores, positional_marginal_counts,
+                                WhereTimesWhichPredictor, CellDumper)
 from antiGen import datasets
 
 
@@ -42,7 +49,7 @@ def parse_args():
     parser.add_argument('--cutoff', type=float, default=1.0, help='Train/test cutoff (years since MRCA)')
     parser.add_argument('--ignore-dead-ends', action='store_true', default=False, help='Do not make examples for sequences with no downstream mutants')
 
-    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
+    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'codon', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
                         help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors')
     parser.add_argument('--d-model', type=int, default=512, help='Model dimension (transformer only)')
     parser.add_argument('--num-layers', type=int, default=4, help='Number of transformer layers (transformer only)')
@@ -52,15 +59,59 @@ def parse_args():
                         help='Freeze pretrained backbone, only train output head (esm2 only)')
     parser.add_argument('--finetune-layers', type=int, default=0,
                         help='Number of last encoder layers to unfreeze (requires --freeze-backbone, esm2 only)')
+    parser.add_argument('--codon-kappa', type=float, default=1.0,
+                        help='Transition/transversion ratio for the codon baseline '
+                             '(1.0 = every nucleotide change counts equally)')
+    parser.add_argument('--codon-pseudocount', type=float, default=0.01,
+                        help='Floor for codon-inaccessible substitutions')
+    parser.add_argument('--no-blosum', action='store_true', default=False,
+                        help='Drop the BLOSUM62 term from --model-type substitution, '
+                             'leaving a codon-only model with learned kappa')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--max-batches', type=int, default=None, help='Stop after N batches total')
     parser.add_argument('--warmup-steps', type=int, default=0, help='LR warmup steps')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory')
-    parser.add_argument('--examples', type=str, default=None,
-                        help='Path to an examples_cutoff_*.txt file. Overrides dataset routing '
-                             '(use this to train on any protein/pathogen without code edits).')
+    parser.add_argument('--examples', type=str, nargs='+', default=None,
+                        help='One or more examples_cutoff_*.txt paths, optionally NAME=PATH. '
+                             'Overrides dataset routing. More than one file trains a single '
+                             'model jointly on all of them; each file is one "source" '
+                             'phylogeny and may have its own sequence length (esm2 only).')
+    parser.add_argument('--num-workers', type=int, default=4,
+                        help='DataLoader worker processes (0 for small CPU runs)')
+    parser.add_argument('--max-batch-tokens', type=int, default=0,
+                        help='If >0, cap tokens per batch: a length-L bucket uses '
+                             'min(--batch-size, N // L). Keeps a long-sequence source from '
+                             'OOMing at a batch size tuned for a short one.')
+    parser.add_argument('--val-mode', choices=['file', 'random'], default='file',
+                        help="'file' (default): the repo's temporal split — TRAINING examples "
+                             "train, TESTING examples validate. 'random': EXPERIMENTAL arm; "
+                             "drops every TESTING example and randomly splits the TRAINING "
+                             "pool. Nothing after the forecast date is read, but the resulting "
+                             "validation score is not a forecast.")
+    parser.add_argument('--val-frac', type=float, default=0.1,
+                        help='Validation fraction per source (--val-mode random only)')
+    parser.add_argument('--split-seed', type=int, default=0,
+                        help='Seed for the random split, independent of --seed so the split is '
+                             'stable across training seeds (--val-mode random only)')
+    parser.add_argument('--val-qtiles', type=float, nargs='+', default=[0.1, 0.25],
+                        help='Top-q quantiles for the per-epoch validation hit rate')
+    parser.add_argument('--dump-cells', action='store_true',
+                        help='Write the full per-cell validation probability maps at the '
+                             'best-scoring epoch to <prefix>_val_cells.npz, for '
+                             'position/substitution decomposition. Adds no change to any '
+                             'metric; it only observes the tensors validation already '
+                             'computes.')
+    parser.add_argument('--save-best', action='store_true',
+                        help='Also save the checkpoint at the epoch with the best pooled '
+                             'validation NLL, as fitness_<prefix>_best.pt. Without this '
+                             'only the final epoch is kept, which is typically well past '
+                             'the best epoch.')
+    parser.add_argument('--experiment', type=str, default=None,
+                        help='Free-text tag marking an experimental arm; recorded in the '
+                             'manifest and train_args, and skipped by antiGen-eval unless it '
+                             'is run with --include-experimental.')
     parser.add_argument('--data-dir', type=str, default=None,
                         help='Directory containing examples_cutoff_{cutoff}.txt for a named '
                              'dataset (else resolved from $FITNESS_DATA_ROOT).')
@@ -90,7 +141,7 @@ def parse_args():
                         choices=['forward', 'backward', 'both'],
                         help='Autoregressive scoring direction for Tranception (default: both)')
     _partner_choices = ['fitness_predictor', 'esm2_fitness_predictor',
-                        'blosum62', 'pssm', 'evcouplings', 'eve', 'tranception']
+                        'blosum62', 'codon', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception']
     parser.add_argument('--gate-partner-a', type=str, default='fitness_predictor',
                         choices=_partner_choices,
                         help='ModelType.value of the first partner for --model-type gated '
@@ -111,11 +162,127 @@ _PARTNER_SHORT = {
     'esm2_fitness_predictor': 'esm2',
     'fitness_predictor': 'xfmr',
     'blosum62': 'blosum62',
+    'codon': 'codon',
+    'substitution': 'subst',
     'pssm': 'pssm',
     'evcouplings': 'evc',
     'eve': 'eve',
     'tranception': 'tran',
 }
+
+
+def parse_source_spec(token):
+    """``NAME=PATH`` -> ``(name, path)``; a bare path -> a name derived from the path.
+
+    Bare-path naming prefers the parent directory (``.../output_flu_full_cutoff12/
+    examples_cutoff_12.txt`` -> ``output_flu_full_cutoff12``), falling back to the stem.
+    """
+    if '=' in token and not os.path.exists(token):
+        name, _, path = token.partition('=')
+        return name, path
+    parent = os.path.basename(os.path.dirname(os.path.abspath(token)))
+    stem = os.path.splitext(os.path.basename(token))[0]
+    return (stem if stem.startswith('examples_') and stem != 'examples' else parent or stem), token
+
+
+def build_checkpoint(model, model_config, args, run_prefix, seq_len_by_source,
+                     source_summary, epoch, global_step, loss, optimizer_state):
+    """The checkpoint dict, shared by the final save and the best-epoch save.
+
+    ``optimizer_state`` is None for the best-epoch save: resuming from a mid-training
+    snapshot is not a use case here, and the optimizer state doubles the file.
+    """
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer_state,
+        'epoch': epoch,
+        'global_step': global_step,
+        'loss': loss,
+        'config': model_config.to_dict(),
+        'train_args': vars(args),
+        'run_prefix': run_prefix,
+        'seq_lens': seq_len_by_source,
+        'sources': source_summary,
+    }
+
+    # EVE/Tranception: persist the MSA-derived dims so eval.py can rebuild the
+    # architecture and load weights without re-running MSA pretraining. The
+    # alphabet-mapping buffers live in state_dict already; only L_focus and the
+    # focus-column indices are needed to reconstruct the module shapes.
+    if args.model_type in ('eve', 'tranception'):
+        checkpoint['eve_state'] = {
+            'L_focus': model._L_focus,
+            'focus_cols': model._focus_to_aligned.tolist(),
+        }
+    return checkpoint
+
+
+def split_examples(examples_by_source, mode, val_frac, split_seed):
+    """Return ``(train_by_source, val_by_source)``.
+
+    ``file``   — the repo default: the TRAINING/TESTING label written by antiGen-data,
+                 i.e. the temporal cutoff.
+    ``random`` — experimental: every TESTING example is dropped outright, so no
+                 post-forecast-date information reaches training, validation or any
+                 hyperparameter choice. The TRAINING pool is then split per source, each
+                 source drawing from its own stream so adding or removing one tree does
+                 not perturb another tree's split.
+    """
+    train_by, val_by = {}, {}
+    for name, examples in examples_by_source.items():
+        if mode == 'file':
+            train_by[name] = [e for e in examples if e.is_training]
+            val_by[name] = [e for e in examples if not e.is_training]
+            continue
+        pool = [e for e in examples if e.is_training]
+        dropped = len(examples) - len(pool)
+        if dropped:
+            print(f"  [{name}] --val-mode random: dropped {dropped} TESTING example(s); "
+                  f"post-cutoff data is not used in this arm")
+        # crc32, not hash(): str hashing is salted by PYTHONHASHSEED across processes.
+        rng = np.random.default_rng([int(split_seed), zlib.crc32(name.encode())])
+        perm = rng.permutation(len(pool))
+        n_val = int(round(val_frac * len(pool)))
+        n_val = min(max(n_val, 1 if len(pool) > 1 else 0), max(len(pool) - 1, 0))
+        val_idx = set(perm[:n_val].tolist())
+        train_by[name] = [e for i, e in enumerate(pool) if i not in val_idx]
+        val_by[name] = [e for i, e in enumerate(pool) if i in val_idx]
+    for name in examples_by_source:
+        print(f"  [{name}] train={len(train_by[name])} val={len(val_by[name])} "
+              f"train_mutations={sum(float(e.mat.sum()) for e in train_by[name]):.0f} "
+              f"val_mutations={sum(float(e.mat.sum()) for e in val_by[name]):.0f}")
+    return train_by, val_by
+
+
+def _print_validation(val, baseline_metrics, sources):
+    """One line overall, then one per source tree, each against its reference points."""
+    print(f"  val nll/mut (all sources)={val['overall']['nll_per_mutation']:.6f} "
+          f"over {val['overall']['n_mutations']:.0f} mutations")
+    for name in sources:
+        stats = val['per_source'].get(name)
+        if stats is None:
+            continue
+        refs = baseline_metrics.get(name, {})
+        freq = refs.get('frequency', {})
+        codon = refs.get('codon', {})
+        subst = refs.get('substitution', {})
+        where = refs.get('where_only', {})
+        wxw = refs.get('where_times_which', {})
+        q = sorted(stats['hit_rate'])[0]
+        print(f"    [{name}] L={stats['seq_len']} muts={stats['n_mutations']:.0f} "
+              f"nll/mut={stats['nll_per_mutation']:.4f} "
+              f"(uniform {stats['uniform_nll_per_mutation']:.4f}, "
+              f"codon {codon.get('nll_per_mutation', float('nan')):.4f}, "
+              f"subst {subst.get('nll_per_mutation', float('nan')):.4f}, "
+              f"where {where.get('nll_per_mutation', float('nan')):.4f}, "
+              f"wxw {wxw.get('nll_per_mutation', float('nan')):.4f}, "
+              f"frequency {freq.get('nll_per_mutation', float('nan')):.4f})  "
+              f"hit@{q}={stats['hit_rate'][q]:.4f} "
+              f"(codon {codon.get('hit_rate', {}).get(q, float('nan')):.4f}, "
+              f"subst {subst.get('hit_rate', {}).get(q, float('nan')):.4f}, "
+              f"where {where.get('hit_rate', {}).get(q, float('nan')):.4f}, "
+              f"wxw {wxw.get('hit_rate', {}).get(q, float('nan')):.4f}, "
+              f"frequency {freq.get('hit_rate', {}).get(q, float('nan')):.4f})")
 
 
 def compute_run_family(args) -> str:
@@ -127,10 +294,13 @@ def compute_run_family(args) -> str:
         a = _PARTNER_SHORT.get(args.gate_partner_a, args.gate_partner_a)
         b = _PARTNER_SHORT.get(args.gate_partner_b, args.gate_partner_b)
         return f"gated_{args.gate_variant}_{a}_{b}"
+    if args.examples and len(args.examples) > 1:
+        return f"{args.model_type}_multitree"
     return args.model_type
 
 
-def write_manifest(args, model_config, output_dir, run_prefix) -> None:
+def write_manifest(args, model_config, output_dir, run_prefix,
+                   source_summary=None) -> None:
     """Write manifest.json next to the run's outputs capturing the full recipe.
 
     Aggregators consume this rather than guessing from filenames, so new gate
@@ -149,7 +319,7 @@ def write_manifest(args, model_config, output_dir, run_prefix) -> None:
         pass
 
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_family": compute_run_family(args),
         "run_prefix": run_prefix,
         "model_type": args.model_type,
@@ -175,6 +345,15 @@ def write_manifest(args, model_config, output_dir, run_prefix) -> None:
                 "denv2" if args.denv2 else
                 "sc2"
             ),
+            # schema_version 2: multi-source training and experimental-arm labelling.
+            "sources": source_summary,
+            "seq_lens": (sorted({s["seq_len"] for s in source_summary})
+                         if source_summary else None),
+            "split_mode": args.val_mode,
+            "val_frac": args.val_frac if args.val_mode == 'random' else None,
+            "split_seed": args.split_seed if args.val_mode == 'random' else None,
+            "experiment": args.experiment,
+            "forecast_valid": args.val_mode == 'file',
         },
         "git_commit": git_commit,
     }
@@ -195,6 +374,12 @@ def write_manifest(args, model_config, output_dir, run_prefix) -> None:
 
 def main():
     args = parse_args()
+
+    # An arm is experimental if it trains across trees or validates on a random split;
+    # the tag travels in train_args and the manifest so antiGen-eval can skip it.
+    if args.experiment is None and ((args.examples and len(args.examples) > 1)
+                                    or args.val_mode == 'random'):
+        args.experiment = 'multitree'
 
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -220,64 +405,88 @@ def main():
     cutoff_int = int(args.cutoff)
 
     if args.examples:
-        # Fully custom: train on any examples file (new protein/pathogen, zero code edits).
-        examples_path = args.examples
+        # Fully custom: train on any examples file(s) (new protein/pathogen, zero code edits).
+        spec = [parse_source_spec(tok) for tok in args.examples]
         data_dir = args.data_dir  # may be None; pssm/gated partners need it (pssms/root.csv)
     else:
         datasets.validate(dataset_name, cutoff_int, args.variant)
         data_dir = args.data_dir or datasets.default_data_dir(dataset_name, cutoff_int)
-        examples_path = datasets.examples_path(data_dir, cutoff_int)
-    print(f"Loading examples from {examples_path}...")
-    all_examples = load_examples(examples_path, allowed_aas, args.variant)
+        spec = [(dataset_name, datasets.examples_path(data_dir, cutoff_int))]
 
-
-    seq_len_aa = len(all_examples[0].aa_idx)
-    print(f"Sequence length: {seq_len_aa}")
-
-    training_examples = []
-    testing_examples = []
-    total_mutations_train = 0.0
-
-    for i, example in enumerate(all_examples):
+    sources, examples_by_source = [], {}
+    for name, path in spec:
+        if name in examples_by_source:
+            raise SystemExit(f"Duplicate source name '{name}' — use NAME=PATH to disambiguate")
+        print(f"Loading examples from {path} (source '{name}')...")
+        examples = load_examples(path, allowed_aas, args.variant, source=name)
         if args.ignore_dead_ends:
-            if example.mat.sum() < 0.5:
-                continue
+            # Filter before splitting so train and val are drawn from one population.
+            examples = [e for e in examples if e.mat.sum() >= 0.5]
+        if not examples:
+            raise SystemExit(f"Source '{name}': no examples left after filtering ({path})")
+        lens = {len(e.aa_idx) for e in examples}
+        if len(lens) != 1:
+            raise SystemExit(f"Source '{name}' has mixed sequence lengths {sorted(lens)} — "
+                             f"run antiGen-validate-examples on {path}")
+        sources.append(name)
+        examples_by_source[name] = examples
 
-        if example.is_training:
-            training_examples.append(example)
-            total_mutations_train += example.mat.sum()
-        else:
-            testing_examples.append(example)
+    seq_len_by_source = {n: len(examples_by_source[n][0].aa_idx) for n in sources}
+    seq_lens = sorted(set(seq_len_by_source.values()))
+    seq_len_aa = max(seq_lens)
+    print("Sources: " + ", ".join(
+        f"{n}(L={seq_len_by_source[n]}, n={len(examples_by_source[n])})" for n in sources))
 
-    print(f"Training examples: {len(training_examples)}, Testing examples: {len(testing_examples)}")
+    # Only length-agnostic models may see more than one length: the from-scratch
+    # transformer's positional encoding is a (1, seq_len, d_model) parameter.
+    if len(seq_lens) > 1:
+        from antiGen.infer import VARIABLE_LENGTH_OK
+        variable_ok = {'esm2': ModelType.ESM2_FITNESS_PREDICTOR,
+                       'blosum62': ModelType.BLOSUM62,
+                       'codon': ModelType.CODON,
+                       'substitution': ModelType.SUBSTITUTION}
+        if variable_ok.get(args.model_type) not in VARIABLE_LENGTH_OK:
+            raise SystemExit(
+                f"--model-type {args.model_type} predicts on a fixed coordinate frame and "
+                f"cannot train on mixed sequence lengths {seq_lens}. Use --model-type esm2.")
+
+    train_by_source, val_by_source = split_examples(
+        examples_by_source, args.val_mode, args.val_frac, args.split_seed)
+
+    training_examples = [e for n in sources for e in train_by_source[n]]
+    total_mutations_train = sum(float(e.mat.sum()) for e in training_examples)
+    print(f"Training examples: {len(training_examples)}, "
+          f"Validation examples: {sum(len(val_by_source[n]) for n in sources)}")
     print(f"Total mutations in training set: {total_mutations_train:.0f}")
 
+    source_summary = [
+        {'name': n, 'path': dict(spec)[n], 'seq_len': seq_len_by_source[n],
+         'n_train': len(train_by_source[n]), 'n_val': len(val_by_source[n]),
+         'n_mutations_train': sum(float(e.mat.sum()) for e in train_by_source[n]),
+         'n_mutations_val': sum(float(e.mat.sum()) for e in val_by_source[n])}
+        for n in sources
+    ]
 
     train_dataset = MutationDataset(training_examples)
-    test_dataset = MutationDataset(testing_examples)
+    train_sampler = LengthBucketBatchSampler(
+        [len(e.aa_idx) for e in training_examples], batch_size=args.batch_size,
+        shuffle=True, seed=args.seed, max_batch_tokens=args.max_batch_tokens)
+    # batch_sampler is mutually exclusive with batch_size / shuffle / drop_last.
+    train_loader = DataLoader(train_dataset, batch_sampler=train_sampler,
+                              num_workers=args.num_workers, pin_memory=True)
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=4, pin_memory=True, drop_last=False,
-    )
-    # Per-batch test-loss monitoring is optional: a small or high-cutoff training set
-    # can have no TESTING examples, in which case we skip it (an empty DataLoader would
-    # raise num_samples=0).
-    def cycle(loader):
-        while True:
-            for batch in loader:
-                yield batch
-    if len(test_dataset) > 0:
-        test_loader = DataLoader(
-            test_dataset, batch_size=args.batch_size, shuffle=True,
-            num_workers=4, pin_memory=True, drop_last=False,
-        )
-        test_iter = cycle(test_loader)
-    else:
-        test_iter = None
-        print("No TESTING examples found — skipping per-batch test-loss monitoring.")
+    # Validation: one loader per source. Each source is one protein, hence one length,
+    # so the default collate is fine and the per-tree breakdown falls out for free.
+    val_loaders = {
+        n: DataLoader(MutationDataset(val_by_source[n]), batch_size=args.batch_size,
+                      shuffle=False, num_workers=args.num_workers, pin_memory=True)
+        for n in sources if val_by_source.get(n)
+    }
+    if not val_loaders:
+        print("No validation examples found — skipping per-epoch validation.")
 
-    print(f"Train batches per epoch: {math.ceil(len(train_dataset) / args.batch_size)}")
+    print(f"Train batches per epoch: {len(train_sampler)} "
+          f"buckets={train_sampler.bucket_sizes()}")
 
     allowed_aas_str = allowed_aas
     alphabet_config = AlphabetConfig(amino_acids=allowed_aas_str)
@@ -303,6 +512,28 @@ def main():
         )
         model = create_model(model_config, device)
         print("Model: BLOSUM62 (no training, eval only)")
+    elif args.model_type == 'codon':
+        model_config = ModelConfig(
+            model_type=ModelType.CODON,
+            seq_len=seq_len_aa,
+            alphabet=alphabet_config,
+            codon=CodonConfig(kappa=args.codon_kappa,
+                              pseudocount=args.codon_pseudocount),
+        )
+        model = create_model(model_config, device)
+        print(f"Model: codon accessibility (kappa={args.codon_kappa}, no training, eval only)")
+    elif args.model_type == 'substitution':
+        model_config = ModelConfig(
+            model_type=ModelType.SUBSTITUTION,
+            seq_len=seq_len_aa,
+            alphabet=alphabet_config,
+            substitution=SubstitutionConfig(init_kappa=args.codon_kappa,
+                                            pseudocount=args.codon_pseudocount,
+                                            use_blosum=not args.no_blosum),
+        )
+        model = create_model(model_config, device)
+        print(f"Model: learned substitution matrix (codon x BLOSUM62, "
+              f"{model.get_num_parameters():,} free scalars)")
     elif args.model_type == 'pssm':
         model_config = ModelConfig(
             model_type=ModelType.PSSM,
@@ -412,12 +643,55 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
+    # Build run-specific prefix for output files
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    arm_tag = ""
+    if args.examples and len(args.examples) > 1:
+        arm_tag += f"_multitree{len(args.examples)}"
+    if args.val_mode == 'random':
+        arm_tag += f"_randval{args.val_frac:g}s{args.split_seed}"
+    if args.model_type == 'esm2':
+        model_name_short = args.esm2_model_name.split('/')[-1]
+        run_prefix = f"esm2_{model_name_short}{arm_tag}_lr{args.lr}_{timestamp}"
+    elif args.model_type == 'blosum62':
+        run_prefix = f"blosum62_{timestamp}"
+    elif args.model_type == 'codon':
+        run_prefix = f"codon_k{args.codon_kappa:g}_{timestamp}"
+    elif args.model_type == 'substitution':
+        tag = "codononly" if args.no_blosum else "blosum"
+        run_prefix = f"subst_{tag}_lr{args.lr}_{timestamp}"
+    elif args.model_type == 'evcouplings':
+        run_prefix = f"evcouplings_{timestamp}"
+    elif args.model_type == 'eve':
+        if args.freeze_backbone:
+            run_prefix = f"eve_frozen_{timestamp}"
+        else:
+            run_prefix = f"eve_ft_lr{args.lr}_{timestamp}"
+    elif args.model_type == 'tranception':
+        if args.freeze_backbone:
+            run_prefix = f"tranception_frozen_{args.scoring_direction}_{timestamp}"
+        else:
+            run_prefix = f"tranception_ft_{args.scoring_direction}_lr{args.lr}_{timestamp}"
+    elif args.model_type == 'gated':
+        a = _PARTNER_SHORT.get(args.gate_partner_a, args.gate_partner_a)
+        b = _PARTNER_SHORT.get(args.gate_partner_b, args.gate_partner_b)
+        run_prefix = f"gated_{args.gate_variant}_{a}_{b}_lr{args.lr}_{timestamp}"
+    else:
+        run_prefix = f"simple_d{args.d_model}_n{args.num_layers}_lr{args.lr}_{timestamp}"
+
+    write_manifest(args, model_config, args.output_dir, run_prefix,
+                   source_summary=source_summary)
+    val_metrics_path = os.path.join(args.output_dir,
+                                    f"{run_prefix}_val_metrics_by_epoch.json")
+    val_records = []
+
     global_step = 0
     epoch = 0
     avg_train_loss = float('nan')
     optimizer_state = None
+    best_val_nll, best_epoch = float('inf'), None
 
-    skip_training = args.model_type in ('blosum62', 'pssm', 'evcouplings') or \
+    skip_training = args.model_type in ('blosum62', 'codon', 'pssm', 'evcouplings') or \
         (args.model_type == 'eve' and args.freeze_backbone) or \
         (args.model_type == 'tranception' and args.freeze_backbone)
     if skip_training:
@@ -436,9 +710,86 @@ def main():
         else:
             scheduler = None
 
+        # Per-tree reference points, computed once. A uniform predictor scores
+        # log(L * (E - 1)) per mutation. The frequency baseline is the empirical *joint*
+        # over (position, alt_aa) from that tree's TRAIN half only -- it knows both where
+        # a mutation lands and which residue it becomes, so it is the memorization
+        # ceiling, not a positional map. where_only is that same map with its amino-acid
+        # axis flattened to uniform, so the gap between them is exactly the value of
+        # knowing which residue appears.
+        baseline_metrics = {}
+        for name, loader in val_loaders.items():
+            counts = frequency_baseline_scores(
+                train_by_source[name], seq_len_by_source[name], E)
+            where = where_only_baseline_scores(
+                train_by_source[name], seq_len_by_source[name], E)
+            baseline_metrics[name] = {
+                'frequency': fixed_map_metrics(counts, loader, device,
+                                               qtiles=tuple(args.val_qtiles)),
+                'where_only': fixed_map_metrics(where, loader, device,
+                                                qtiles=tuple(args.val_qtiles)),
+            }
+        # Learned substitution matrix (codon x BLOSUM62, 25 free scalars) fitted on each
+        # source's training half. Position-blind, so it is the bar for "has the model
+        # learned more than substitution chemistry".
+        for name, loader in (val_loaders.items()
+                             if args.model_type != 'substitution' else ()):
+            fitted = fit_substitution_baseline(train_by_source[name], device, allowed_aas)
+            scored = validate_per_source(fitted, {name: loader}, device,
+                                         qtiles=tuple(args.val_qtiles))
+            baseline_metrics[name]['substitution'] = scored['per_source'][name]
+            baseline_metrics[name]['substitution']['params'] = {
+                'kappa': float(torch.exp(fitted.log_kappa)),
+                'w_codon': float(fitted.w_codon),
+                'w_blosum': float(fitted.w_blosum),
+            }
+
+            # P(i, a) = P(i) * P(a | wt_i): the strongest predictor that assumes where
+            # and which are independent. The model only earns the word "learned" for
+            # position-specific substitution preference if it beats this.
+            factored = WhereTimesWhichPredictor(
+                fitted.config,
+                positional_marginal_counts(train_by_source[name],
+                                           seq_len_by_source[name], E),
+                fitted).to(device)
+            factored_val = validate_per_source(factored, {name: loader}, device,
+                                               qtiles=tuple(args.val_qtiles))
+            baseline_metrics[name]['where_times_which'] = \
+                factored_val['per_source'][name]
+            del factored, fitted
+
+        # Codon accessibility: a data-free reference point that knows only the genetic
+        # code, scored through the same machinery as the model.
+        if val_loaders and args.model_type != 'codon':
+            codon_model = create_model(
+                ModelConfig(model_type=ModelType.CODON, seq_len=seq_len_aa,
+                            alphabet=alphabet_config,
+                            codon=CodonConfig(kappa=args.codon_kappa,
+                                              pseudocount=args.codon_pseudocount)),
+                device)
+            codon_val = validate_per_source(codon_model, val_loaders, device,
+                                            qtiles=tuple(args.val_qtiles))
+            for name, stats in codon_val['per_source'].items():
+                baseline_metrics[name]['codon'] = stats
+            del codon_model
+        if val_loaders:
+            zero_shot = validate_per_source(model, val_loaders, device,
+                                            qtiles=tuple(args.val_qtiles))
+            print("Zero-shot (before any optimizer step):")
+            _print_validation(zero_shot, baseline_metrics, sources)
+            val_records.append({'epoch': -1, 'global_step': 0,
+                                'avg_train_loss': None, 'val': zero_shot,
+                                'baselines': baseline_metrics})
+            with open(val_metrics_path, 'w') as f:
+                json.dump(val_records, f, indent=2)
+
         print("Starting training...")
 
+        best_path = os.path.join(args.output_dir, f"fitness_{run_prefix}_best.pt")
+        cells_path = os.path.join(args.output_dir, f"{run_prefix}_val_cells.npz")
+
         for epoch in range(args.epochs):
+            train_sampler.set_epoch(epoch)   # without this, every epoch replays one order
             total_train_loss = 0.0
             n_batches = 0
 
@@ -464,23 +815,8 @@ def main():
                 n_batches += 1
                 global_step += 1
 
-                # Test minibatch loss (cheap, per-batch monitoring; skipped if no test set)
-                test_batch_loss_val = None
-                if test_iter is not None:
-                    test_aa, test_target = next(test_iter)
-                    with torch.no_grad():
-                        model.eval()
-                        test_aa = test_aa.to(device)
-                        test_target = test_target.to(device)
-                        test_logits = model(test_aa).float()
-                        test_probs = compute_probs(test_logits, test_target, test_aa)
-                        test_batch_loss_val = compute_loss_batch(test_probs, test_target).item()
-
                 if batch_num % 10 == 0:
-                    if test_batch_loss_val is not None:
-                        print(f"  Epoch {epoch}, batch {batch_num}: train_loss={train_loss_val:.8f}, test_batch_loss={test_batch_loss_val:.8f}")
-                    else:
-                        print(f"  Epoch {epoch}, batch {batch_num}: train_loss={train_loss_val:.8f}")
+                    print(f"  Epoch {epoch}, batch {batch_num}: train_loss={train_loss_val:.8f}")
 
                 if args.max_batches is not None and global_step >= args.max_batches:
                     print(f"Reached max batches ({args.max_batches}), stopping.")
@@ -488,6 +824,40 @@ def main():
 
             avg_train_loss = total_train_loss / max(n_batches, 1)
             print(f"Epoch {epoch}: avg_train_loss={avg_train_loss:.8f}")
+
+            if val_loaders:
+                dumper = CellDumper() if args.dump_cells else None
+                val = validate_per_source(model, val_loaders, device,
+                                          qtiles=tuple(args.val_qtiles),
+                                          cell_sink=dumper)
+                _print_validation(val, baseline_metrics, sources)
+                val_records.append({'epoch': epoch, 'global_step': global_step,
+                                    'avg_train_loss': avg_train_loss, 'val': val,
+                                    'baselines': baseline_metrics})
+                # Rewritten every epoch so a wall-clock kill still leaves the curve.
+                with open(val_metrics_path, 'w') as f:
+                    json.dump(val_records, f, indent=2)
+
+                # The final epoch is typically well past the best one, so without this
+                # the saved weights and cells are the overfit model, not the scored one.
+                pooled = val['overall']['nll_per_mutation']
+                improved = pooled < best_val_nll
+                if improved:
+                    best_val_nll, best_epoch = pooled, epoch
+                    if args.save_best:
+                        torch.save(
+                            build_checkpoint(model, model_config, args, run_prefix,
+                                             seq_len_by_source, source_summary, epoch,
+                                             global_step, avg_train_loss, None),
+                            best_path)
+                        print(f"  New best pooled val NLL {pooled:.8f}; "
+                              f"saved {best_path}")
+                    if dumper is not None:
+                        n_bytes = dumper.save(cells_path, epoch=epoch,
+                                              nll_per_mutation=pooled)
+                        print(f"  Dumped per-cell maps for epoch {epoch} to "
+                              f"{cells_path} ({n_bytes / 1e6:.1f} MB uncompressed)")
+                del dumper
 
             if args.max_batches is not None and global_step >= args.max_batches:
                 break
@@ -500,59 +870,18 @@ def main():
             torch.cuda.empty_cache()
         print("Freed training objects (optimizer, scheduler, train_loader, etc.) before saving")
 
-    # Build run-specific prefix for output files
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    if args.model_type == 'esm2':
-        model_name_short = args.esm2_model_name.split('/')[-1]
-        run_prefix = f"esm2_{model_name_short}_lr{args.lr}_{timestamp}"
-    elif args.model_type == 'blosum62':
-        run_prefix = f"blosum62_{timestamp}"
-    elif args.model_type == 'evcouplings':
-        run_prefix = f"evcouplings_{timestamp}"
-    elif args.model_type == 'eve':
-        if args.freeze_backbone:
-            run_prefix = f"eve_frozen_{timestamp}"
-        else:
-            run_prefix = f"eve_ft_lr{args.lr}_{timestamp}"
-    elif args.model_type == 'tranception':
-        if args.freeze_backbone:
-            run_prefix = f"tranception_frozen_{args.scoring_direction}_{timestamp}"
-        else:
-            run_prefix = f"tranception_ft_{args.scoring_direction}_lr{args.lr}_{timestamp}"
-    elif args.model_type == 'gated':
-        a = _PARTNER_SHORT.get(args.gate_partner_a, args.gate_partner_a)
-        b = _PARTNER_SHORT.get(args.gate_partner_b, args.gate_partner_b)
-        run_prefix = f"gated_{args.gate_variant}_{a}_{b}_lr{args.lr}_{timestamp}"
-    else:
-        run_prefix = f"simple_d{args.d_model}_n{args.num_layers}_lr{args.lr}_{timestamp}"
-
-    write_manifest(args, model_config, args.output_dir, run_prefix)
 
     output_path = os.path.join(args.output_dir, f"fitness_{run_prefix}.pt")
 
     print(f"Saving model to {output_path}...")
-    checkpoint = {
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer_state,
-        'epoch': epoch,
-        'global_step': global_step,
-        'loss': avg_train_loss,
-        'config': model_config.to_dict(),
-        'train_args': vars(args),
-        'run_prefix': run_prefix,
-    }
-
-    # EVE/Tranception: persist the MSA-derived dims so eval.py can rebuild the
-    # architecture and load weights without re-running MSA pretraining. The
-    # alphabet-mapping buffers live in state_dict already; only L_focus and the
-    # focus-column indices are needed to reconstruct the module shapes.
-    if args.model_type in ('eve', 'tranception'):
-        checkpoint['eve_state'] = {
-            'L_focus': model._L_focus,
-            'focus_cols': model._focus_to_aligned.tolist(),
-        }
-
+    checkpoint = build_checkpoint(model, model_config, args, run_prefix,
+                                  seq_len_by_source, source_summary,
+                                  epoch, global_step, avg_train_loss, optimizer_state)
     torch.save(checkpoint, output_path)
+
+    if best_epoch is not None and args.save_best:
+        print(f"Best pooled validation NLL {best_val_nll:.8f} at epoch {best_epoch} "
+              f"(saved separately as fitness_{run_prefix}_best.pt)")
 
     print("Done.")
 

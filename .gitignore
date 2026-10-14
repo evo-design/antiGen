@@ -55,3 +55,12 @@ plan_optimizations.md
 
 # Per-session context notes (not tracked)
 context/
+
+# Multi-tree / forecasting experiment artifacts (branch is-multitree).
+# All regenerable, and too large to track: fetch_trees.py and fetch_snapshots.py
+# re-download the builds, generate_all.py and make_forecast_testset.py rebuild the
+# example files byte-identically, and checkpoints are ~224 MB each.
+nextstrain/
+runs/
+tree_pulled_*.json
+experiments/multitree/data/**/*.txt

@@ -149,6 +149,7 @@ antiGen-train --examples ./mydata/examples_cutoff_5.txt \
 | Transformer | `transformer` | — (core) | Small transformer trained from scratch. **Default; no downloads.** |
 | ESM-2 | `esm2` | `.[esm]` | ESM-2 protein LM (default `esm2_t12_35M_UR50D`), frozen/partial/full finetune |
 | BLOSUM62 | `blosum62` | — (core) | Static BLOSUM62 substitution matrix (no training, eval only) |
+| Codon | `codon` | — (core) | Single-nucleotide accessibility under the standard genetic code (no training, eval only) |
 | PSSM | `pssm` | — (core) | Per-position `log(count+1)` from the root PSSM (no training, eval only) |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
 | EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from a pandemic MSA via `plmc` (pseudo-likelihood; eval only) |
@@ -168,6 +169,9 @@ antiGen-train --model-type transformer --d-model 128 --num-layers 2 \
 
 # ESM-2, partial finetune of the last 4 layers
 antiGen-train --model-type esm2 --freeze-backbone --finetune-layers 4 --lr 1e-4 --flu
+
+# codon-accessibility baseline (no training; --codon-kappa up-weights transitions)
+antiGen-train --model-type codon --codon-kappa 2.5 --flu
 
 # gated blend of a from-scratch transformer and the root PSSM
 antiGen-train --model-type gated --gate-partner-a fitness_predictor --gate-partner-b pssm \

@@ -258,6 +258,9 @@ def read_unified_csv(path, baseline_names, prefix_set):
 def parse_args():
     parser = argparse.ArgumentParser(description='Unified multi-model fitness evaluation')
     parser.add_argument('--dataset', type=str, required=True, choices=['sc2', 'flu', 'rsv_a', 'denv2'])
+    parser.add_argument('--include-experimental', action='store_true', default=False,
+                        help='Also evaluate checkpoints tagged with an experimental arm '
+                             '(antiGen-train --experiment), which are not forecast-valid.')
     parser.add_argument('--checkpoint-dir', type=str, required=True,
                         help='Directory to scan for fitness_*.pt checkpoints')
     parser.add_argument('--output-dir', type=str, required=True,
@@ -401,6 +404,12 @@ def main():
         for _ts, path in groups[prefix]:  # newest-first
             ta, cfg, gstep = peek_checkpoint_meta(path)
             if ta is not None:
+                # Experimental arms (multi-tree, random validation split) are not
+                # forecast-valid and must not land in a comparison CSV by accident.
+                if ta.get('experiment') and not args.include_experimental:
+                    print(f"[skip] {prefix}: experimental arm "
+                          f"'{ta['experiment']}' (pass --include-experimental)")
+                    continue
                 if dataset_of_train_args(ta) != args.dataset:
                     continue
                 matched = True
