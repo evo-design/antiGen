@@ -1873,3 +1873,51 @@ both metrics; Q-R epoch rule.
 `collect_figure_metrics.py` emits all three universes in one pass with a
 `universe` column; the extra universes are a masking pass each over score maps
 already computed, so they are nearly free. The R script selects.
+
+### Is the baseline's de novo win at 1% just tie-breaking? No (2026-10-14)
+
+At K = 8 the model beats `where x which` on de novo recall at 10%
+(+0.104 [+0.018, +0.195]) and loses at 1% (−0.067 [−0.116, −0.026]). The obvious
+suspicion is tie structure: `P(i) * P(a | wt_i)` gives every position with zero
+training mutations the same smoothed P(i), so its score there depends only on
+(wild-type, alternative) -- and a de novo target is by construction one with no
+training mutation at its cell, so those targets should be exactly the ones
+sitting in the tied block that `compute_hit_rate` pays out fractionally.
+
+**Measured (`tie_probe.py`), the suspicion is wrong.** Recall split into the part
+earned strictly above the budget cut and the part handed over by the tie rule,
+temporal panel, standard universe:
+
+| rung | subset | q | recall | strict | from ties | tie share | mean tied block |
+|---|---|---|---|---|---|---|---|
+| model | novel | 1% | 0.022 | 0.022 | 0.000 | **0%** | 1 |
+| `where x which` | novel | 1% | **0.090** | **0.090** | 0.000 | **0%** | 5 |
+| `where x which` | all | 1% | 0.232 | 0.230 | 0.002 | 1% | 5 |
+| frequency | novel | 10% | 0.052 | 0.000 | 0.052 | **100%** | 8,637 |
+| frequency | all | 10% | 0.726 | 0.684 | 0.041 | 6% | 8,642 |
+| frequency | all | 1% | 0.351 | 0.296 | 0.055 | 16% | 79 |
+
+`where x which`'s tied blocks average **five cells**, not thousands: the fitted
+`P(a | wt_i)` is a continuous 20 x 20 matrix and the product takes many distinct
+values, so the block never approaches the budget. Its de novo 1% win is earned
+entirely above the cut. The ESM-2 maps are continuous and tie-free (block = 1).
+
+Confirmed by simulating what a single real shortlist would catch -- cells inside
+a tied block are indistinguishable, so a list draws from it without replacement
+and the count caught is Hypergeometric(n_at, targets_at, slots), whose mean is
+exactly the fractional score. For the model and `where x which` the draw
+distribution is degenerate (p5 = median = p95), i.e. there is no randomness to
+worry about.
+
+**The rung where ties really do decide the answer is `frequency`.** All of its
+de novo recall at 10% is tie credit (0.052 of 0.052, over a block averaging
+8,637 cells), and a single real shortlist ranges 0.022-0.082 across draws. At 1%
+on de novo it catches nothing at all, in 100% of draws. s11 flagged this for
+`frequency`-on-novel under `argsort`; it holds under the canonical convention
+too, and it is a live caveat because that rung is in the figure's ladder. Read
+`frequency`'s de novo number as "its unseen cells are indistinguishable and the
+budget is being spread over them", not as ranking skill.
+
+This also explains the one imperfect overlap marginal: `where x which` at 1% on
+all substitutions reads 0.2299 against the ladder's 0.2317, a 0.0017 gap, which
+is its two-slot tie allocation. Every other cell matches to 0.0000.
