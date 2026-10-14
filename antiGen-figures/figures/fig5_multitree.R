@@ -9,20 +9,26 @@
 ##      independent. On de novo substitutions that advantage does not survive,
 ##      and the figure shows that rather than hiding it.
 ##
-## Main text  (multitree_results):      recall at top 10%, the ranking metric.
-## Supplement (supp_multitree_results): the same structure in NLL per mutation,
-##      plus the epoch-rule sensitivity panels.
+## Main text  (multitree_results): the TEMPORAL holdout only, both metrics.
+##      Columns are recall at top 10% and NLL per mutation; rows are the two
+##      target subsets and then the two contrasts.
+## Supplement (supp_multitree_results): the random holdout, same structure,
+##      kept as the evidence for why it is not the main result, plus the
+##      epoch-rule sensitivity panels.
 ##
-## Both columns are scored on the SAME nine trees. Seasonal flu is delisted from
-## Nextstrain and cannot be forecast, so the forecast panel fixes the tree set
-## and the random-split arm was re-run to match it. What is deliberately not
-## matched: the random arm trains on today's full builds, the temporal arm on
-## the build as published at D. That difference is the comparison.
+## Why the random holdout is not in the main figure. "De novo" means no training
+## mutation EVENT at that (position, alt) cell. Under a random split of one tree
+## a mutation can be held out as an event while its descendants stay in the
+## training half as parent sequences, so the residue is still plainly visible to
+## anything that reads sequence composition. Measured: 53.9% of random-split
+## de novo targets already occur in the training sequences, against 7.6% under
+## the temporal split. The PSSM rung makes this visible -- at chance on de novo
+## temporally (0.14 against uniform 0.10) but 0.56 on the random split, and the
+## top rung of the random all-substitutions ladder, above the model itself.
 ##
-## In BOTH regimes the epoch is chosen on a validation split and reported on a
-## separate set that training and tuning never saw: post-D substitutions for the
-## temporal column, and a third held-out block (--test-frac 0.1) for the random
-## one.
+## The epoch is chosen on a validation split and reported on a set that training
+## and tuning never saw: post-D substitutions here, and a third held-out block
+## (--test-frac 0.1) in the supplement's random arm.
 ##
 ## Data: data/multitree/{ladder,deltas}.csv, written by
 ##       experiments/multitree/collect_figure_metrics.py in the main repo.
@@ -116,8 +122,9 @@ ladder$shown_hi <- ladder$hi
 ## flush against the rung names instead of across a strip of blank panel. Only a
 ## ladder that actually goes negative (NLL on the de novo subset) gets room on
 ## the left, and only as much as its longest negative bar's label needs.
-lad_range <- function(metric) {
-  v <- ladder$shown[ladder$metric == metric & ladder$rule == MAIN_RULE]
+lad_range <- function(metric, eval_name) {
+  v <- ladder$shown[ladder$metric == metric & ladder$rule == MAIN_RULE &
+                    ladder$eval == eval_name]
   hi <- max(v)
   lo <- min(0, min(v))
   c(if (lo < 0) lo - 0.10 * (hi - lo) else 0, hi + 0.12 * (hi - lo))
@@ -134,9 +141,14 @@ lad_range <- function(metric) {
 ## alone moves from the top of the random panel to the middle of the temporal
 ## one. The right column is still correctly labelled row by row, which is what
 ## the shared order is there to guarantee.
-rung_order <- function(metric) {
+## One rung order per (metric, regime), from that panel's all-substitutions
+## subset. Columns are now different METRICS, which genuinely order the rungs
+## differently -- the PSSM is fourth by recall and seventh by NLL -- so each
+## column is sorted on its own values and carries its own rung names rather
+## than being read against its neighbour.
+rung_order <- function(metric, eval_name) {
   d <- ladder[ladder$metric == metric & ladder$rule == MAIN_RULE &
-              ladder$subset == "all" & ladder$eval == EVALS[1], ]
+              ladder$subset == "all" & ladder$eval == eval_name, ]
   as.character(d$rung_lab[order(d$shown)])
 }
 
@@ -151,7 +163,8 @@ rung_order <- function(metric) {
 make_ladder <- function(metric, eval_name, subset_key, show_y, rng) {
   d <- ladder[ladder$metric == metric & ladder$eval == eval_name &
               ladder$rule == MAIN_RULE & ladder$subset == subset_key, ]
-  d$rung_lab <- factor(as.character(d$rung_lab), levels = rung_order(metric))
+  d$rung_lab <- factor(as.character(d$rung_lab),
+                       levels = rung_order(metric, eval_name))
   p <- ggplot(d, aes(y = rung_lab, x = shown, fill = rung_lab)) +
     geom_vline(xintercept = 0, color = "grey70", linewidth = 0.3) +
     geom_col(width = 0.74) +
@@ -239,6 +252,7 @@ make_rule_panel <- function(eval_name) {
     theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank(),
           axis.text.y = element_text(size = 7.5),
+          plot.margin = margin(t = 12, r = 6, b = 4, l = 4),
           strip.text = element_text(size = 9, face = "italic"))
 }
 
@@ -290,86 +304,83 @@ rule_legend <- legend_for(
                               levels = unname(RULE_LABELS))),
   "rule_lab")
 
-header <- function(i) {
+#' Column header: a metric name over a rule.
+col_header <- function(txt) {
   ggdraw() +
-    draw_label(EVALS[i], fontface = "bold", size = 12, y = 0.58) +
+    draw_label(txt, fontface = "bold", size = 12, y = 0.58) +
     draw_line(x = c(0.03, 0.97), y = c(0.04, 0.04),
               color = "black", linewidth = 0.5)
 }
 row_label <- function(txt) ggdraw() +
   draw_label(txt, fontface = "italic", size = 10.5, angle = 90)
 
-#' Stack header + rows, with a rotated caption column down the left.
-assemble <- function(rows, labels, heights) {
+#' Stack a banner, column headers and rows, with rotated captions down the left.
+assemble <- function(banner, headers, rows, labels, heights) {
   body <- plot_grid(plotlist = c(
-    list(plot_grid(header(1), header(2), nrow = 1)), rows),
-    ncol = 1, rel_heights = heights)
+    list(ggdraw() + draw_label(banner, fontface = "bold", size = 13)),
+    list(plot_grid(plotlist = lapply(headers, col_header), nrow = 1)),
+    rows), ncol = 1, rel_heights = heights)
   caption <- plot_grid(plotlist = c(
-    list(ggdraw()), lapply(labels, function(l)
-      if (is.null(l)) ggdraw() else row_label(l))),
+    list(ggdraw(), ggdraw()),
+    lapply(labels, function(l) if (is.null(l)) ggdraw() else row_label(l))),
     ncol = 1, rel_heights = heights)
   plot_grid(caption, body, nrow = 1, rel_widths = c(0.042, 1))
 }
 
+HEADERS <- c("Recall at top 10%", "NLL per mutation")
+XLAB <- c(hit = "Multi-tree minus comparator, recall at top 10%",
+          nll = "Multi-tree minus comparator, NLL per mutation")
 
-## --- Main figure: recall at top 10% --------------------------------------------------
-
-HIT_RANGE <- lad_range("hit")
-DELTA_HIT_XLAB <- "Multi-tree minus comparator, recall at top 10%"
-
-main_rows <- list(
-  plot_grid(make_ladder("hit", EVALS[1], "all", TRUE, HIT_RANGE),
-            make_ladder("hit", EVALS[2], "all", FALSE, HIT_RANGE),
-            nrow = 1, labels = c("A", "B"), rel_widths = c(1.3, 1)),
-  plot_grid(make_ladder("hit", EVALS[1], "novel", TRUE, HIT_RANGE),
-            make_ladder("hit", EVALS[2], "novel", FALSE, HIT_RANGE),
-            nrow = 1, labels = c("C", "D"), rel_widths = c(1.3, 1)),
-  forest_legend,
-  plot_grid(make_forest("vs single-tree model", EVALS[1], "hit", DELTA_HIT_XLAB),
-            make_forest("vs single-tree model", EVALS[2], "hit", DELTA_HIT_XLAB),
-            nrow = 1, labels = c("E", "F")),
-  plot_grid(make_forest("vs where x which", EVALS[1], "hit", DELTA_HIT_XLAB),
-            make_forest("vs where x which", EVALS[2], "hit", DELTA_HIT_XLAB),
-            nrow = 1, labels = c("G", "H"))
-)
-MAIN_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55)
-
-main <- assemble(main_rows,
-                 list("All substitutions", "De novo only", NULL,
-                      "Versus single-tree", "Versus where x which"),
-                 MAIN_H)
-
-save_figure(main, "multitree_results", width = 11.5, height = 12)
+#' One regime's full eight-panel block: two ladders over two contrasts, with
+#' recall and NLL side by side.
+build <- function(eval_name, banner, letters_) {
+  rng <- list(hit = lad_range("hit", eval_name), nll = lad_range("nll", eval_name))
+  row_pair <- function(f, a, b) plot_grid(f("hit"), f("nll"), nrow = 1,
+                                          labels = c(a, b))
+  rows <- list(
+    row_pair(function(m) make_ladder(m, eval_name, "all", TRUE, rng[[m]]),
+             letters_[1], letters_[2]),
+    row_pair(function(m) make_ladder(m, eval_name, "novel", TRUE, rng[[m]]),
+             letters_[3], letters_[4]),
+    forest_legend,
+    row_pair(function(m) make_forest("vs single-tree model", eval_name, m,
+                                     XLAB[[m]]), letters_[5], letters_[6]),
+    row_pair(function(m) make_forest("vs where x which", eval_name, m,
+                                     XLAB[[m]]), letters_[7], letters_[8])
+  )
+  assemble(banner, HEADERS, rows,
+           list("All substitutions", "De novo only", NULL,
+                "Versus single-tree", "Versus where x which"),
+           c(0.16, 0.20, 1.15, 1.15, 0.10, 1.55, 1.55))
+}
 
 
-## --- Supplement: NLL, plus the epoch rule ----------------------------------
+## --- Main figure: the temporal holdout ------------------------------------
 
-NLL_RANGE <- lad_range("nll")
-DELTA_NLL_XLAB <- "Multi-tree minus comparator, NLL per mutation"
+save_figure(build(EVALS[2], "Temporal holdout, D = 2025-01-01", LETTERS[1:8]),
+            "multitree_results", width = 13, height = 12.5)
 
-supp_rows <- list(
-  plot_grid(make_ladder("nll", EVALS[1], "all", TRUE, NLL_RANGE),
-            make_ladder("nll", EVALS[2], "all", FALSE, NLL_RANGE),
-            nrow = 1, labels = c("A", "B"), rel_widths = c(1.3, 1)),
-  plot_grid(make_ladder("nll", EVALS[1], "novel", TRUE, NLL_RANGE),
-            make_ladder("nll", EVALS[2], "novel", FALSE, NLL_RANGE),
-            nrow = 1, labels = c("C", "D"), rel_widths = c(1.3, 1)),
-  forest_legend,
-  plot_grid(make_forest("vs single-tree model", EVALS[1], "nll", DELTA_NLL_XLAB),
-            make_forest("vs single-tree model", EVALS[2], "nll", DELTA_NLL_XLAB),
-            nrow = 1, labels = c("E", "F")),
-  plot_grid(make_forest("vs where x which", EVALS[1], "nll", DELTA_NLL_XLAB),
-            make_forest("vs where x which", EVALS[2], "nll", DELTA_NLL_XLAB),
-            nrow = 1, labels = c("G", "H")),
-  rule_legend,
-  plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
-            nrow = 1, labels = c("I", "J"))
-)
-SUPP_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55, 0.10, 1.25)
 
-supp <- assemble(supp_rows,
-                 list("All substitutions", "De novo only", NULL,
-                      "Versus single-tree", "Versus where x which", NULL, "Epoch rule"),
-                 SUPP_H)
+## --- Supplement: the random holdout, and the epoch rule --------------------
 
-save_figure(supp, "supp_multitree_results", width = 11.5, height = 16)
+## Kept because it is the evidence for the main figure's scope, not because it
+## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
+## chance temporally, is what rules the random split out as a forecast.
+supp_main <- build(EVALS[1], "Random holdout (not forecast-valid; see PSSM rung)",
+                   LETTERS[1:8])
+
+## The epoch-rule row spans both regimes, so it sits below the block rather
+## than inside it. Give it the same caption gutter so its panels line up with
+## the ones above.
+gutter <- function(left, right) plot_grid(left, right, nrow = 1,
+                                          rel_widths = c(0.042, 1))
+epoch_block <- plot_grid(
+  gutter(ggdraw(), rule_legend),
+  gutter(row_label("Epoch rule"),
+         plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
+                   nrow = 1, labels = c("I", "J"))),
+  ncol = 1, rel_heights = c(0.18, 1.5))
+
+supp <- plot_grid(supp_main, epoch_block, ncol = 1, rel_heights = c(8.0, 1.68))
+
+save_figure(supp, "supp_multitree_results", width = 13, height = 16)

@@ -924,3 +924,21 @@ Consequence for the figure: a shared rung order cannot be monotone in both colum
 the PSSM moves from first to fifth between them. The ladders are ordered by the left
 column, which is the one carrying the rung names; the right column is still correctly
 labelled row by row, which is what the shared order exists to guarantee.
+
+**Consequence: the random holdout is demoted out of the main figure (2026-10-14).**
+If more than half of what a de novo split calls "never seen" is sitting in the training
+sequences, the random split is not measuring forecasting on that subset, and the
+all-substitutions column inherits the same problem in milder form -- the PSSM is its top
+rung. Figure 5 is now the temporal holdout alone, with recall at top 10% and NLL per
+mutation as its two columns and the two target subsets as rows; the random holdout moves
+to the supplement, kept as the evidence for that decision rather than as a result. The
+random-split arms (`matched/`, array 3286180) stay on disk and are still scored by
+`collect_figure_metrics.py`, so nothing has to be recomputed if the framing changes.
+
+This does not retract s4 or s12's random-split numbers. The joint-versus-single contrast
+is a comparison between two models scored on identical examples, so the leak inflates
+both sides and largely cancels -- which is why the temporal arm reproduces it
+(-0.266 there against -0.162 random on the matched panel). What the leak does invalidate
+is reading any *absolute* random-split number, and in particular reading its de novo
+subset as a forecast.
+
