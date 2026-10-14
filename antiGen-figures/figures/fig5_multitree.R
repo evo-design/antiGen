@@ -86,7 +86,9 @@ SUBSET_COLORS <- c("All substitutions" = ANTIGEN_BLUE, "De novo only" = "#9bb8d4
 TREE_ORDER <- c("ncov", "h5nx", "measles", "rsv_a", "rsv_b",
                 "denv1", "denv2", "denv3", "denv4")
 TREE_LABELS <- c(
-  ncov = "SARS-CoV-2 S", h5nx = "H5Nx HA", measles = "Measles",
+  ## Genes per data/multitree/trees.json: ncov S, h5nx HA, measles H (the
+  ## hemagglutinin, pulled from the whole-genome build), rsv F, dengue E.
+  ncov = "SARS-CoV-2 S", h5nx = "H5Nx HA", measles = "Measles H",
   rsv_a = "RSV A F", rsv_b = "RSV B F", denv1 = "DENV1 E",
   denv2 = "DENV2 E", denv3 = "DENV3 E", denv4 = "DENV4 E", POOLED = "Pooled"
 )
