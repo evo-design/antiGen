@@ -578,24 +578,20 @@ build <- function(eval_name, banner, letters_, metrics = HIT_METRICS) {
 ## The overlap row sits below the ladder/forest block rather than inside it: its
 ## two panels are the two target SUBSETS, not two metrics, so it must not
 ## inherit the column header. Same construction as the supplement's epoch row.
-## Two rows so the columns keep meaning the same thing they do above -- left is
-## the 10% budget, right is 1% -- with the target subset varying down the block
-## instead of across it.
-venn_row <- function(subset_key, labs_) {
-  gutter(row_label(SUBSET_LABELS[[subset_key]]),
-         plot_grid(make_venn(EVALS[2], subset_key, "hit10"),
-                   make_venn(EVALS[2], subset_key, "hit1"),
-                   nrow = 1, labels = labs_))
-}
-venn_block <- plot_grid(
+## One row of two panels, the two target subsets, at the headline budget. The
+## 1% version of the same thing lives in the supplement.
+venn_block <- function(budget, labs_) plot_grid(
   gutter(ggdraw(), venn_legend),
-  venn_row("all", c("I", "J")),
-  venn_row("novel", c("K", "L")),
-  ncol = 1, rel_heights = c(0.16, 1.5, 1.5))
+  gutter(row_label("Which changes are flagged"),
+         plot_grid(make_venn(EVALS[2], "all", budget),
+                   make_venn(EVALS[2], "novel", budget),
+                   nrow = 1, labels = labs_)),
+  ncol = 1, rel_heights = c(0.16, 1.5))
 
-save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:8]),
-                      venn_block, ncol = 1, rel_heights = c(8.0, 3.1)),
-            "multitree_results", width = 13, height = 17.5)
+save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit10"),
+                      venn_block("hit10", c("E", "F")),
+                      ncol = 1, rel_heights = c(8.0, 2.5)),
+            "multitree_results", width = 7.4, height = 14.4)
 
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
@@ -606,6 +602,17 @@ save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:8]),
 ## position/colour keys that do not depend on the values, so they survive it.
 use_universe(SUPP_UNIVERSE)
 
+## The budget the main figure no longer carries. 1% is the actionable
+## shortlist -- ~137 candidate cells per genotype against ~1,370 -- and it does
+## NOT simply amplify the 10% column: the model's edge over `where x which`
+## widens on all substitutions (+0.128 -> +0.164) while its edge over the
+## single-tree control vanishes (+0.053 -> +0.004), and on de novo targets the
+## sign flips outright (+0.104 -> -0.067). It is in the supplement because the
+## claims are stated at 10%, not because it agrees.
+supp_1pct <- build(EVALS[2],
+                   "Temporal holdout at the actionable budget: recall at top 1%",
+                   LETTERS[1:4], metrics = "hit1")
+
 ## The gap column is what SUPP_UNIVERSE adds back. The ESM-2 arms put 0.00% of
 ## their probability there and catch 0 of 13 gap targets, while `where x which`
 ## catches two thirds, so this block is where the headline's exclusion is shown
@@ -613,7 +620,7 @@ use_universe(SUPP_UNIVERSE)
 supp_gap <- build(EVALS[2],
                   paste("Temporal holdout, gap column included:",
                         "ESM-2 cannot score it (0 of 13 gap targets)"),
-                  LETTERS[1:8])
+                  LETTERS[7:10], metrics = "hit10")
 
 ## The NLL column the main figure no longer carries. It is not redundant with
 ## recall: on de novo substitutions the two disagree systematically and in one
@@ -625,7 +632,7 @@ supp_gap <- build(EVALS[2],
 ## Banner names the regime only -- the column header below it already carries
 ## the metric, and repeating it reads as two different things.
 supp_nll <- build(EVALS[2], "Temporal holdout (the main figure's regime)",
-                  LETTERS[9:12], metrics = "nll")
+                  LETTERS[11:14], metrics = "nll")
 
 ## Kept because it is the evidence for the main figure's scope, not because it
 ## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
@@ -638,7 +645,7 @@ supp_main <- build(
   EVALS[1],
   paste("Random holdout (not forecast-valid; see PSSM rung);",
         "per-seed scoring, no seed ensemble"),
-  LETTERS[13:20])
+  LETTERS[15:22], metrics = c("hit10", "nll"))
 
 ## The epoch-rule row spans both regimes, so it sits below the block rather
 ## than inside it. Give it the same caption gutter so its panels line up with
@@ -647,7 +654,7 @@ epoch_block <- plot_grid(
   gutter(ggdraw(), rule_legend),
   gutter(row_label("Epoch rule"),
          plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
-                   nrow = 1, labels = c("U", "V"))),
+                   nrow = 1, labels = c("W", "X"))),
   ncol = 1, rel_heights = c(0.18, 1.5))
 
 ## The NLL block is one column against the random block's two, so it is padded
@@ -656,8 +663,12 @@ epoch_block <- plot_grid(
 ## The two single-column blocks are padded to the random block's width rather
 ## than stretched across it -- a lone ladder blown up to 13 inches would share a
 ## rung scale with nothing.
+## Single-column blocks are padded to the random block's width rather than
+## stretched across it -- a lone ladder blown up to 13 inches would share a rung
+## scale with nothing.
 half <- function(p) plot_grid(p, ggdraw(), nrow = 1, rel_widths = c(0.58, 0.42))
-supp <- plot_grid(supp_gap, half(supp_nll), supp_main, epoch_block,
-                  ncol = 1, rel_heights = c(8.0, 8.0, 8.0, 1.68))
+supp <- plot_grid(half(supp_1pct), venn_block("hit1", c("E", "F")),
+                  half(supp_gap), half(supp_nll), supp_main, epoch_block,
+                  ncol = 1, rel_heights = c(8.0, 2.6, 8.0, 8.0, 8.0, 1.68))
 
-save_figure(supp, "supp_multitree_results", width = 13, height = 38)
+save_figure(supp, "supp_multitree_results", width = 13, height = 48)
