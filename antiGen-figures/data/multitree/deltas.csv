@@ -1,0 +1,33 @@
+eval,contrast,tree,est,lo,hi,pooled
+Random holdout,vs single-tree model,ncov,0.013227,-0.080578,0.117126,0
+Random holdout,vs single-tree model,h3n2,-0.074456,-0.171514,0.021591,0
+Random holdout,vs single-tree model,h1n1pdm,-0.099032,-0.224396,0.008491,0
+Random holdout,vs single-tree model,rsv_a,-0.030098,-0.148274,0.088899,0
+Random holdout,vs single-tree model,rsv_b,-0.082322,-0.164418,-0.033064,0
+Random holdout,vs single-tree model,POOLED,-0.056503,-0.090291,-0.016233,1
+Random holdout,vs where x which,ncov,-1.324480,-1.789272,-0.969306,0
+Random holdout,vs where x which,h3n2,-0.768072,-1.139003,-0.553369,0
+Random holdout,vs where x which,h1n1pdm,-0.775201,-1.217979,-0.501993,0
+Random holdout,vs where x which,rsv_a,-0.556411,-0.983005,-0.297970,0
+Random holdout,vs where x which,rsv_b,-0.251009,-0.422677,-0.138082,0
+Random holdout,vs where x which,POOLED,-0.682337,-0.945478,-0.523772,1
+Temporal holdout,vs single-tree model,h5nx,-0.078173,-0.141278,-0.013324,0
+Temporal holdout,vs single-tree model,ncov,-0.432426,-0.743333,0.215304,0
+Temporal holdout,vs single-tree model,rsv_a,-0.246672,-0.508972,-0.011934,0
+Temporal holdout,vs single-tree model,rsv_b,-0.360112,-0.658558,-0.076676,0
+Temporal holdout,vs single-tree model,measles,-0.532539,-0.814867,-0.254867,0
+Temporal holdout,vs single-tree model,denv1,-0.364554,-0.883608,0.060021,0
+Temporal holdout,vs single-tree model,denv2,-0.383689,-0.550994,-0.203843,0
+Temporal holdout,vs single-tree model,denv3,-0.343434,-0.615638,-0.084787,0
+Temporal holdout,vs single-tree model,denv4,-0.118963,-0.951022,0.474888,0
+Temporal holdout,vs single-tree model,POOLED,-0.266092,-0.392491,-0.151661,1
+Temporal holdout,vs where x which,h5nx,-0.547980,-0.721482,-0.401585,0
+Temporal holdout,vs where x which,ncov,-0.227229,-0.963393,0.142432,0
+Temporal holdout,vs where x which,rsv_a,-0.451000,-0.743026,-0.156774,0
+Temporal holdout,vs where x which,rsv_b,-0.681987,-1.012430,-0.354742,0
+Temporal holdout,vs where x which,measles,0.107580,-0.239764,0.450568,0
+Temporal holdout,vs where x which,denv1,0.026895,-0.597453,0.709823,0
+Temporal holdout,vs where x which,denv2,-0.808648,-1.221738,-0.183606,0
+Temporal holdout,vs where x which,denv3,-1.157701,-1.462058,-0.748214,0
+Temporal holdout,vs where x which,denv4,0.115917,-0.887965,0.666207,0
+Temporal holdout,vs where x which,POOLED,-0.428852,-0.564688,-0.300235,1

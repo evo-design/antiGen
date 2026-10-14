@@ -16,6 +16,7 @@ SCRIPTS <- c(
   "figures/fig2_sc2_benchmarks.R",      # Figure 2 + five supplements
   "figures/fig3_pseudovirus_assay.R",   # Figure 3
   "figures/fig4_endemic_viruses.R",     # Figure 4 + supplement
+  "figures/fig5_multitree.R",           # Figure 5
   "figures/figS_training_loss.R",
   "figures/figS_runtime.R",
   "figures/figS_covfit.R"

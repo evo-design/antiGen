@@ -1,0 +1,17 @@
+eval,rung,nll,n_mutations
+Random holdout,uniform,9.622298,800.0
+Random holdout,codon,8.956858,800.0
+Random holdout,where_only,9.232164,800.0
+Random holdout,substitution,8.335438,800.0
+Random holdout,where_times_which,7.968794,800.0
+Random holdout,frequency,8.110294,800.0
+Random holdout,single,7.209971,800.0
+Random holdout,joint,7.141461,800.0
+Temporal holdout,uniform,9.530921,564.0
+Temporal holdout,codon,8.894993,564.0
+Temporal holdout,where_only,9.178692,564.0
+Temporal holdout,substitution,8.275125,564.0
+Temporal holdout,where_times_which,7.949596,564.0
+Temporal holdout,frequency,8.223904,564.0
+Temporal holdout,single,7.786835,564.0
+Temporal holdout,joint,7.520743,564.0
