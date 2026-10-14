@@ -122,7 +122,18 @@ TREE_LABELS <- c(
 )
 FOREST_LEVELS <- c("Pooled", rev(unname(TREE_LABELS[TREE_ORDER])))
 
-METRIC_LABELS <- c(nll = "NLL per mutation", hit = "Recall at top 10%")
+## Budgets, not metrics, are what the main figure's columns vary. 10% is the
+## broad screen the arm has always reported; 1% is the actionable one -- roughly
+## 137 candidate cells per genotype against 1,370, which is the order of a
+## shortlist someone would really assay. They are shown together because a
+## predictor can be better at the head of the list and worse further down: on
+## the zero-shot panel the model leads the substitution matrix at 1-2% and loses
+## from 5% on, so reading 10% alone would have missed that entirely.
+METRIC_LABELS <- c(nll = "NLL per mutation",
+                   hit10 = "Recall at top 10%",
+                   hit1 = "Recall at top 1%")
+BUDGET_OF <- c(hit10 = 0.10, hit1 = 0.01)
+HIT_METRICS <- c("hit10", "hit1")
 
 ## Scoring universe. The headline scores the 20 ordinary residues only.
 ## ESM-2 treats `*` as <unk> -- its stop column is a sentinel, not a prediction
@@ -232,16 +243,17 @@ make_ladder <- function(metric, eval_name, subset_key, show_y, rng) {
     scale_fill_manual(values = RUNG_COLORS) +
     scale_x_continuous(limits = rng, expand = expansion(0)) +
     xlab(if (metric == "nll") "Nats better than uniform"
-         else "Recall at top 10%") +
+         else unname(METRIC_LABELS[metric])) +
     theme_paper() +
     theme(legend.position = "none", axis.title.y = element_blank(),
           panel.grid.major.y = element_blank(),
           ## headroom for the cowplot panel letter, which is drawn at the
           ## top-left and otherwise lands on the first rung's name
           plot.margin = margin(t = 12, r = 6, b = 4, l = 4))
-  if (metric == "hit") {
-    p <- p + geom_vline(xintercept = 0.1, linetype = "dotted",
-                        color = "grey45", linewidth = 0.4)
+  if (metric %in% HIT_METRICS) {
+    ## chance is the budget itself, so the reference line moves with the column
+    p <- p + geom_vline(xintercept = unname(BUDGET_OF[metric]),
+                        linetype = "dotted", color = "grey45", linewidth = 0.4)
   }
   if (!show_y) {
     ## With the rung names dropped there is nothing between the panel edge and
@@ -355,9 +367,10 @@ circle_df <- function(cx, r, id, n = 200) {
   data.frame(x = cx + r * cos(th), y = r * sin(th), id = id)
 }
 
-make_venn <- function(eval_name, subset_key) {
+make_venn <- function(eval_name, subset_key, budget) {
   d <- agreement[agreement$eval == eval_name & agreement$rule == MAIN_RULE &
-                 agreement$subset == subset_key & agreement$tree == "POOLED", ]
+                 agreement$subset == subset_key & agreement$tree == "POOLED" &
+                 agreement$budget == budget, ]
   n_tot <- d$n_mutations
   n_m <- d$both + d$model_only
   n_w <- d$both + d$wxw_only
@@ -411,7 +424,8 @@ make_venn <- function(eval_name, subset_key) {
                                   "Where x which" = "#555560")) +
     coord_fixed(xlim = c(-rng * 1.34, rng * 1.34),
                 ylim = c(-rmax * 1.44, rmax * 1.62)) +
-    labs(subtitle = SUBSET_LABELS[[subset_key]]) +
+    labs(subtitle = sprintf("%s, %s", SUBSET_LABELS[[subset_key]],
+                            tolower(METRIC_LABELS[[budget]]))) +
     theme_paper() +
     theme(legend.position = "none",
           axis.title = element_blank(), axis.text = element_blank(),
@@ -520,8 +534,8 @@ assemble <- function(banner, headers, rows, labels, heights) {
 gutter <- function(left, right) plot_grid(left, right, nrow = 1,
                                           rel_widths = c(0.042, 1))
 
-HEADERS <- c("Recall at top 10%", "NLL per mutation")
-XLAB <- c(hit = "Multi-tree minus comparator, recall at top 10%",
+XLAB <- c(hit10 = "Multi-tree minus comparator, recall at top 10%",
+          hit1 = "Multi-tree minus comparator, recall at top 1%",
           nll = "Multi-tree minus comparator, NLL per mutation")
 
 #' One regime's block: two ladders over two contrasts, for the metrics asked for.
@@ -532,7 +546,7 @@ XLAB <- c(hit = "Multi-tree minus comparator, recall at top 10%",
 #' at once. NLL moves to the supplement as its own single-column block rather
 #' than being dropped: it is what shows the de novo density failure, which
 #' recall by construction cannot see.
-build <- function(eval_name, banner, letters_, metrics = c("hit", "nll")) {
+build <- function(eval_name, banner, letters_, metrics = HIT_METRICS) {
   used <- 0
   row_of <- function(f) {
     labs <- letters_[used + seq_along(metrics)]
@@ -551,7 +565,7 @@ build <- function(eval_name, banner, letters_, metrics = c("hit", "nll")) {
     row_of(function(m) make_forest("vs where x which", eval_name, m,
                                    XLAB[[m]]))
   )
-  assemble(banner, HEADERS[match(metrics, c("hit", "nll"))], rows,
+  assemble(banner, unname(METRIC_LABELS[metrics]), rows,
            list("All substitutions", "De novo only", NULL,
                 "Versus single-tree", "Versus where x which"),
            c(0.16, 0.20, 1.15, 1.15, 0.10, 1.55, 1.55))
@@ -564,16 +578,24 @@ build <- function(eval_name, banner, letters_, metrics = c("hit", "nll")) {
 ## The overlap row sits below the ladder/forest block rather than inside it: its
 ## two panels are the two target SUBSETS, not two metrics, so it must not
 ## inherit the column header. Same construction as the supplement's epoch row.
+## Two rows so the columns keep meaning the same thing they do above -- left is
+## the 10% budget, right is 1% -- with the target subset varying down the block
+## instead of across it.
+venn_row <- function(subset_key, labs_) {
+  gutter(row_label(SUBSET_LABELS[[subset_key]]),
+         plot_grid(make_venn(EVALS[2], subset_key, "hit10"),
+                   make_venn(EVALS[2], subset_key, "hit1"),
+                   nrow = 1, labels = labs_))
+}
 venn_block <- plot_grid(
   gutter(ggdraw(), venn_legend),
-  gutter(row_label("Which changes are flagged"),
-         plot_grid(make_venn(EVALS[2], "all"), make_venn(EVALS[2], "novel"),
-                   nrow = 1, labels = c("E", "F"))),
-  ncol = 1, rel_heights = c(0.16, 1.5))
+  venn_row("all", c("I", "J")),
+  venn_row("novel", c("K", "L")),
+  ncol = 1, rel_heights = c(0.16, 1.5, 1.5))
 
-save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit"),
-                      venn_block, ncol = 1, rel_heights = c(8.0, 2.5)),
-            "multitree_results", width = 7.4, height = 14.4)
+save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:8]),
+                      venn_block, ncol = 1, rel_heights = c(8.0, 3.1)),
+            "multitree_results", width = 13, height = 17.5)
 
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
@@ -591,7 +613,7 @@ use_universe(SUPP_UNIVERSE)
 supp_gap <- build(EVALS[2],
                   paste("Temporal holdout, gap column included:",
                         "ESM-2 cannot score it (0 of 13 gap targets)"),
-                  LETTERS[1:4], metrics = "hit")
+                  LETTERS[1:8])
 
 ## The NLL column the main figure no longer carries. It is not redundant with
 ## recall: on de novo substitutions the two disagree systematically and in one
@@ -603,7 +625,7 @@ supp_gap <- build(EVALS[2],
 ## Banner names the regime only -- the column header below it already carries
 ## the metric, and repeating it reads as two different things.
 supp_nll <- build(EVALS[2], "Temporal holdout (the main figure's regime)",
-                  LETTERS[5:8], metrics = "nll")
+                  LETTERS[9:12], metrics = "nll")
 
 ## Kept because it is the evidence for the main figure's scope, not because it
 ## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
@@ -616,7 +638,7 @@ supp_main <- build(
   EVALS[1],
   paste("Random holdout (not forecast-valid; see PSSM rung);",
         "per-seed scoring, no seed ensemble"),
-  LETTERS[9:16])
+  LETTERS[13:20])
 
 ## The epoch-rule row spans both regimes, so it sits below the block rather
 ## than inside it. Give it the same caption gutter so its panels line up with
@@ -625,7 +647,7 @@ epoch_block <- plot_grid(
   gutter(ggdraw(), rule_legend),
   gutter(row_label("Epoch rule"),
          plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
-                   nrow = 1, labels = c("Q", "R"))),
+                   nrow = 1, labels = c("U", "V"))),
   ncol = 1, rel_heights = c(0.18, 1.5))
 
 ## The NLL block is one column against the random block's two, so it is padded
@@ -635,7 +657,7 @@ epoch_block <- plot_grid(
 ## than stretched across it -- a lone ladder blown up to 13 inches would share a
 ## rung scale with nothing.
 half <- function(p) plot_grid(p, ggdraw(), nrow = 1, rel_widths = c(0.58, 0.42))
-supp <- plot_grid(half(supp_gap), half(supp_nll), supp_main, epoch_block,
+supp <- plot_grid(supp_gap, half(supp_nll), supp_main, epoch_block,
                   ncol = 1, rel_heights = c(8.0, 8.0, 8.0, 1.68))
 
 save_figure(supp, "supp_multitree_results", width = 13, height = 38)

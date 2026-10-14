@@ -90,9 +90,16 @@ from antiGen.eval_utils import (fit_substitution_baseline,                 # noq
 from antiGen.load import load_examples                                     # noqa: E402
 from antiGen.models.factory import create_model                            # noqa: E402
 from calibrate_forecast import collect, temp_probs, AL, E                  # noqa: E402
-from forecast_hit_summary import per_example_hits, Q, STOP                # noqa: E402
+from forecast_hit_summary import Q, STOP                                 # noqa: E402
 
 GAP = AL.index('-')
+## Selection budgets. 10% is the figure's long-standing headline; 1% is the
+## actionable one -- a top-1% list is ~137 cells per genotype against ~1,370,
+## which is the order of a shortlist someone would actually assay. They are
+## reported side by side because a predictor can be better at the head of the
+## list and worse further down: on the zero-shot panel the model leads the
+## substitution matrix at 1-2% and loses from 5% on.
+BUDGETS = {'hit10': 0.10, 'hit1': 0.01}
 
 PANEL = ['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
          'denv1', 'denv2', 'denv3', 'denv4']
@@ -111,6 +118,7 @@ FORECAST = '/large_storage/hielab/ispecht/multitree/forecast'
 FORECAST_PT = '/large_storage/hielab/ispecht/multitree/forecast_pertree'
 RUNGS = ['uniform', 'codon', 'where_only', 'pssm', 'substitution', 'frequency',
          'where_times_which', 'single', 'joint']
+METRICS = ['nll', 'hit10', 'hit1']
 RULES = ['pooled', 'per-tree']
 ## Which cells every rung is scored over. The figure's headline uses `standard`.
 ##   standard  the 20 ordinary residues. Stop is ESM-2's <unk> logit reused, not
@@ -222,8 +230,12 @@ def seen_cells(train_ex, L):
     return m
 
 
-def score_tree(model_scores, tg, aa, mask_stop, novel):
-    """(loss, hits, n) per example for the `all` and `novel` target subsets."""
+def score_tree(model_scores, tg, aa, novel):
+    """Per-example NLL and per-budget recall, for the `all` and `novel` subsets.
+
+    Returns {subset: (loss, {metric: hits}, n)}. Excluded columns are already
+    -inf in `logits`, so no mask flag is needed here any more.
+    """
     out = {}
     for subset in ('all', 'novel'):
         t = tg if subset == 'all' else tg * torch.tensor(
@@ -232,13 +244,34 @@ def score_tree(model_scores, tg, aa, mask_stop, novel):
             continue
         probs = model_scores['probs']
         loss = -(t * torch.log(probs.clamp(min=1e-300))).sum((1, 2))
-        hits = per_example_hits(model_scores['logits'], t, aa, mask_stop)
-        out[subset] = (loss.cpu().numpy(), hits.cpu().numpy(),
-                       t.sum((1, 2)).cpu().numpy())
+        hits = {m: hits_at_q(model_scores['logits'], t, aa, q).cpu().numpy()
+                for m, q in BUDGETS.items()}
+        out[subset] = (loss.cpu().numpy(), hits, t.sum((1, 2)).cpu().numpy())
     return out
 
 
-def caught_mask(scores, aa, cols):
+def hits_at_q(scores, tg, aa, q):
+    """`compute_hit_rate`'s fractional tie-breaking at an arbitrary budget.
+
+    `per_example_hits` hard-codes Q = 0.1. Excluded columns arrive already set to
+    -inf by the caller, which this turns into NaN, so one mechanism covers the
+    universe and the budget.
+    """
+    s = scores.clone()
+    s.scatter_(2, aa.unsqueeze(-1), float('nan'))
+    s = torch.where(torch.isneginf(s), torch.full_like(s, float('nan')), s)
+    B = s.shape[0]
+    fl = s.reshape(B, -1).float()
+    n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
+    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    above, at = s > vb, s == vb
+    n_above = above.reshape(B, -1).sum(1).float()
+    frac = ((q * n_valid - n_above)
+            / at.reshape(B, -1).sum(1).float().clamp(min=1)).clamp(0.0, 1.0)
+    return (above * tg).reshape(B, -1).sum(1) + frac * (at * tg).reshape(B, -1).sum(1)
+
+
+def caught_mask(scores, aa, cols, q=Q):
     """Per-cell boolean: does this cell fall inside the predictor's top-10% budget?
 
     The ladder's `compute_hit_rate` splits a tied block at the budget boundary
@@ -256,7 +289,7 @@ def caught_mask(scores, aa, cols):
     s = torch.where(torch.isneginf(s), torch.full_like(s, float('nan')), s)
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
-    vb = torch.nanquantile(fl, 1.0 - Q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
     return s > vb
 
 
@@ -493,24 +526,25 @@ def main():
                     tg_u = tg * keep.to(tg.dtype)
                     wtm_u = wtm & keep.cpu().numpy()
 
-                    cw = caught_mask(scores['where_times_which'][0], aa,
-                                     cols_for('where_times_which'))
-                    for rule in RULES:
-                        cm = caught_mask(scores[f'joint@{rule}'][0], aa,
-                                         cols_for('joint'))
-                        for subset, t in (('all', tg_u), ('novel', tg_u * nv)):
-                            if float(t.sum()) == 0:
-                                continue
-                            cell = [float((t * (cm & cw)).sum()),
-                                    float((t * (cm & ~cw)).sum()),
-                                    float((t * (~cm & cw)).sum()),
-                                    float((t * (~cm & ~cw)).sum())]
-                            k = (uni, regime, rule, tree, subset)
-                            agree[k] = [a + b for a, b in
-                                        zip(agree.get(k, [0.0] * 4), cell)]
-                            agree_n[k] = agree_n.get(k, 0) + 1
-                        del cm
-                    del cw
+                    for met, q in BUDGETS.items():
+                        cw = caught_mask(scores['where_times_which'][0], aa,
+                                         cols_for('where_times_which'), q)
+                        for rule in RULES:
+                            cm = caught_mask(scores[f'joint@{rule}'][0], aa,
+                                             cols_for('joint'), q)
+                            for subset, t in (('all', tg_u), ('novel', tg_u * nv)):
+                                if float(t.sum()) == 0:
+                                    continue
+                                cell = [float((t * (cm & cw)).sum()),
+                                        float((t * (cm & ~cw)).sum()),
+                                        float((t * (~cm & cw)).sum()),
+                                        float((t * (~cm & ~cw)).sum())]
+                                k = (uni, met, regime, rule, tree, subset)
+                                agree[k] = [a + b for a, b in
+                                            zip(agree.get(k, [0.0] * 4), cell)]
+                                agree_n[k] = agree_n.get(k, 0) + 1
+                            del cm
+                        del cw
 
                     for rung, (sc, _ms) in scores.items():
                         base, _, rule_of = rung.partition('@')
@@ -527,16 +561,17 @@ def main():
                         pr = pr / pr.reshape(pr.shape[0], -1).sum(1).clamp(
                             min=1e-30).view(-1, 1, 1)
                         got = score_tree({'probs': pr, 'logits': sc_u}, tg_u, aa,
-                                         False, novel)
+                                         novel)
                         rules = [rule_of] if rule_of else RULES
                         for subset, (loss, hits, n) in got.items():
                             for rl in rules:
                                 acc.setdefault(
                                     (uni, regime, rl, tree, subset, base, 'nll'),
                                     []).append(loss)
-                                acc.setdefault(
-                                    (uni, regime, rl, tree, subset, base, 'hit'),
-                                    []).append(hits)
+                                for met, hv in hits.items():
+                                    acc.setdefault(
+                                        (uni, regime, rl, tree, subset, base, met),
+                                        []).append(hv)
                             nvec[(uni, regime, tree, subset)] = n
                         del sc_u, pr
                     del tg_u, keep
@@ -558,7 +593,7 @@ def main():
             for arm in ('joint', 'single'):
                 row, ok = [], True
                 for rung in (arm, f'{arm}_arith'):
-                    for metric in ('nll', 'hit'):
+                    for metric in ('nll', 'hit10'):
                         u = universes[0]
                         ks = [(u, regime, 'pooled', t, subset, rung, metric)
                               for t in PANEL
@@ -589,7 +624,7 @@ def main():
                     if not N:
                         continue
                     for rung in RUNGS:
-                        for metric in ('nll', 'hit'):
+                        for metric in METRICS:
                             ks = [(uni, regime, rule, t, subset, rung, metric)
                                   for t in trees]
                             if any(k not in mean for k in ks):
@@ -625,7 +660,7 @@ def main():
          for regime in ('Random holdout', 'Temporal holdout'):
           for rule in RULES:
             for subset in ('all', 'novel'):
-                for metric in ('nll', 'hit'):
+                for metric in METRICS:
                     for contrast, other in (('vs single-tree model', 'single'),
                                             ('vs where x which', 'where_times_which')):
                         A, B, N = [], [], []
@@ -652,23 +687,24 @@ def main():
     # ---- agreement.csv: how much of each top-10% budget the two share
     with open(f'{args.out}/agreement.csv', 'w', newline='') as fh:
         w = csv.writer(fh)
-        w.writerow(['universe', 'eval', 'rule', 'subset', 'tree',
+        w.writerow(['universe', 'budget', 'eval', 'rule', 'subset', 'tree',
                     'both', 'model_only', 'wxw_only', 'neither', 'n_mutations'])
         for uni in universes:
+         for met in BUDGETS:
           for regime in ('Random holdout', 'Temporal holdout'):
             for rule in RULES:
                 for subset in ('all', 'novel'):
                     tot = [0.0] * 4
                     for tree in PANEL:
-                        k = (uni, regime, rule, tree, subset)
+                        k = (uni, met, regime, rule, tree, subset)
                         if k not in agree:
                             continue
                         v = [x / agree_n[k] for x in agree[k]]
                         tot = [a + b for a, b in zip(tot, v)]
-                        w.writerow([uni, regime, rule, subset, tree]
+                        w.writerow([uni, met, regime, rule, subset, tree]
                                    + [f'{x:.4f}' for x in v] + [f'{sum(v):.4f}'])
                     if sum(tot):
-                        w.writerow([uni, regime, rule, subset, 'POOLED']
+                        w.writerow([uni, met, regime, rule, subset, 'POOLED']
                                    + [f'{x:.4f}' for x in tot]
                                    + [f'{sum(tot):.4f}'])
 
@@ -678,11 +714,12 @@ def main():
     ## rather than trusting that they do not.
     print('\n== overlap marginals vs ladder recall (should match to ~0.001) ==')
     for uni in universes:
+     for met in BUDGETS:
       for regime in ('Random holdout', 'Temporal holdout'):
         for subset in ('all', 'novel'):
             tot = [0.0] * 4
             for tree in PANEL:
-                k = (uni, regime, 'pooled', tree, subset)
+                k = (uni, met, regime, 'pooled', tree, subset)
                 if k in agree:
                     tot = [a + b / agree_n[k] for a, b in zip(tot, agree[k])]
             n = sum(tot)
@@ -690,13 +727,13 @@ def main():
                 continue
             for rung, got in (('joint', (tot[0] + tot[1]) / n),
                               ('where_times_which', (tot[0] + tot[2]) / n)):
-                ks = [(uni, regime, 'pooled', t, subset, rung, 'hit')
+                ks = [(uni, regime, 'pooled', t, subset, rung, met)
                       for t in PANEL
-                      if (uni, regime, 'pooled', t, subset, rung, 'hit') in mean]
+                      if (uni, regime, 'pooled', t, subset, rung, met) in mean]
                 ref = (sum(float(mean[k].sum()) for k in ks)
                        / max(sum(float(nvec[(uni, regime, k[3], subset)].sum())
                                  for k in ks), 1e-9))
-                print(f'  {uni:9s} {regime:18s} {subset:6s} {rung:18s} '
+                print(f'  {uni:9s} {met:6s} {regime:18s} {subset:6s} {rung:18s} '
                       f'overlap {got:.4f}  ladder {ref:.4f}  '
                       f'delta {got - ref:+.4f}')
 
