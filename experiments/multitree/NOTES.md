@@ -988,3 +988,49 @@ Note this diverges from the `n_novel` recorded in the `*_test_novelty.json` side
 `make_forecast_testset.py`. The figure computes its own subsets, so the two are
 independent; the sidecar is the stale one.
 
+
+### Nested pre-D epoch selection: built, measured, not viable at D = 2025-01-01
+
+The forecast arms choose their epoch on a random 10% of the pre-D snapshot examples
+(964 examples / 1,699 mutations for `joint_panel`). That is an interpolation task, while
+the reported task is extrapolation past D, so the best interpolating epoch need not be
+the best forecasting one. The fix is a nested split, entirely inside pre-D data:
+
+    train  branches before D'
+    val    substitutions crossing D' (D' -> D)   <- epoch chosen here
+    test   substitutions crossing D              <- unchanged
+
+`make_nested_split.py` builds it. Two routes were tried and both run:
+D'-snapshot as train with the D snapshot supplying D'-crossing targets, and the
+self-anchored trick of passing the D snapshot as *both* `--snapshot` and `--current` to
+`make_forecast_testset.py`, which extracts D'-crossing substitutions from one tree
+without needing a second snapshot at all.
+
+**The blocker is sample size, and it is structural.** Crossing branches in the
+D = 2025-01-01 snapshot:
+
+| D' | inner window | ncov crossing branches | targets |
+|---|---|---|---|
+| 2024-07-01 | 6 months | 14 | 32 |
+| 2024-01-01 | 12 months | 31 | 55 |
+| 2023-07-01 | 18 months | 47 | 105 |
+
+and at D' = 2024-07-01 the whole panel yields about 37 validation examples: h5nx 13,
+denv3 8, denv4 8, denv2 5, denv1 3, measles 0. Against 1,699 mutations in the current
+validation set, that is two orders of magnitude short of usable.
+
+The window cannot be widened for the full panel. Dengue and avian flu are only retained
+from 2024-07, which forces D' >= 2024-07, which caps the inner window at six months
+against a locked D = 2025-01-01. Pushing D' back to 2023-07 leaves only ncov, measles,
+mpox, mumps, zika and evd68 -- and ncov still contributes just 105 targets.
+
+Moving D later would open both windows (D' = 2024-07 -> D = 2025-10 is 15 months, and
+2025-10 snapshots are already on disk), **but that is not available**: post-2025-01 data
+has already been scored, so any later D defines a test set we have already looked at.
+The standing causal-selection rule rules it out.
+
+Recorded as infeasible rather than attempted at a size that cannot support selection.
+What remains possible, and is cheap, is an ncov-only spot check at D' = 2023-07-01:
+one tree with ~105 forecast-shaped validation targets, asking only whether
+forecast-shaped selection picks a different epoch than random-split selection and
+whether that changes post-D performance. Not run yet.

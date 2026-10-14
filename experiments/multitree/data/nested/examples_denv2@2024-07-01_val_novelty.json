@@ -1,0 +1,1 @@
+{"date": "2024-07-01", "seq_len": 495, "n_examples": 5, "n_targets": 7, "n_novel": 0, "per_example": {"0": [[90, "V", false]], "1": [[90, "V", false], [362, "N", false]], "2": [[485, "I", false]], "3": [[149, "V", false]], "4": [[427, "L", false], [392, "R", false]]}}
