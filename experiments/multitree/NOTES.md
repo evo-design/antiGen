@@ -1793,3 +1793,83 @@ not lift it. A real property of the backbone, not of this code.
 flatters the model, which is the error this whole section exists to catch. The
 honest presentation is standard and gap reported separately, with the gap
 deficit stated as a known limitation of an ungapped-pretrained backbone.
+
+### The headline scores standard residues only (2026-10-14)
+
+Decision: Figure 5's main panels score the **20 ordinary residues**, with the
+stop and gap columns excluded for every rung. Rationale, which supersedes the
+caution recorded in the previous subsection:
+
+- `*` is not a prediction at all for ESM-2 -- the model maps it to `<unk>` and
+  reuses that logit. It is 1 of 564 post-D targets.
+- `-` is a column ESM-2 has no representation of. It is in the vocabulary (token
+  id 30, correctly mapped -- this was checked, it is not a mapping bug), but the
+  backbone was pretrained on ungapped UniRef, so the gap logit starts near zero
+  and four finetuned layers over 370 gap mutations do not lift it. Measured: the
+  ESM-2 arms put **0.00%** of their probability there against the baselines'
+  2.5-4%. Scoring a predictor on a column outside its representational scope
+  measures the scope, not the prediction.
+- Excluding both puts every rung on ONE cell universe, which also removes the
+  budget asymmetry: `n_valid` is counted after masking, so the old rule gave
+  each baseline ~5% more cells (1,436 against 1,367) at q = 10%.
+
+**The earlier worry that this "flatters the model" does not hold**, and the
+reason is the pretraining argument above, not the size of the effect. What keeps
+it honest is that the supplement scores the gap column back in (block A-D,
+banner-labelled), so the 0-of-13 deficit is shown as an exclusion rather than
+quietly removed. `legacy` remains in the CSVs, labelled, for reproducing the
+older numbers.
+
+Targets outside the universe are dropped rather than charged at the floor: no
+predictor can reach them, so they measure nothing and only inflate every rung's
+NLL equally. n goes 562 -> 548 on all substitutions and 145 -> 134 on de novo.
+
+**Recall at top 10%, temporal holdout, pooled rule, K = 3** (`legacy` is the
+previous figure; `standard` is the new headline):
+
+| rung | all: legacy | all: standard | de novo: legacy | de novo: standard |
+|---|---|---|---|---|
+| uniform | 0.100 | 0.100 | 0.100 | 0.100 |
+| codon | 0.301 | 0.295 | 0.341 | 0.355 |
+| where_only | 0.442 | 0.445 | 0.177 | 0.180 |
+| PSSM | 0.646 | 0.652 | 0.066 | 0.064 |
+| substitution | 0.658 | 0.658 | 0.455 | 0.455 |
+| frequency | 0.721 | 0.726 | 0.055 | 0.052 |
+| `where x which` | 0.747 | 0.743 | 0.503 | 0.500 |
+| antiGen single-tree | 0.794 | **0.808** | 0.386 | **0.410** |
+| **antiGen multi-tree** | 0.840 | **0.852** | 0.566 | **0.575** |
+
+The ESM-2 arms gain the most (+0.012 to +0.024) because they are the rungs that
+were being scored on a column they cannot use. Contrasts:
+
+| contrast | subset | legacy | standard |
+|---|---|---|---|
+| vs single-tree | all | +0.046 [+0.025, +0.069] * | +0.044 [+0.021, +0.068] * |
+| vs `where x which` | all | +0.093 [+0.057, +0.127] * | **+0.109** [+0.075, +0.144] * |
+| vs single-tree | de novo | +0.179 [+0.116, +0.252] * | +0.164 [+0.098, +0.239] * |
+| vs `where x which` | de novo | +0.062 [−0.032, +0.147] | **+0.075** [−0.009, +0.159] |
+
+The de novo contrast against `where x which` still includes zero, but its lower
+bound moves from −0.032 to **−0.009** -- the closest it has come. At K = 8 it may
+clear; s14's multiple-comparisons caveat applies if it does.
+
+`joint - single` is essentially unchanged, as it must be: both sides are ESM-2
+and share every convention.
+
+**A side benefit worth recording:** on the temporal panel the overlap panels'
+marginals now reproduce the ladder's recall **exactly** (+0.0000 for both rungs,
+both subsets), where under `legacy` `where x which` was off by up to 0.007. One
+universe means one tie structure.
+
+### Figure structure now
+
+Main `figs/multitree_results.png` -- temporal holdout, standard universe, recall
+at top 10%: A/B ladders (all, de novo), C/D per-tree forests, E/F overlap panels.
+
+Supplement `figs/supp_multitree_results.png` -- A-D the same recall ladders with
+the gap column included, banner-labelled; E-H temporal NLL; I-P random holdout,
+both metrics; Q-R epoch rule.
+
+`collect_figure_metrics.py` emits all three universes in one pass with a
+`universe` column; the extra universes are a masking pass each over score maps
+already computed, so they are nearly free. The R script selects.

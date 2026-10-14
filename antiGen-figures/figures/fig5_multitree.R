@@ -124,18 +124,44 @@ FOREST_LEVELS <- c("Pooled", rev(unname(TREE_LABELS[TREE_ORDER])))
 
 METRIC_LABELS <- c(nll = "NLL per mutation", hit = "Recall at top 10%")
 
-ladder <- read.csv("data/multitree/ladder.csv")
-deltas <- read.csv("data/multitree/deltas.csv")
-agreement <- read.csv("data/multitree/agreement.csv")
+## Scoring universe. The headline scores the 20 ordinary residues only.
+## ESM-2 treats `*` as <unk> -- its stop column is a sentinel, not a prediction
+## -- and its pretraining (ungapped UniRef) gives it no representation of `-`:
+## measured, the ESM-2 arms put 0.00% of their probability on the gap column
+## against the baselines' 2.5-4%. Scoring them there measures something outside
+## the backbone's scope rather than a failed prediction. Dropping both columns
+## also puts every rung on ONE cell universe, so q = 10% buys all of them the
+## same number of cells; the older rule masked stop for the ESM-2 rungs alone
+## and, because n_valid is counted after masking, handed every baseline ~5% more
+## budget (1,436 cells against 1,367).
+##
+## The supplement carries the `common` universe -- the same thing plus the gap
+## column -- so the 0-of-13 gap deficit is visible rather than quietly removed.
+HEADLINE_UNIVERSE <- "standard"
+SUPP_UNIVERSE     <- "common"
 
-ladder$rung_lab <- factor(unname(RUNG_LABELS[ladder$rung]),
-                          levels = unname(RUNG_LABELS[RUNG_LEVELS]))
-ladder$subset_lab <- factor(unname(SUBSET_LABELS[ladder$subset]),
-                            levels = unname(SUBSET_LABELS))
-deltas$tree_lab   <- unname(TREE_LABELS[deltas$tree])
-deltas$subset_lab <- factor(unname(SUBSET_LABELS[deltas$subset]),
-                            levels = unname(SUBSET_LABELS))
-deltas$clears <- (deltas$hi < 0) | (deltas$lo > 0)
+ladder_all <- read.csv("data/multitree/ladder.csv")
+deltas_all <- read.csv("data/multitree/deltas.csv")
+agreement_all <- read.csv("data/multitree/agreement.csv")
+
+use_universe <- function(u) {
+  ladder    <<- ladder_all[ladder_all$universe == u, ]
+  deltas    <<- deltas_all[deltas_all$universe == u, ]
+  agreement <<- agreement_all[agreement_all$universe == u, ]
+  ladder$rung_lab <<- factor(unname(RUNG_LABELS[ladder$rung]),
+                             levels = unname(RUNG_LABELS[RUNG_LEVELS]))
+  ladder$subset_lab <<- factor(unname(SUBSET_LABELS[ladder$subset]),
+                               levels = unname(SUBSET_LABELS))
+  deltas$tree_lab   <<- unname(TREE_LABELS[deltas$tree])
+  deltas$subset_lab <<- factor(unname(SUBSET_LABELS[deltas$subset]),
+                               levels = unname(SUBSET_LABELS))
+  deltas$clears <<- (deltas$hi < 0) | (deltas$lo > 0)
+  ladder$shown    <<- ladder$value
+  ladder$shown_lo <<- ladder$lo
+  ladder$shown_hi <<- ladder$hi
+}
+use_universe(HEADLINE_UNIVERSE)
+
 
 ## NLL is shown as nats *better than uniform*, so the bars sit on a real zero
 ## instead of a truncated axis. The range must admit negatives: on the de novo
@@ -145,9 +171,6 @@ deltas$clears <- (deltas$hi < 0) | (deltas$lo > 0)
 ## with the interval taken on that paired difference, so nothing is transformed
 ## here -- doing the subtraction at plot time would strand the interval in the
 ## wrong space.
-ladder$shown <- ladder$value
-ladder$shown_lo <- ladder$lo
-ladder$shown_hi <- ladder$hi
 
 ## Start the axis exactly at zero when every bar is positive, so the bars begin
 ## flush against the rung names instead of across a strip of blank panel. Only a
@@ -536,6 +559,7 @@ build <- function(eval_name, banner, letters_, metrics = c("hit", "nll")) {
 
 
 ## --- Main figure: the temporal holdout, recall only -----------------------
+## Built under HEADLINE_UNIVERSE, which `use_universe` has already installed.
 
 ## The overlap row sits below the ladder/forest block rather than inside it: its
 ## two panels are the two target SUBSETS, not two metrics, so it must not
@@ -554,6 +578,21 @@ save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit"),
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
 
+## Everything below is the supplement, which reads a DIFFERENT universe: the
+## headline's 20 residues plus the gap column. Switching here rather than at the
+## top keeps the main figure's panels untouched above, and the legends are
+## position/colour keys that do not depend on the values, so they survive it.
+use_universe(SUPP_UNIVERSE)
+
+## The gap column is what SUPP_UNIVERSE adds back. The ESM-2 arms put 0.00% of
+## their probability there and catch 0 of 13 gap targets, while `where x which`
+## catches two thirds, so this block is where the headline's exclusion is shown
+## to be an exclusion rather than a silent gain.
+supp_gap <- build(EVALS[2],
+                  paste("Temporal holdout, gap column included:",
+                        "ESM-2 cannot score it (0 of 13 gap targets)"),
+                  LETTERS[1:4], metrics = "hit")
+
 ## The NLL column the main figure no longer carries. It is not redundant with
 ## recall: on de novo substitutions the two disagree systematically and in one
 ## direction -- every ESM-2 arm places higher on recall than on NLL and every
@@ -564,7 +603,7 @@ save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit"),
 ## Banner names the regime only -- the column header below it already carries
 ## the metric, and repeating it reads as two different things.
 supp_nll <- build(EVALS[2], "Temporal holdout (the main figure's regime)",
-                  LETTERS[1:4], metrics = "nll")
+                  LETTERS[5:8], metrics = "nll")
 
 ## Kept because it is the evidence for the main figure's scope, not because it
 ## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
@@ -577,7 +616,7 @@ supp_main <- build(
   EVALS[1],
   paste("Random holdout (not forecast-valid; see PSSM rung);",
         "per-seed scoring, no seed ensemble"),
-  LETTERS[5:12])
+  LETTERS[9:16])
 
 ## The epoch-rule row spans both regimes, so it sits below the block rather
 ## than inside it. Give it the same caption gutter so its panels line up with
@@ -586,15 +625,17 @@ epoch_block <- plot_grid(
   gutter(ggdraw(), rule_legend),
   gutter(row_label("Epoch rule"),
          plot_grid(make_rule_panel(EVALS[1]), make_rule_panel(EVALS[2]),
-                   nrow = 1, labels = c("M", "N"))),
+                   nrow = 1, labels = c("Q", "R"))),
   ncol = 1, rel_heights = c(0.18, 1.5))
 
 ## The NLL block is one column against the random block's two, so it is padded
 ## to the same width rather than stretched across it -- a single ladder blown up
 ## to 13 inches would not share a rung scale with anything.
-supp <- plot_grid(
-  plot_grid(supp_nll, ggdraw(), nrow = 1, rel_widths = c(0.58, 0.42)),
-  supp_main, epoch_block,
-  ncol = 1, rel_heights = c(8.0, 8.0, 1.68))
+## The two single-column blocks are padded to the random block's width rather
+## than stretched across it -- a lone ladder blown up to 13 inches would share a
+## rung scale with nothing.
+half <- function(p) plot_grid(p, ggdraw(), nrow = 1, rel_widths = c(0.58, 0.42))
+supp <- plot_grid(half(supp_gap), half(supp_nll), supp_main, epoch_block,
+                  ncol = 1, rel_heights = c(8.0, 8.0, 8.0, 1.68))
 
-save_figure(supp, "supp_multitree_results", width = 13, height = 30)
+save_figure(supp, "supp_multitree_results", width = 13, height = 38)
