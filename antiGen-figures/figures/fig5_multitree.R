@@ -30,6 +30,20 @@
 ## and tuning never saw: post-D substitutions here, and a third held-out block
 ## (--test-frac 0.1) in the supplement's random arm.
 ##
+## Seeds. In the main figure every seed-dependent rung is a single predictor built
+## by averaging its seeds' log-probability maps, not a metric averaged over seeds
+## scored separately. The two antiGen rungs are 8-seed ensembles -- matched, so the
+## multi-tree-versus-single-tree contrast is not a comparison of ensemble sizes --
+## and the substitution and `where x which` rungs are 3-seed ensembles of their own
+## fitted sampler, which saturates by two. Ensembling the model is the largest single
+## effect measured on this arm (de novo recall 0.50 -> 0.59), so the per-seed
+## convention the earlier version of this figure used understated both antiGen rungs.
+##
+## The supplement's random arm cannot do this and does not: each seed there carries
+## its own three-way split, so seed 0's test block sits inside seed 1's training
+## half and the maps are not commensurable. It keeps the per-seed convention, which
+## is a further reason the two regimes are not read as a like-for-like pair.
+##
 ## Data: data/multitree/{ladder,deltas}.csv, written by
 ##       experiments/multitree/collect_figure_metrics.py in the main repo.
 ##
@@ -379,8 +393,15 @@ save_figure(build(EVALS[2], NULL, LETTERS[1:8]),
 ## Kept because it is the evidence for the main figure's scope, not because it
 ## is a result: the PSSM rung reaching 0.56 on de novo substitutions here, at
 ## chance temporally, is what rules the random split out as a forecast.
-supp_main <- build(EVALS[1], "Random holdout (not forecast-valid; see PSSM rung)",
-                   LETTERS[1:8])
+## The banner also carries the scoring convention, because it differs from the
+## main figure's: no seed ensemble is possible here (each seed has its own split),
+## so these antiGen rungs are per-seed averages and sit below their main-figure
+## counterparts for that reason as well as the regime.
+supp_main <- build(
+  EVALS[1],
+  paste("Random holdout (not forecast-valid; see PSSM rung);",
+        "per-seed scoring, no seed ensemble"),
+  LETTERS[1:8])
 
 ## The epoch-rule row spans both regimes, so it sits below the block rather
 ## than inside it. Give it the same caption gutter so its panels line up with

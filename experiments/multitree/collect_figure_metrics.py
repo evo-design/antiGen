@@ -24,6 +24,24 @@ Metrics: NLL per mutation (lower better) and hit@10% (higher better), the latter
 `compute_hit_rate`'s fractional tie-breaking and the stop column NaN-masked for
 predictors whose OUTPUTS_LEGITIMATE_STOP is False.
 
+Seeds. Every seed-dependent rung is ENSEMBLED into one predictor by averaging its
+log-probability maps -- the geometric mean of the maps -- rather than scored once per
+seed with the metrics averaged afterwards. For the ESM-2 arms this is the largest
+single effect measured on this arm (de novo recall 0.501 -> 0.586 at K = 8), so the
+per-seed convention was understating both of them; it is applied to `joint` and
+`single` at the SAME K, since an 8-seed joint ensemble against a 3-seed single one
+would credit joint training with ensembling its control was denied. The fitted
+`substitution` and `where_times_which` rungs carry a seeded minibatch sampler of
+their own and are ensembled the same way over --wxw-seeds; they saturate by K = 2
+(NOTES s14), so three is enough and the model's gains with K are not an artifact of
+the baseline being fit once.
+
+Ensembling is available in the TEMPORAL regime only. There every seed scores the same
+post-D test set, so the maps are commensurable. In the random regime each seed carries
+its own three-way split -- seed 0's test block is inside seed 1's training half -- so
+there is no common test set to average over and no legitimate ensemble; that regime
+keeps the per-seed convention, which is one more reason it sits in the supplement.
+
 Epoch rules, both reported because the choice materially changes the effect size:
   pooled    the epoch with the best POOLED validation NLL -- one checkpoint for every
             tree, which is what --save-best ships and what you would actually deploy.
@@ -68,7 +86,12 @@ from forecast_hit_summary import per_example_hits                          # noq
 
 PANEL = ['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
          'denv1', 'denv2', 'denv3', 'denv4']
-SEEDS = [0, 1, 2]
+SEEDS = [0, 1, 2]               # random regime: one model per split, no ensemble
+# Temporal regime: the seeds averaged into one ESM-2 predictor. `joint_panel` has 16
+# and the single-tree controls have 8, so 8 is the matched number -- K = 16 is a
+# scaling note for the joint arm alone and may not enter the joint-vs-single contrast.
+ENS_SEEDS = [0, 1, 2, 3, 4, 5, 6, 7]
+WXW_SEEDS = [0, 1, 2]           # seeds of fit_substitution_baseline's sampler
 D = '2025-01-01'
 DATA = 'experiments/multitree/data'
 MATCHED = '/large_storage/hielab/ispecht/multitree/matched'
@@ -94,13 +117,34 @@ def single_dir(tree, seed):
     return p
 
 
-def load_model(path):
-    cp, cfg = load_checkpoint(sorted(glob.glob(path + '/*_best.pt'))[-1],
-                              map_location=dev)
+def load_model(path, pat='*_best.pt'):
+    hits = sorted(glob.glob(os.path.join(path, pat)))
+    if not hits:
+        raise SystemExit(f'missing {pat} in {path} -- was it trained with '
+                         f'--save-best-per-source?')
+    cp, cfg = load_checkpoint(hits[-1], map_location=dev)
     m = create_model(cfg, dev)
     m.load_state_dict(cp['model_state_dict'], strict=False)
     m.eval()
     return m
+
+
+def logp_model(logits, wt):
+    """Normalized log-probabilities over non-wild-type cells, through the 1e-8 clamp.
+
+    This is the space seed ensembling happens in. Averaging raw logits would be
+    meaningless across independently trained networks -- their scales are not
+    comparable -- while averaging probabilities is an arithmetic mixture, which is
+    dominated by whichever seed is most confident and barely reorders the head of
+    the list (NOTES s14). The mean of the log-probs is the geometric mean of the
+    maps: every seed gets a veto, and every cell's rank moves.
+
+    A one-element "ensemble" is a no-op downstream: softmax of a log-prob map
+    returns the same map, so the single-seed numbers are unchanged by this path.
+    """
+    p = temp_probs(logits, wt, 1.0)
+    p = p / p.reshape(p.shape[0], -1).sum(axis=1)[:, None, None]
+    return np.log(np.clip(p, 1e-30, None))
 
 
 def split_random(tree, seed):
@@ -204,17 +248,43 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--out', default='antiGen-figures/data/multitree')
+    p.add_argument('--ens-seeds', default=','.join(map(str, ENS_SEEDS)),
+                   help='seeds averaged into one ESM-2 predictor in the temporal '
+                        'regime. The SAME set is used for `joint` and `single`; '
+                        'K must be matched or the contrast credits joint training '
+                        'with ensembling its control was denied.')
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
+    ens_seeds = [int(x) for x in args.ens_seeds.split(',')]
+    missing = [f'{root}/{nm}_s{s}' for s in ens_seeds
+               for root, nm in [(FORECAST_PT, 'joint_panel')]
+               + [(FORECAST, f'single_{t}') for t in PANEL]
+               if not glob.glob(f'{root}/{nm}_s{s}/*_best.pt')]
+    if missing:
+        raise SystemExit('missing runs for the requested ensemble:\n  '
+                         + '\n  '.join(missing))
+    print(f'ESM-2 seed ensemble: K = {len(ens_seeds)} ({args.ens_seeds})', flush=True)
 
-    # acc[(regime, tree, subset, rung, metric)] = list over seeds of per-example array
+    # acc[(regime, rule, tree, subset, rung, metric)] = list of per-example arrays.
+    # In the temporal regime each list holds ONE entry -- the seed ensemble is a
+    # single predictor. In the random regime it holds one entry per split seed and
+    # the metrics are averaged across them, the convention this script used
+    # throughout before ensembling (see the module docstring for why that regime
+    # cannot ensemble).
     acc, nvec = {}, {}
-    for regime, splitter, joint_root in (
-            ('Random holdout', split_random, f'{MATCHED}/joint9'),
-            ('Temporal holdout', split_temporal, f'{FORECAST_PT}/joint_panel')):
+    for regime, joint_root, single_root in (
+            ('Random holdout', f'{MATCHED}/joint9', MATCHED),
+            ('Temporal holdout', f'{FORECAST_PT}/joint_panel', FORECAST)):
+        temporal = regime.startswith('Temporal')
         for tree in PANEL:
-            for seed in SEEDS:
-                train_ex, eval_ex = splitter(tree, seed)
+            # Each job is (seeds averaged into one predictor, the split to score
+            # on). The split is built lazily: the random regime has one per seed and
+            # an example carries a dense L x E target map, so materializing all
+            # three of ncov's splits at once costs ~1 GB for no reason.
+            jobs = ([(ens_seeds, lambda: split_temporal(tree, 0))] if temporal
+                    else [([s], lambda s=s: split_random(tree, s)) for s in SEEDS])
+            for mseeds, make_split in jobs:
+                train_ex, eval_ex = make_split()
                 if not eval_ex:
                     continue
                 L = len(eval_ex[0].aa_idx)
@@ -223,16 +293,31 @@ def main():
                 novel = ~seen_cells(train_ex, L)
 
                 scores = {}
-                fit = fit_substitution_baseline(train_ex, dev, AL)
-                fac = WhereTimesWhichPredictor(
-                    fit.config, positional_marginal_counts(train_ex, L, E), fit).to(dev)
+                ## The two fitted-substitution rungs. `fit_substitution_baseline`
+                ## carries a seeded minibatch sampler, so they are seed-dependent
+                ## predictors like the model and are ensembled the same way. They
+                ## saturate by K = 2 (NOTES s14) -- the point is fairness, not a
+                ## gain: the model's seeds must not be the only ones averaged.
+                pm = positional_marginal_counts(train_ex, L, E)
+                lps, wtm = {'substitution': [], 'where_times_which': []}, None
+                for bs in WXW_SEEDS:
+                    fit = fit_substitution_baseline(train_ex, dev, AL, seed=bs)
+                    fac = WhereTimesWhichPredictor(fit.config, pm, fit).to(dev)
+                    for nm, mdl in (('substitution', fit),
+                                    ('where_times_which', fac)):
+                        lo, _, wtm = collect(mdl, eval_ex, dev)
+                        lps[nm].append(torch.tensor(logp_model(lo, wtm), device=dev))
+                    del fit, fac
+                for nm, maps in lps.items():
+                    scores[nm] = (torch.stack(maps).mean(0), False)
+                del lps
+
                 cm = create_model(ModelConfig(
                     model_type=ModelType.CODON, seq_len=L,
                     alphabet=AlphabetConfig(amino_acids=AL), codon=CodonConfig()), dev)
-                for nm, mdl in (('where_times_which', fac), ('substitution', fit),
-                                ('codon', cm)):
-                    scores[nm] = (torch.tensor(collect(mdl, eval_ex, dev)[0],
-                                               device=dev), False)
+                scores['codon'] = (torch.tensor(collect(cm, eval_ex, dev)[0],
+                                                device=dev), False)
+                del cm
                 for nm, fn in (('frequency', frequency_baseline_scores),
                                ('where_only', where_only_baseline_scores)):
                     scores[nm] = (torch.log(fn(train_ex, L, E).to(dev)
@@ -256,31 +341,48 @@ def main():
                     torch.log1p(torch.tensor(pssm, device=dev)
                                 ).unsqueeze(0).expand(len(eval_ex), -1, -1), False)
                 scores['uniform'] = (torch.zeros_like(scores['codon'][0]), False)
-                del fit, fac, cm
 
-                joint_root_s = f'{joint_root}_s{seed}'
-                single_path = (single_dir(tree, seed) if regime.startswith('Random')
-                               else f'{FORECAST}/single_{tree}_s{seed}')
+                def ensemble(dirs, pat='*_best.pt'):
+                    """One predictor from a matched set of runs, pooled two ways.
+
+                    Returns (log-linear, arithmetic). The log-linear pool -- the
+                    mean of the log-prob maps, i.e. their normalized geometric mean
+                    -- is the one the figure reports, because it is the pool that
+                    reorders the head of the list and the ranking gain is what
+                    NOTES s14 measured. The arithmetic pool, the mean of the
+                    probability maps, is the textbook density ensemble: Jensen
+                    guarantees its NLL is no worse than the mean of the seeds'. It
+                    is carried only as a diagnostic, printed below, so the figure's
+                    choice is checked against it instead of assumed. Reporting one
+                    pool in the recall column and the other in the NLL column would
+                    make the two columns describe different predictors.
+                    """
+                    lsum, psum = None, None
+                    for d in dirs:
+                        m = load_model(d, pat)
+                        lo = collect(m, eval_ex, dev)[0]
+                        del m
+                        t = torch.tensor(logp_model(lo, wtm), device=dev)
+                        lsum = t if lsum is None else lsum + t
+                        psum = t.exp() if psum is None else psum + t.exp()
+                    return (lsum / len(dirs),
+                            torch.log((psum / len(dirs)).clamp(min=1e-30)))
+
                 # A single-tree run has one source, so its pooled best epoch IS its
                 # per-tree best; one checkpoint serves both rules.
-                m = load_model(single_path)
-                scores['single'] = (torch.tensor(collect(m, eval_ex, dev)[0],
-                                                 device=dev), True)
-                del m
-                for rule, pat in (('pooled', '*_best.pt'),
-                                  ('per-tree', f'*_best_{tree}.pt')):
-                    hits = sorted(glob.glob(os.path.join(joint_root_s, pat)))
-                    if not hits:
-                        raise SystemExit(
-                            f'missing {pat} in {joint_root_s} -- was it trained with '
-                            f'--save-best-per-source?')
-                    cp, cfg = load_checkpoint(hits[-1], map_location=dev)
-                    m = create_model(cfg, dev)
-                    m.load_state_dict(cp['model_state_dict'], strict=False)
-                    m.eval()
-                    lo, _, wtm = collect(m, eval_ex, dev)
-                    scores[f'joint@{rule}'] = (torch.tensor(lo, device=dev), True)
-                    del m
+                arms = [('single', '*_best.pt',
+                         [single_dir(tree, s) if not temporal
+                          else f'{single_root}/single_{tree}_s{s}' for s in mseeds])]
+                arms += [(f'joint@{rule}', pat,
+                          [f'{joint_root}_s{s}' for s in mseeds])
+                         for rule, pat in (('pooled', '*_best.pt'),
+                                           ('per-tree', f'*_best_{tree}.pt'))]
+                for nm, pat, dirs in arms:
+                    gm, am = ensemble(dirs, pat)
+                    scores[nm] = (gm, True)
+                    if len(dirs) > 1:
+                        base, _, rl = nm.partition('@')
+                        scores[f'{base}_arith' + (f'@{rl}' if rl else '')] = (am, True)
 
                 for rung, (sc, mask_stop) in scores.items():
                     pr = torch.tensor(temp_probs(sc.cpu().numpy(), wtm, 1.0), device=dev)
@@ -297,9 +399,38 @@ def main():
                             acc.setdefault((regime, rl, tree, subset, base, 'hit'),
                                            []).append(hits)
                         nvec[(regime, tree, subset)] = n
+                del scores
             print(f"  {regime} / {tree}", flush=True)
 
     mean = {k: np.mean(v, axis=0) for k, v in acc.items()}
+
+    ## Is the figure's pooling rule the right one? Log-linear pooling is what the
+    ## ranking work used; arithmetic pooling is what density theory recommends. If
+    ## they disagree -- one column favouring each -- that has to be said out loud
+    ## rather than settled by whichever was run first. Printed, not written: the
+    ## `*_arith` rungs are a check on the choice, not rungs of the ladder.
+    print('\n== seed-ensemble pooling rule: log-linear (figure) vs arithmetic ==')
+    print(f'{"regime":18s} {"subset":7s} {"arm":8s} {"NLL loglin":>11s} '
+          f'{"NLL arith":>10s} {"recall ll":>10s} {"recall ar":>10s}')
+    for regime in ('Random holdout', 'Temporal holdout'):
+        for subset in ('all', 'novel'):
+            for arm in ('joint', 'single'):
+                row, ok = [], True
+                for rung in (arm, f'{arm}_arith'):
+                    for metric in ('nll', 'hit'):
+                        ks = [(regime, 'pooled', t, subset, rung, metric)
+                              for t in PANEL
+                              if (regime, 'pooled', t, subset, rung, metric) in mean]
+                        if not ks:
+                            ok = False
+                            break
+                        num = sum(float(mean[k].sum()) for k in ks)
+                        den = sum(float(nvec[(regime, k[2], subset)].sum())
+                                  for k in ks)
+                        row.append(num / max(den, 1e-9))
+                if ok:
+                    print(f'{regime:18s} {subset:7s} {arm:8s} {row[0]:11.3f} '
+                          f'{row[2]:10.3f} {row[1]:10.3f} {row[3]:10.3f}')
 
     # ---- ladder.csv
     with open(f'{args.out}/ladder.csv', 'w', newline='') as fh:

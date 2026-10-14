@@ -1099,3 +1099,375 @@ checkpoints trained on data that is now inside the test block.
   `n_novel` in the `*_test_novelty.json` sidecars (still event-based). The figure
   computes its own subsets, so the two never meet, but anything scored from the
   sidecars would disagree.
+
+---
+
+## 14. Seed ensembling is the win; mixing with `where x which` is not (2026-10-14)
+
+Asked whether the model can meaningfully beat `where x which` on de novo recall at
+top 10%, where s12 left them at 0.501 vs 0.497. Answer: the two are genuinely
+different predictors with real complementarity, every attempt to exploit that
+complementarity failed, and the thing that actually moved the number was ensembling
+the model's own seeds.
+
+**Everything below is recall at top 10% on the temporal holdout, D = 2025-01-01,
+composition-aware de novo, canonical stop convention.**
+
+### The two predictors are not the same, and the complementarity is large
+
+`rank_agreement.py` (job 3297695), pooled over the nine trees:
+
+| | model vs `wxw` | model vs ITSELF (seed-to-seed) |
+|---|---|---|
+| Spearman of the score maps | 0.697 | 0.916 |
+| share of the top-10% budget in common | 0.540 | 0.751 |
+
+Per de novo target (n = 145, 3 seeds): both 0.331, model only 0.170, `wxw` only
+0.159, neither 0.340. **A third of de novo targets are caught by exactly one of the
+two.** Target-rank Spearman 0.461. So the dead heat in s12 is two different
+predictors coinciding in aggregate, not one predictor computed twice.
+
+### Ensembling the seeds, not mixing with the baseline
+
+Averaging seeds' log-probability maps into ONE predictor (`fuse_ci.py`,
+`seed_curve.py`). Against `wxw` at its own converged ensemble:
+
+| K seeds | model ALL | model de novo |
+|---|---|---|
+| 1 | 0.818 | 0.526 |
+| 2 | 0.835 | 0.543 |
+| 3 | 0.840 | 0.546 |
+| 4 | 0.847 | 0.564 |
+| 8 | **0.853** | **0.586** |
+
+Still climbing on de novo at K = 8; ALL largely saturates by K = 4. The per-seed
+convention the figure currently uses (score each seed, average the recalls) is
+0.813 / 0.501 — ensembling is worth **+0.024 [+0.012, +0.036] on ALL and
++0.064 [+0.033, +0.094] on de novo**, the largest single effect measured on this arm.
+
+**Two lucky-draw corrections.** Seeds {0,1,2} are a favourable triple: they ensemble
+to 0.837 / 0.566 against 0.840 / 0.546 for the average over five random 3-subsets of
+0..7. The same is true of `wxw`'s {0,1,2} (0.745 / 0.503 against a converged
+0.733 / 0.507). Any 3-seed number quoted from {0,1,2}, here or above, is ~0.02
+optimistic on both sides; the contrast is barely affected.
+
+### `where x which` ensembles too, and saturates immediately
+
+`fit_substitution_baseline` carries a seeded minibatch sampler that every caller
+left at `seed=0`, so the baseline had been fit once while the model got three runs
+averaged. Refitting at seeds 0..15 and ensembling the same way (`wxw_seed_curve.py`):
+
+| K | 1 | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| ALL | 0.726 | 0.731 | 0.733 | 0.728 | 0.734 |
+| de novo | 0.486 | 0.509 | 0.509 | 0.497 | 0.510 |
+
+Flat from K = 2. Only the 25-scalar substitution fit is seed-dependent — the
+positional marginal is a pure count — so the baseline has ~nothing to average away.
+**The model's continued gains with K are therefore not an ensembling artifact**, but
+every contrast should still use the ensembled baseline: converged `wxw` is
+0.733 / 0.507, and the 8-seed model's margin is +0.120 ALL, +0.079 de novo.
+
+### Nine families of mixing rules, all of them null
+
+`gate_search.py` (job 3298822) fits each family by direct random search on **pre-D
+recall**, not NLL — s11's lesson is that an NLL-optimal blend need not move ranking
+at all. Families: novelty bonus (`lm + c·unseen`), global blend, rank blend, gated
+blend (separate weight for seen/unseen cells), bonus+gated, per-cell gate
+(sigmoid over 5 cell features), per-genotype gate, and a full 8-parameter reranker.
+
+The pre-registered rule — family *and* parameters chosen by one pre-D criterion
+(all + de novo recall), so nothing in the choice saw post-D — came out `reranker`:
+
+| | recall | vs `wxw` | vs model ens |
+|---|---|---|---|
+| ALL | 0.823 | +0.078 [+0.049, +0.106] | **−0.014 [−0.033, +0.006]** |
+| de novo | 0.572 | +0.069 [−0.022, +0.148] | **+0.007 [−0.039, +0.049]** |
+
+**Across all 27 (family x objective) cells, not one rule beats the model ensemble on
+either subset.** Four rules do clear zero against `wxw` on de novo — `reranker/novel`
++0.180, `bonus_gated/novel` +0.173, `bonus/novel` +0.159, `cell_gate/novel` +0.145 —
+and every one collapses ALL to 0.17–0.22. Pure trade, the same failure mode s11
+recorded for the alpha upweight on NLL, and not deployable: you cannot know at
+prediction time that a target will turn out to be de novo.
+
+### Why it fails: nothing predicts which predictor wins
+
+The transfer diagnostic in the same script. AUC for "the model out-ranked `wxw` on
+this genotype":
+
+| feature | pre-D | post-D |
+|---|---|---|
+| model entropy | 0.513 | 0.531 |
+| seen frac of top-10% | 0.447 | 0.495 |
+| model/`wxw` agreement | 0.496 | 0.424 |
+| log n_valid | 0.479 | 0.524 (flips) |
+
+All at chance, in both regimes. A gate needs something to gate on and there is
+nothing. Compounding it, the model wins on 16.1% of pre-D genotypes against 21.3%
+post-D, so the selection set misrepresents the balance it is asked to tune.
+
+**The headroom is real and is a SELECTION failure, not a capacity one.** Oracle
+per-genotype gate (pick the better predictor per query, using the answer): de novo
+**0.662**, +0.096 [+0.051, +0.155] over the ensemble. Post-D oracle within the rule
+families reaches 0.724 (`cell_gate`) against the 0.56–0.57 pre-D selection achieves.
+The rules exist; pre-D data cannot identify them.
+
+### The pre-D selection set is clean, and only because of the composition rule
+
+`check_select_leak.py`, the diagnostic s12 used, applied to the de novo subset of the
+pre-D validation split that the searches tune on:
+
+| pre-D de novo subset | n | residue in training seqs | PSSM recall@10% |
+|---|---|---|---|
+| composition-aware (used) | 166 | **0.000** | **0.066** |
+| event-based (the old rule) | 398 | **0.573** | **0.609** |
+
+Defining de novo by events would have made 57% of the selection targets fake and let
+a pure composition baseline score 0.609 on them — s12's random-split leak, reappearing
+inside the selection set. Worth stating because it is a cheap mistake to make: any
+future tuning on a pre-D de novo subset must use `seen_cells`, not an event rule.
+
+Note this also supersedes the claim in s12's closing section that forecast-shaped
+selection is infeasible at this D. That was true of a *temporally* nested split
+(~37 examples). Conditioning the existing pre-D split on **novelty** instead gives
+182 de novo targets against the 145 being forecast — ample. It is still temporally
+interpolating, which is the honest limitation, and the transfer diagnostic above
+shows that limitation is what bites.
+
+### Zero-shot transfer to a new virus family: the baseline wins
+
+`recent.json` (the ongoing 2026 Bundibugyo ebolavirus outbreak, 762 nodes, 597 tips,
+all tips 2025.94–2026.63 and so entirely post-D) scored by `zeroshot_eval.py`
+(job 3299871). Genes GP/NP/VP35/VP30/VP40/VP24 pooled, n = 129 mutations. L is
+excluded: 2211 aa puts it on the >1022 two-pass stitching path s9 flags as the
+suspected mpox failure, which would be a confound.
+
+Only uniform, codon, `substitution` (25 position-free scalars, fitted per panel tree
+and averaged — the matrix has no length dependence) and the ESM-2 arms are available
+zero-shot. `where_only`, `pssm`, `frequency` and `where x which` all need
+position-specific counts from this tree and cannot appear in a zero-shot ladder.
+
+| rung | recall@10% | NLL/mut |
+|---|---|---|
+| uniform | 0.100 | 9.370 |
+| codon | 0.299 | 8.410 |
+| **substitution (panel-transferred)** | **0.752** | 8.488 |
+| single-tree models (best h5nx) | 0.403–0.558 | 8.47–8.85 |
+| joint_all (3-seed ens) | 0.674 | **8.049** |
+| joint_panel (8-seed ens) | 0.674 | 8.096 |
+
+**A 25-parameter substitution matrix beats the joint model, paired +0.078
+[+0.030, +0.166].** Three things do transfer: joint_panel beats every single-tree
+control by 0.116–0.271 (all clear of zero), so joint training genuinely buys
+cross-family generalization; the model wins decisively on NLL; and joint_all ≈
+joint_panel (+0.000 [−0.031, +0.059]), the saturation story again.
+
+Giving the tree-specific baselines a random half of this tree while the model still
+sees none of it (n = 28, noisy): `where x which` 0.464, `pssm` 0.132, `where_only`
+0.111, `frequency` 0.099 — against the zero-shot model's 0.643. Positional priors are
+worthless on a low-divergence single outbreak.
+
+**The pattern worth keeping:** this is the second independent setting where the
+model's edge over a factored baseline evaporates once position-specific memorization
+is unavailable, and in both the model keeps its NLL advantage while losing on
+ranking. Better density, worse ordering, wherever it cannot memorize.
+
+### Where this leaves the headline claim
+
+Against the converged `wxw` ensemble, the 8-seed model ensemble is **+0.120 on all
+substitutions** (clear of zero by a wide margin) and **+0.079 on de novo**
+(+0.083 [−0.011, +0.170] against the {0,1,2} draw — the lower bound has moved from
+−0.073 at K = 1 to −0.011 at K = 8, but has not crossed). The de novo interval is
+~±0.09 wide at n = 145 and pairing buys little because the two predictors are only
+weakly correlated, so the only route is the point estimate continuing to rise.
+
+**Multiple-comparisons caveat.** A lot of rules have now been run against this
+145-target set. The pre-registered-rule machinery protects the within-search choice;
+the broader sequence of experiments has no such protection. If K = 16 does clear
+zero, that result needs a second forecast date to be worth much — and s12 found
+D = 2024-07-01 unavailable.
+
+### Code added
+
+| file | purpose |
+|---|---|
+| `rank_agreement.py` | cell-level agreement: Spearman, top-10% overlap, per-target 2x2, oracles |
+| `fuse_ci.py` | paired bootstrap intervals for named candidate rules |
+| `gate_ceiling.py` | `wxw` seed-ensemble fairness check + per-genotype / union oracles |
+| `gate_search.py` | nine mixing families, pre-D random search on recall, transfer diagnostic |
+| `check_select_leak.py` | verifies the pre-D de novo selection subset does not leak (CPU) |
+| `seed_curve.py` | model recall vs number of seeds, subset-averaged |
+| `wxw_seed_curve.py` | the same for the baseline |
+| `zeroshot_eval.py` | the Bundibugyo ladder, zero-shot and half-fit tables |
+| `train_seeds_esm2.sh`, `train_seeds2_esm2.sh` | joint_panel seeds 3–7, 8–15 |
+| `train_initseeds_esm2.sh` | 4 replicates sharing `--split-seed 0`, differing init only |
+| `train_singles2_esm2.sh` | single-tree seeds 3–7, nine trees |
+
+Two bugs found and fixed while doing this, both of which moved numbers:
+
+1. `gate_search.canonical()` masked the stop column for **every** rung including pure
+   `wxw`. The convention masks it only for ESM-2-derived rungs
+   (`OUTPUTS_LEGITIMATE_STOP`), and getting it wrong inflated every contrast against
+   the baseline by ~0.02. All numbers above are post-fix.
+2. `rank_agreement.report()` summed ragged per-tree arrays with `np.sum` and crashed.
+   The GPU results are saved before `report()` runs, so nothing had to be recomputed.
+
+### Open / in flight at the end of this session
+
+- **`joint_panel` seeds 8–15** (job 3299577) launched 13:00–13:09, at epoch 1/20 when
+  last checked — K = 16 is NOT done.
+- **Single-tree seeds 3–7**, nine trees (job 3299597, 45 tasks) launched 13:20. These
+  are required before any ensembled joint-vs-single contrast: joint has 8–16 seeds and
+  the controls have 3, and comparing those would credit joint training with
+  ensembling the controls were denied. **K = 8 is the matched number**; K = 16 is a
+  scaling note for the joint arm alone, not part of the contrast.
+- **`gate_search` on the fixed-split replicates** (job 3299502) was still running. Those
+  4 models share one validation split so their ensemble has a clean pre-D selection
+  set — built to test whether the selection failure above is caused by the
+  single-seed-select / ensemble-score mismatch. Unplanned finding from its reference
+  table: they ensemble to 0.840 / 0.545 against 0.847 / 0.564 for 4 seeds with
+  *differing* splits, so part of the ensembling gain comes from models seeing
+  different 90% subsets, not just different inits.
+- **Figure 5 has NOT been regenerated.** Doing it needs: patch
+  `collect_figure_metrics.py` to ensemble log-prob maps over seeds for `joint` and
+  `single` and to use the `wxw` 3-seed ensemble; rerun it (GPU, ~3 min); then
+  `antiGen-figures/run_all.R`; then commit. Two decisions first — matched K (above),
+  and what to do with the epoch-rule row I/J, since a per-tree *ensemble* is well
+  defined via `--save-best-per-source` but s12 found the two rules indistinguishable.
+  Nothing from this section is in the figure or committed yet.
+
+---
+
+## 15. Figure 5 rebuilt on seed ensembles (2026-10-14)
+
+s14 found that averaging seeds' log-probability maps into ONE predictor is the
+largest single effect on this arm, and closed with "Figure 5 has NOT been
+regenerated". This is that rebuild. `collect_figure_metrics.py` now ensembles
+instead of scoring each seed and averaging the metrics afterwards.
+
+**Status: K = 3 is committed, K = 8 is the target and is blocked.** The matched
+single-tree controls at seeds 3-7 (job 3299597, 45 tasks) were still trickling
+through the queue, so this pass uses seeds {0,1,2} for both arms. Everything
+below is the K = 3 figure. It is not the final one -- s14 measured de novo
+0.546 at K = 3 against 0.586 at K = 8, and {0,1,2} is a known-favourable triple
+(~0.02 optimistic on both sides) -- but it is matched, so the contrasts are
+honest at the K it reports.
+
+### What changed in the collector
+
+- `joint` and `single` are one predictor each, built as the mean of their seeds'
+  log-prob maps, at the **same K**. An 8-seed joint against a 3-seed control
+  would credit joint training with ensembling its control was denied, so the
+  script takes one `--ens-seeds` list and uses it for both, and refuses to start
+  if any run in it is missing.
+- `substitution` and `where_times_which` are 3-seed ensembles of their own
+  fitted sampler. s14 found `fit_substitution_baseline`'s seeded minibatch
+  sampler had been left at `seed=0` by every caller, so the baseline was fit
+  once while the model got several runs averaged. It saturates by K = 2, so this
+  is fairness, not a gain -- and it is a real correction: `wxw` on all
+  substitutions goes 0.731 -> 0.745, which is a third of the model's margin
+  over it.
+- **The random regime does not ensemble and cannot.** Each seed there carries
+  its own three-way split, so seed 0's test block sits inside seed 1's training
+  half and the maps are not commensurable. It keeps the per-seed convention;
+  the supplement's banner now says so. One more reason the two regimes are not
+  a like-for-like pair, on top of the leak that demoted it in s12.
+- `logp_model` moved from `fuse_forecast.py` into `collect_figure_metrics.py`
+  (the import direction was already that way for `seen_cells`); the other five
+  scripts still import it from `fuse_forecast`, which re-exports it.
+
+### Before and after, temporal holdout, pooled epoch rule
+
+Recall at top 10%, per-seed convention -> K = 3 ensemble:
+
+| rung | ALL | ALL ens | de novo | de novo ens |
+|---|---|---|---|---|
+| `substitution` | 0.652 | 0.656 | 0.469 | **0.455** |
+| `where x which` | 0.731 | 0.745 | 0.497 | 0.503 |
+| single | 0.771 | 0.791 | 0.370 | 0.386 |
+| **joint** | 0.813 | **0.837** | 0.501 | **0.566** |
+
+Note `substitution` on de novo moves the *wrong* way. Ensembling is not
+uniformly positive, and the one rung where it costs something is the one whose
+seed-to-seed variation is 25 scalars rather than a network.
+
+Pooled contrasts:
+
+| contrast | metric | per-seed | K = 3 ensemble |
+|---|---|---|---|
+| vs single, ALL | recall | +0.042 [+0.025, +0.061] | **+0.046** [+0.025, +0.069] |
+| vs `wxw`, ALL | recall | +0.081 [+0.046, +0.116] | **+0.092** [+0.056, +0.127] |
+| vs single, de novo | recall | +0.131 [+0.075, +0.199] | **+0.179** [+0.116, +0.252] |
+| vs `wxw`, de novo | recall | +0.005 [−0.085, +0.085] | **+0.062** [−0.032, +0.147] |
+| vs single, ALL | NLL | −0.266 [−0.390, −0.149] | −0.238 [−0.362, −0.121] |
+| vs `wxw`, ALL | NLL | −0.429 [−0.569, −0.303] | **−0.500** [−0.637, −0.375] |
+| vs single, de novo | NLL | −0.830 [−1.017, −0.636] | −0.786 [−0.973, −0.590] |
+| vs `wxw`, de novo | NLL | +0.775 [+0.553, +0.969] | **+0.666** [+0.446, +0.858] |
+
+The de novo recall contrast against `wxw` moves from +0.005 to +0.062 and its
+lower bound from −0.085 to −0.032. **It still includes zero**, exactly as s14
+predicted it would at this K. The de novo NLL deficit also shrinks, 0.775 to
+0.666, but is nowhere near closing -- the ensemble is a better predictor on both
+metrics, not a fix for the density problem s11 diagnosed.
+
+### The pooling rule was checked, not assumed
+
+Ensembling in log-prob space (the normalized geometric mean) is what s14
+established and what the ranking result rests on; the arithmetic mean of the
+probability maps is the textbook density ensemble, and Jensen guarantees its NLL
+is no worse than the mean of the seeds'. The collector now computes both and
+prints the comparison. The `*_arith` rungs are a check, never written to the
+CSVs.
+
+| arm | subset | NLL log-lin | NLL arith | recall log-lin | recall arith |
+|---|---|---|---|---|---|
+| joint | all | **7.428** | 7.433 | **0.837** | 0.833 |
+| joint | de novo | **9.447** | 9.471 | **0.566** | 0.538 |
+| single | all | 7.667 | **7.658** | 0.791 | **0.800** |
+| single | de novo | **10.232** | 10.277 | 0.386 | **0.407** |
+
+Log-linear wins all four cells for `joint` and loses two of four for `single`.
+**That means the figure's rule flatters the joint-vs-single contrast**: de novo
+recall is +0.180 under log-linear against +0.131 under arithmetic, and ALL
+recall +0.046 against +0.033. State it rather than bury it. The defence is that
+log-linear is the pre-existing rule -- s14's seed curve, `fuse_ci.py` and
+`fuse_forecast.py` all use it, and it was fixed before this figure existed, not
+chosen from this table. Choosing between them on the numbers above would be
+choosing a predictor on post-D data, which the standing rule forbids. The
+contrast survives either way and the ranking of rungs is unchanged; only its
+size moves.
+
+### Cluster note, worth keeping
+
+`gpu` and `gpu_batch` are **the same ten nodes** (GPU3694, 7094, 7130, 7220,
+70DC, 71BA, 389E, 708E, C870, CACE). They differ only in time limit -- 1 day
+against 14 -- and in queue contention. On 2026-10-14 an identical 1-GPU request
+was scheduled at 14:01 on `gpu` and 19:54 on `gpu_batch`: ~6 hours apart on
+identical hardware. Check before submitting with
+
+    sbatch --test-only --partition=<P> --gpus=1 --mem=96G --wrap=true
+
+`quick_preemptible` was faster still (13:53) and was **not** used. s11 already
+records a preemption on this arm leaving a stale 4-epoch partial beside a
+complete run, and every reader here takes `sorted(glob(...))[-1]`; a preempted
+single-tree task that is not requeued leaves an undertrained `_best.pt` that the
+collector's existence check would accept. `run_collect_metrics.sh` now lists
+`gpu` first.
+
+### Open
+
+- **Rerun at the matched K = 8 and regenerate** once job 3299597 finishes. That
+  is one `sbatch experiments/multitree/run_collect_metrics.sh` (default
+  `--ens-seeds 0,...,7`, ~3 min) plus `antiGen-figures/run_all.R`.
+- The figure's caption must state the convention -- the two antiGen rungs are
+  K-seed ensembles and the two fitted rungs are 3-seed ensembles. Nothing on the
+  face of the figure says so, and the per-seed numbers in s11-s13 are not
+  comparable to these.
+- K = 16 exists for `joint_panel` and is a scaling note for that arm only. It
+  may not enter the joint-vs-single contrast while the controls stop at 8.
+- s14's multiple-comparisons caveat stands and now applies to the figure: a lot
+  of rules have been run against this 145-target de novo set, and the de novo
+  contrast against `wxw` is the one being watched to clear zero. If it does at
+  K = 8, it needs a second forecast date to be worth much, and s12 found
+  D = 2024-07-01 unavailable.
