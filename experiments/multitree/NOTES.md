@@ -264,8 +264,10 @@ scoring pass.
   first/second-half spread and the ncov window-2 bucket has n=10 — inconclusive. The real
   test is scoring mpox and ncov stitched vs truncated to <=1022 and comparing across the
   seam.
-- Nothing committed. `runs/` and `nextstrain/` are untracked and not gitignored;
-  checkpoints are 224 MB each.
+- ~~Nothing committed. `runs/` and `nextstrain/` are untracked and not gitignored~~ —
+  done. The branch is pushed to `origin/is-multitree`; `runs/`, `nextstrain/`,
+  `tree_pulled_*.json` and the generated `experiments/multitree/data/**/*.txt` are
+  gitignored as regenerable, so only code, notes and the small figure CSVs are tracked.
 
 ---
 
@@ -1034,3 +1036,66 @@ What remains possible, and is cheap, is an ncov-only spot check at D' = 2023-07-
 one tree with ~105 forecast-shaped validation targets, asking only whether
 forecast-shaped selection picks a different epoch than random-split selection and
 whether that changes post-D performance. Not run yet.
+
+---
+
+## 13. Figure 5 (2026-10-13/14)
+
+`antiGen-figures/` is an R/ggplot project, not Python: `R/common.R` carries the shared
+theme, palette and `save_figure()`; `run_all.R` regenerates everything.
+`figures/fig5_multitree.R` follows those conventions and is registered there.
+
+**Main** `figs/multitree_results.png` — temporal holdout only, 8 panels. Columns are the
+two metrics (recall at top 10%, NLL per mutation); rows are the ladder on all
+substitutions, the ladder on de novo only, then per-tree paired contrasts versus the
+single-tree control and versus `where x which`. Markers are solid only where the 95%
+interval clears zero.
+
+**Supplement** `figs/supp_multitree_results.png` — the same 8 panels for the random
+holdout, retained as the justification for excluding it rather than as a result, plus
+the epoch-rule row across both regimes.
+
+### Pipeline
+
+`collect_figure_metrics.py` (GPU, ~2.5 min) scores both regimes x both epoch rules x
+both metrics x both subsets through a single code path and writes
+`antiGen-figures/data/multitree/{ladder,deltas}.csv` plus `per_example.npz`. The R
+script reads only those three. All are small and tracked, so the figure rebuilds with no
+cluster access, and the cached per-example arrays mean changing how an interval is
+computed needs no GPU pass. `figure_data.py` is the superseded first collector.
+
+### Arms
+
+| array | arm | state |
+|---|---|---|
+| 3286180 | `joint9` + 9 single-tree controls, random, three-way split | 27/30 COMPLETED, 3 TIMEOUT |
+| 3286174 | `joint_panel` x3 with `--save-best-per-source`, temporal | 3/3 COMPLETED |
+| 3295391 | metric collection (final) | COMPLETED, 2m18s |
+
+The three TIMEOUTs are the ncov single-tree controls, killed at the 40-minute wall near
+epoch 16 of 20. Harmless: their best epochs are 2, 4 and 4, the `_best.pt` files were
+written 22:52-22:56 and the collection job started 23:13, so the scored weights are
+final and only the unused final-epoch checkpoint is missing. Same pattern as joint17
+seed 1 in s7.
+
+`prune_stale_runs.py` removed 7.6 GB of superseded artifacts from `matched/`, where
+three generations had piled up across cancelled attempts, including two-way-split
+checkpoints trained on data that is now inside the test block.
+
+### Open
+
+- Measles is gene H in both regimes, but seq_len is 618 in the random arm's build and
+  617 in the D snapshot. Each column is internally consistent, and
+  `make_forecast_testset.py` checks the reference frame matches between snapshot and
+  current build, so coordinates are sound within a column. Position *i* is not
+  guaranteed to be the same residue across columns, so no per-position claim should be
+  carried between them. The other eight trees agree on seq_len; nothing stronger was
+  checked.
+- Epoch selection remains interpolation-shaped (a random 10% of pre-D). The nested
+  alternative is built and measured infeasible at this D — see s12's closing section.
+  An ncov-only spot check at D' = 2023-07-01 with ~105 forecast-shaped targets is the
+  one version that would still fit, and has not been run.
+- Figure 5's de novo subset uses the composition-aware rule, which diverges from
+  `n_novel` in the `*_test_novelty.json` sidecars (still event-based). The figure
+  computes its own subsets, so the two never meet, but anything scored from the
+  sidecars would disagree.
