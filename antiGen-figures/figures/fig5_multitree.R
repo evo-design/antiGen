@@ -110,12 +110,15 @@ ladder$shown <- ladder$value
 ladder$shown_lo <- ladder$lo
 ladder$shown_hi <- ladder$hi
 
+## Start the axis exactly at zero when every bar is positive, so the bars begin
+## flush against the rung names instead of across a strip of blank panel. Only a
+## ladder that actually goes negative (NLL on the de novo subset) gets room on
+## the left, and only as much as its longest negative bar's label needs.
 lad_range <- function(metric) {
-  k <- ladder$metric == metric & ladder$rule == MAIN_RULE
-  lo <- min(0, min(ladder$shown_lo[k]))
-  hi <- max(ladder$shown_hi[k])
-  span <- hi - lo
-  c(lo - 0.13 * span, hi + 0.13 * span)
+  v <- ladder$shown[ladder$metric == metric & ladder$rule == MAIN_RULE]
+  hi <- max(v)
+  lo <- min(0, min(v))
+  c(if (lo < 0) lo - 0.10 * (hi - lo) else 0, hi + 0.12 * (hi - lo))
 }
 
 ## ONE rung order per metric, shared by every ladder panel. The panels in the
@@ -145,10 +148,7 @@ make_ladder <- function(metric, eval_name, subset_key, show_y, rng) {
   p <- ggplot(d, aes(y = rung_lab, x = shown, fill = rung_lab)) +
     geom_vline(xintercept = 0, color = "grey70", linewidth = 0.3) +
     geom_col(width = 0.74) +
-    geom_errorbarh(aes(xmin = shown_lo, xmax = shown_hi),
-                   height = 0.26, linewidth = 0.4, colour = "grey25") +
-    geom_text(aes(x = ifelse(shown >= 0, shown_hi, shown_lo),
-                  label = sprintf("%.2f", shown)),
+    geom_text(aes(label = sprintf("%.2f", shown)),
               hjust = ifelse(d$shown >= 0, -0.18, 1.18),
               size = 2.4, color = "grey25") +
     scale_fill_manual(values = RUNG_COLORS) +
@@ -246,24 +246,28 @@ legend_for <- function(values, df, aes_col) {
 subset_legend <- legend_for(SUBSET_COLORS, deltas[deltas$pooled == 1, ],
                             "subset_lab")
 
-## Filled vs hollow carries the only significance statement in the forests, so
-## it needs a key of its own.
-sig_legend <- extract_legend(
-  ggplot(data.frame(x = 1:2, y = 1:2,
-                    s = factor(c("TRUE", "FALSE"), levels = c("TRUE", "FALSE"))),
-         aes(x, y, shape = s)) +
-    geom_point(size = 2.2, colour = "grey25", fill = "white", stroke = 0.7) +
+## One strip carrying both keys. Two separately centred legend grobs side by
+## side read as two columns; `legend.box = "horizontal"` inside a single plot
+## keeps the four items together as one run.
+forest_legend <- extract_legend(
+  ggplot(transform(deltas[deltas$pooled == 1, ],
+                   sig = factor(ifelse(clears, "TRUE", "FALSE"),
+                                levels = c("TRUE", "FALSE"))),
+         aes(x = est, y = tree_lab, colour = subset_lab, shape = sig)) +
+    geom_point(size = 2.2, fill = "white", stroke = 0.7) +
+    scale_colour_manual(values = SUBSET_COLORS) +
     scale_shape_manual(values = c(`TRUE` = 16, `FALSE` = 21),
                        labels = c(`TRUE` = "95% interval excludes zero",
                                   `FALSE` = "interval includes zero")) +
-    theme_paper() + labs(shape = NULL) +
-    guides(shape = guide_legend(nrow = 1)) +
+    theme_paper() + labs(colour = NULL, shape = NULL) +
+    guides(colour = guide_legend(order = 1, nrow = 1),
+           shape = guide_legend(order = 2, nrow = 1,
+                                override.aes = list(colour = "grey25"))) +
     theme(legend.position = "top", legend.direction = "horizontal",
-          legend.justification = "center",
+          legend.box = "horizontal", legend.justification = "center",
           legend.key.height = unit(0.6, "lines"),
-          legend.margin = margin(0, 0, 0, 0)))
-
-forest_legend <- plot_grid(subset_legend, sig_legend, nrow = 1)
+          legend.box.spacing = unit(0.2, "lines"),
+          legend.margin = margin(0, 6, 0, 6)))
 rule_legend <- legend_for(
   RULE_COLORS,
   transform(deltas[deltas$pooled == 1, ],
@@ -317,7 +321,7 @@ MAIN_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55)
 
 main <- assemble(main_rows,
                  list("All substitutions", "De novo only", NULL,
-                      "Vs single-tree", "Vs where x which"),
+                      "Versus single-tree", "Versus where x which"),
                  MAIN_H)
 
 save_figure(main, "multitree_results", width = 11.5, height = 12)
@@ -350,7 +354,7 @@ SUPP_H <- c(0.20, 1.15, 1.15, 0.10, 1.55, 1.55, 0.10, 1.25)
 
 supp <- assemble(supp_rows,
                  list("All substitutions", "De novo only", NULL,
-                      "Vs single-tree", "Vs where x which", NULL, "Epoch rule"),
+                      "Versus single-tree", "Versus where x which", NULL, "Epoch rule"),
                  SUPP_H)
 
 save_figure(supp, "supp_multitree_results", width = 11.5, height = 16)
