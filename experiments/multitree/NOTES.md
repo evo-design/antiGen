@@ -875,3 +875,52 @@ an arm into an existing `--output-dir` leaves the previous attempt's files besid
 ones, distinguished only by a timestamp; readers take `sorted(glob(...))[-1]`, which is
 fine until two attempts used *different splits*, as happened here when the arm moved from
 a two-way to a three-way split.
+
+### A PSSM rung, and what it reveals about the random holdout (2026-10-14)
+
+Added to Figure 5's ladders because the `frequency` rung was being read as "the PSSM
+baseline used elsewhere in the paper". It is not. Both are parameter-free log-count maps
+over (position, alt AA), but:
+
+| | `pssm_root` (Fig 4's "PSSM") | `frequency (memorisation)` |
+|---|---|---|
+| counts | **sequences** carrying each residue at each position | **branch events**: substitutions to that residue on training branches |
+| source | precomputed `<data_dir>/pssms/root.csv` | computed from the arm's own training split |
+| smoothing | log(count + 1) | log(count + 0.5) |
+
+Every row of `root.csv` sums to the sequence count (9,254,120 for sc2) with ~100% of the
+mass on the wild-type residue: it is a composition matrix over tips. A mutation founding
+a large clade is counted once by `frequency` and once per descendant by the PSSM.
+
+The paper's `root.csv` could not be reused here -- it exists only for the four viruses in
+the main text, and being precomputed over a fixed window it has no notion of this arm's
+train/val/test split, so it would leak the test block. The rung is therefore the same
+*construction* (log(count+1) over residue occurrences) computed from each arm's own
+training sequences.
+
+**It turns out to be the sharpest single piece of evidence that the random holdout
+leaks.** Recall at top 10%, de novo subset:
+
+| regime | uniform | PSSM | frequency |
+|---|---|---|---|
+| temporal | 0.100 | **0.138** [0.099, 0.180] | 0.054 |
+| random | 0.099 | **0.562** [0.491, 0.649] | 0.050 |
+
+On the temporal holdout the PSSM sits essentially at chance on de novo substitutions, as
+it must: a substitution that did not exist before D cannot be in the pre-D sequence
+composition. On the random holdout it reaches 0.56. The direct diagnostic:
+
+    53.9% of random-split de novo targets already appear in the training SEQUENCES
+     7.6% of temporal-split de novo targets do
+
+"De novo" is defined by the absence of a training *mutation event*. In a random split a
+mutation can be held out as an event while its descendants sit in the training half as
+parent sequences, so the residue is plainly visible to anything that reads composition.
+Under a temporal split it genuinely is not. The same effect shows on all substitutions,
+where the PSSM is the **top** rung on the random holdout (0.88, above the multi-tree
+model's 0.86) and only mid-table on the temporal one (0.64 against 0.81).
+
+Consequence for the figure: a shared rung order cannot be monotone in both columns, since
+the PSSM moves from first to fifth between them. The ladders are ordered by the left
+column, which is the one carrying the rung names; the right column is still correctly
+labelled row by row, which is what the shared order exists to guarantee.

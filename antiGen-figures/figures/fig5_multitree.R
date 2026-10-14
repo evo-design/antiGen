@@ -47,12 +47,13 @@ RULE_COLORS <- c("Pooled-validation epoch (deployed)" = ANTIGEN_BLUE,
 ## One colour per rung: antiGen blue for the multi-tree model, the muted
 ## companion blue for its single-tree control, greys for the baselines, darkest
 ## for `where x which` -- the rung the second claim is about.
-RUNG_LEVELS <- c("uniform", "codon", "where_only", "substitution",
+RUNG_LEVELS <- c("uniform", "codon", "where_only", "pssm", "substitution",
                  "frequency", "where_times_which", "single", "joint")
 RUNG_LABELS <- c(
   uniform           = "Uniform",
   codon             = "Codon accessibility",
   where_only        = "Where only",
+  pssm              = "PSSM (sequence composition)",
   substitution      = "Substitution matrix",
   frequency         = "Frequency (memorisation)",
   where_times_which = "Where x which",
@@ -63,6 +64,7 @@ RUNG_COLORS <- c(
   "Uniform"                  = "#d8d0d0",
   "Codon accessibility"      = "#c6bbbb",
   "Where only"               = "#b3aaaa",
+  "PSSM (sequence composition)" = "#9f9a8e",
   "Substitution matrix"      = "#9aa39a",
   "Frequency (memorisation)" = "#888f88",
   "Where x which"            = "#555560",
@@ -124,13 +126,18 @@ lad_range <- function(metric) {
 ## ONE rung order per metric, shared by every ladder panel. The panels in the
 ## right-hand column carry no y-axis labels -- they are read against the left
 ## column -- so ordering each panel by its own values would silently mislabel
-## them. The order comes from the all-substitutions subset averaged over both
-## regimes.
+## them.
+##
+## The order is taken from the LEFT column's all-substitutions subset, i.e. the
+## panel that actually carries the labels, so that panel reads as a descending
+## ladder. A shared order cannot be monotone in both columns: the PSSM rung
+## alone moves from the top of the random panel to the middle of the temporal
+## one. The right column is still correctly labelled row by row, which is what
+## the shared order is there to guarantee.
 rung_order <- function(metric) {
   d <- ladder[ladder$metric == metric & ladder$rule == MAIN_RULE &
-              ladder$subset == "all", ]
-  m <- tapply(d$shown, as.character(d$rung_lab), mean)
-  names(sort(m))
+              ladder$subset == "all" & ladder$eval == EVALS[1], ]
+  as.character(d$rung_lab[order(d$shown)])
 }
 
 
@@ -157,13 +164,21 @@ make_ladder <- function(metric, eval_name, subset_key, show_y, rng) {
          else "Recall at top 10%") +
     theme_paper() +
     theme(legend.position = "none", axis.title.y = element_blank(),
-          panel.grid.major.y = element_blank())
+          panel.grid.major.y = element_blank(),
+          ## headroom for the cowplot panel letter, which is drawn at the
+          ## top-left and otherwise lands on the first rung's name
+          plot.margin = margin(t = 12, r = 6, b = 4, l = 4))
   if (metric == "hit") {
     p <- p + geom_vline(xintercept = 0.1, linetype = "dotted",
                         color = "grey45", linewidth = 0.4)
   }
-  if (!show_y) p <- p + theme(axis.text.y = element_blank(),
-                              axis.ticks.y = element_blank())
+  if (!show_y) {
+    ## With the rung names dropped there is nothing between the panel edge and
+    ## the bars, so the cowplot letter would sit on top of them.
+    p <- p + theme(axis.text.y = element_blank(),
+                   axis.ticks.y = element_blank(),
+                   plot.margin = margin(t = 12, r = 6, b = 4, l = 22))
+  }
   p
 }
 

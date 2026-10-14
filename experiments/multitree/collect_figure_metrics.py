@@ -76,7 +76,7 @@ FORECAST = '/large_storage/hielab/ispecht/multitree/forecast'
 # joint_panel retrained with --save-best-per-source; the original forecast/
 # runs are left untouched so the already-reported numbers still stand.
 FORECAST_PT = '/large_storage/hielab/ispecht/multitree/forecast_pertree'
-RUNGS = ['uniform', 'codon', 'where_only', 'substitution', 'frequency',
+RUNGS = ['uniform', 'codon', 'where_only', 'pssm', 'substitution', 'frequency',
          'where_times_which', 'single', 'joint']
 RULES = ['pooled', 'per-tree']
 dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -221,6 +221,23 @@ def main():
                     scores[nm] = (torch.log(fn(train_ex, L, E).to(dev)
                                             ).unsqueeze(0).expand(len(eval_ex), -1, -1),
                                   False)
+                ## PSSM: residue composition of the training sequences,
+                ## log(count + 1) -- the same construction as the repo's
+                ## pssm_root baseline, but counted here rather than read from
+                ## <data_dir>/pssms/root.csv. That artifact exists only for the
+                ## paper's four viruses and, being precomputed over a fixed
+                ## training window, has no notion of this arm's train/val/test
+                ## split, so reusing it would leak the test block.
+                ##
+                ## Note what it counts: SEQUENCES carrying each residue, not
+                ## substitution EVENTS. A mutation founding a large clade is
+                ## counted once by `frequency` and once per descendant here.
+                pssm = np.zeros((L, E), dtype=np.float32)
+                for ex in train_ex:
+                    pssm[np.arange(L), ex.aa_idx.numpy()] += 1.0
+                scores['pssm'] = (
+                    torch.log1p(torch.tensor(pssm, device=dev)
+                                ).unsqueeze(0).expand(len(eval_ex), -1, -1), False)
                 scores['uniform'] = (torch.zeros_like(scores['codon'][0]), False)
                 del fit, fac, cm
 

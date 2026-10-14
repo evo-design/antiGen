@@ -5,6 +5,8 @@ Random holdout,pooled,all,nll,codon,0.769348,0.669942,0.894581,1522
 Random holdout,pooled,all,hit,codon,0.323679,0.287253,0.368946,1522
 Random holdout,pooled,all,nll,where_only,0.412103,0.364611,0.470509,1522
 Random holdout,pooled,all,hit,where_only,0.495322,0.435050,0.570822,1522
+Random holdout,pooled,all,nll,pssm,1.665180,1.482267,1.888478,1522
+Random holdout,pooled,all,hit,pssm,0.877910,0.784010,0.995471,1522
 Random holdout,pooled,all,nll,substitution,1.411240,1.237967,1.631489,1522
 Random holdout,pooled,all,hit,substitution,0.698670,0.614066,0.807170,1522
 Random holdout,pooled,all,nll,frequency,1.549884,1.371626,1.771609,1522
@@ -21,6 +23,8 @@ Random holdout,pooled,novel,nll,codon,0.702365,0.574673,0.854758,397
 Random holdout,pooled,novel,hit,codon,0.334477,0.289134,0.391760,397
 Random holdout,pooled,novel,nll,where_only,0.027072,0.006679,0.048202,397
 Random holdout,pooled,novel,hit,where_only,0.173337,0.141848,0.211813,397
+Random holdout,pooled,novel,nll,pssm,0.114755,0.013039,0.223011,397
+Random holdout,pooled,novel,hit,pssm,0.562100,0.491470,0.648805,397
 Random holdout,pooled,novel,nll,substitution,0.761783,0.615383,0.942110,397
 Random holdout,pooled,novel,hit,substitution,0.460631,0.394408,0.544380,397
 Random holdout,pooled,novel,nll,frequency,-0.234269,-0.270443,-0.204188,397
@@ -37,6 +41,8 @@ Random holdout,per-tree,all,nll,codon,0.769348,0.669942,0.894581,1522
 Random holdout,per-tree,all,hit,codon,0.323679,0.287253,0.368946,1522
 Random holdout,per-tree,all,nll,where_only,0.412103,0.364611,0.470509,1522
 Random holdout,per-tree,all,hit,where_only,0.495322,0.435050,0.570822,1522
+Random holdout,per-tree,all,nll,pssm,1.665180,1.482267,1.888478,1522
+Random holdout,per-tree,all,hit,pssm,0.877910,0.784010,0.995471,1522
 Random holdout,per-tree,all,nll,substitution,1.411240,1.237967,1.631489,1522
 Random holdout,per-tree,all,hit,substitution,0.698670,0.614066,0.807170,1522
 Random holdout,per-tree,all,nll,frequency,1.549884,1.371626,1.771609,1522
@@ -53,6 +59,8 @@ Random holdout,per-tree,novel,nll,codon,0.702365,0.574673,0.854758,397
 Random holdout,per-tree,novel,hit,codon,0.334477,0.289134,0.391760,397
 Random holdout,per-tree,novel,nll,where_only,0.027072,0.006679,0.048202,397
 Random holdout,per-tree,novel,hit,where_only,0.173337,0.141848,0.211813,397
+Random holdout,per-tree,novel,nll,pssm,0.114755,0.013039,0.223011,397
+Random holdout,per-tree,novel,hit,pssm,0.562100,0.491470,0.648805,397
 Random holdout,per-tree,novel,nll,substitution,0.761783,0.615383,0.942110,397
 Random holdout,per-tree,novel,hit,substitution,0.460631,0.394408,0.544380,397
 Random holdout,per-tree,novel,nll,frequency,-0.234269,-0.270443,-0.204188,397
@@ -69,6 +77,8 @@ Temporal holdout,pooled,all,nll,codon,0.667800,0.538038,0.785278,564
 Temporal holdout,pooled,all,hit,codon,0.299820,0.274702,0.323398,564
 Temporal holdout,pooled,all,nll,where_only,0.384101,0.349324,0.421352,564
 Temporal holdout,pooled,all,hit,where_only,0.440203,0.399869,0.481227,564
+Temporal holdout,pooled,all,nll,pssm,0.873041,0.678113,1.065446,564
+Temporal holdout,pooled,all,hit,pssm,0.643561,0.601042,0.686621,564
 Temporal holdout,pooled,all,nll,substitution,1.287668,1.138094,1.434269,564
 Temporal holdout,pooled,all,hit,substitution,0.652482,0.594971,0.706865,564
 Temporal holdout,pooled,all,nll,frequency,1.338889,1.233043,1.454546,564
@@ -85,6 +95,8 @@ Temporal holdout,pooled,novel,nll,codon,0.434002,0.074416,0.752717,157
 Temporal holdout,pooled,novel,hit,codon,0.336951,0.270404,0.401454,157
 Temporal holdout,pooled,novel,nll,where_only,0.081394,0.023676,0.137274,157
 Temporal holdout,pooled,novel,hit,where_only,0.179766,0.119251,0.238742,157
+Temporal holdout,pooled,novel,nll,pssm,-0.586410,-0.865560,-0.277755,157
+Temporal holdout,pooled,novel,hit,pssm,0.137540,0.098831,0.180209,157
 Temporal holdout,pooled,novel,nll,substitution,0.761596,0.416314,1.061182,157
 Temporal holdout,pooled,novel,hit,substitution,0.471338,0.393365,0.558626,157
 Temporal holdout,pooled,novel,nll,frequency,-0.219832,-0.274470,-0.174618,157
@@ -101,6 +113,8 @@ Temporal holdout,per-tree,all,nll,codon,0.667800,0.538038,0.785278,564
 Temporal holdout,per-tree,all,hit,codon,0.299820,0.274702,0.323398,564
 Temporal holdout,per-tree,all,nll,where_only,0.384101,0.349324,0.421352,564
 Temporal holdout,per-tree,all,hit,where_only,0.440203,0.399869,0.481227,564
+Temporal holdout,per-tree,all,nll,pssm,0.873041,0.678113,1.065446,564
+Temporal holdout,per-tree,all,hit,pssm,0.643561,0.601042,0.686621,564
 Temporal holdout,per-tree,all,nll,substitution,1.287668,1.138094,1.434269,564
 Temporal holdout,per-tree,all,hit,substitution,0.652482,0.594971,0.706865,564
 Temporal holdout,per-tree,all,nll,frequency,1.338889,1.233043,1.454546,564
@@ -117,6 +131,8 @@ Temporal holdout,per-tree,novel,nll,codon,0.434002,0.074416,0.752717,157
 Temporal holdout,per-tree,novel,hit,codon,0.336951,0.270404,0.401454,157
 Temporal holdout,per-tree,novel,nll,where_only,0.081394,0.023676,0.137274,157
 Temporal holdout,per-tree,novel,hit,where_only,0.179766,0.119251,0.238742,157
+Temporal holdout,per-tree,novel,nll,pssm,-0.586410,-0.865560,-0.277755,157
+Temporal holdout,per-tree,novel,hit,pssm,0.137540,0.098831,0.180209,157
 Temporal holdout,per-tree,novel,nll,substitution,0.761596,0.416314,1.061182,157
 Temporal holdout,per-tree,novel,hit,substitution,0.471338,0.393365,0.558626,157
 Temporal holdout,per-tree,novel,nll,frequency,-0.219832,-0.274470,-0.174618,157
