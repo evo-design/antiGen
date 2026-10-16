@@ -1,0 +1,871 @@
+{
+  "denv1": {
+    "at": "2026-05-01",
+    "dataset": "dengue/denv1/E",
+    "date_sources": {
+      "num_date": 3906
+    },
+    "examples": 766,
+    "genes": [
+      "E"
+    ],
+    "label": "dengue denv1 E (panel)",
+    "latest_tip_bound": 2025.259,
+    "n_tips": 3906,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_denv1@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 495,
+    "target_mutations": 1783,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "denv2": {
+    "at": "2026-05-01",
+    "dataset": "dengue/denv2/E",
+    "date_sources": {
+      "num_date": 3893
+    },
+    "examples": 734,
+    "genes": [
+      "E"
+    ],
+    "label": "dengue denv2 E (panel)",
+    "latest_tip_bound": 2026.215,
+    "n_tips": 3893,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_denv2@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 495,
+    "target_mutations": 1654,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "denv3": {
+    "at": "2026-05-01",
+    "dataset": "dengue/denv3/E",
+    "date_sources": {
+      "num_date": 3940
+    },
+    "examples": 975,
+    "genes": [
+      "E"
+    ],
+    "label": "dengue denv3 E (panel)",
+    "latest_tip_bound": 2026.073,
+    "n_tips": 3940,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_denv3@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 493,
+    "target_mutations": 1980,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "denv4": {
+    "at": "2026-05-01",
+    "dataset": "dengue/denv4/E",
+    "date_sources": {
+      "num_date": 3658
+    },
+    "examples": 1297,
+    "genes": [
+      "E"
+    ],
+    "label": "dengue denv4 E (panel)",
+    "latest_tip_bound": 2025.571,
+    "n_tips": 3658,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_denv4@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 495,
+    "target_mutations": 2164,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "ebola_all": {
+    "at": "2026-05-01",
+    "dataset": "ebola/all-outbreaks",
+    "date_sources": {
+      "year": 384
+    },
+    "examples": 115,
+    "genes": [
+      "GP"
+    ],
+    "label": "all-outbreaks GP",
+    "latest_tip_bound": 2025.9972602739726,
+    "n_tips": 384,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_ebola_all@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 676,
+    "target_mutations": 182,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "ebola_ebov2013": {
+    "at": "2026-05-01",
+    "dataset": "ebola/ebov-2013",
+    "date_sources": {
+      "num_date": 1493
+    },
+    "examples": 49,
+    "genes": [
+      "GP"
+    ],
+    "label": "ebov-2013 GP",
+    "latest_tip_bound": 2015.8131416837782,
+    "n_tips": 1493,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_ebola_ebov2013@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 677,
+    "target_mutations": 189,
+    "tier": "core",
+    "updated": "2019-12-14"
+  },
+  "ebola_sudv": {
+    "at": "current",
+    "dataset": "ebola/sudv",
+    "date_sources": {
+      "date": 141,
+      "date_submitted": 7
+    },
+    "examples": 41,
+    "genes": [
+      "GP"
+    ],
+    "label": "sudv GP",
+    "latest_tip_bound": 2025.0493150684931,
+    "n_tips": 148,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_ebola_sudv@current_train.txt",
+    "route": "B",
+    "seq_len": 676,
+    "target_mutations": 54,
+    "tier": "core",
+    "updated": "2026-09-02"
+  },
+  "evd68_vp1": {
+    "at": "2026-05-01",
+    "dataset": "enterovirus/d68/vp1",
+    "date_sources": {
+      "num_date": 3437
+    },
+    "examples": 739,
+    "genes": [
+      "VP1"
+    ],
+    "label": "EV-D68 VP1",
+    "latest_tip_bound": 2024.999,
+    "n_tips": 3437,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_evd68_vp1@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 309,
+    "target_mutations": 1565,
+    "tier": "core",
+    "updated": "2025-11-16"
+  },
+  "h1n1pdm_ha": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/h1n1pdm/ha/12y",
+    "date_sources": {
+      "num_date": 1543
+    },
+    "examples": 752,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "label": "seasonal influenza h1n1pdm HA",
+    "latest_tip_bound": 2026.297,
+    "n_tips": 1543,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h1n1pdm_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 566,
+    "target_mutations": 1502,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "h1n1pdm_na": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/h1n1pdm/na/12y",
+    "date_sources": {
+      "num_date": 1543
+    },
+    "examples": 583,
+    "genes": [
+      "NA"
+    ],
+    "label": "seasonal influenza h1n1pdm NA",
+    "latest_tip_bound": 2026.297,
+    "n_tips": 1543,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h1n1pdm_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 469,
+    "target_mutations": 1263,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "h3n2_ha": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/h3n2/ha/12y",
+    "date_sources": {
+      "num_date": 1662
+    },
+    "examples": 903,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "label": "seasonal influenza h3n2 HA",
+    "latest_tip_bound": 2026.3,
+    "n_tips": 1662,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h3n2_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 566,
+    "target_mutations": 1753,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "h3n2_na": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/h3n2/na/12y",
+    "date_sources": {
+      "num_date": 1659
+    },
+    "examples": 1021,
+    "genes": [
+      "NA"
+    ],
+    "label": "seasonal influenza h3n2 NA",
+    "latest_tip_bound": 2026.3,
+    "n_tips": 1659,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h3n2_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 469,
+    "target_mutations": 1729,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "h5nx_ha": {
+    "at": "2026-05-01",
+    "dataset": "avian-flu/h5nx/ha/all-time",
+    "date_sources": {
+      "num_date": 1426
+    },
+    "examples": 3856,
+    "genes": [
+      "HA"
+    ],
+    "label": "avian influenza h5nx HA",
+    "latest_tip_bound": 2026.032,
+    "n_tips": 1426,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h5nx_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 569,
+    "target_mutations": 4857,
+    "tier": "core",
+    "updated": "2026-02-02"
+  },
+  "h5nx_na": {
+    "at": "2026-05-01",
+    "dataset": "avian-flu/h5nx/na/all-time",
+    "date_sources": {
+      "num_date": 1384
+    },
+    "examples": 6614,
+    "genes": [
+      "NA"
+    ],
+    "label": "avian influenza h5nx NA",
+    "latest_tip_bound": 2026.032,
+    "n_tips": 1384,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h5nx_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 470,
+    "target_mutations": 7612,
+    "tier": "core",
+    "updated": "2026-02-02"
+  },
+  "h7nx_ha": {
+    "at": "current",
+    "dataset": "avian-flu/h7nx/ha/all-time",
+    "date_sources": {
+      "num_date": 4998
+    },
+    "examples": 4831,
+    "genes": [
+      "HA"
+    ],
+    "label": "avian influenza h7nx HA",
+    "latest_tip_bound": 2026.089,
+    "n_tips": 4998,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h7nx_ha@current_train.txt",
+    "route": "B",
+    "seq_len": 560,
+    "target_mutations": 6768,
+    "tier": "core",
+    "updated": "2026-09-28"
+  },
+  "h7nx_na": {
+    "at": "current",
+    "dataset": "avian-flu/h7nx/na/all-time",
+    "date_sources": {
+      "num_date": 4719
+    },
+    "examples": 6571,
+    "genes": [
+      "NA"
+    ],
+    "label": "avian influenza h7nx NA",
+    "latest_tip_bound": 2026.089,
+    "n_tips": 4719,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h7nx_na@current_train.txt",
+    "route": "B",
+    "seq_len": 465,
+    "target_mutations": 8199,
+    "tier": "core",
+    "updated": "2026-09-28"
+  },
+  "h9n2_ha": {
+    "at": "2026-05-01",
+    "dataset": "avian-flu/h9n2/ha/all-time",
+    "date_sources": {
+      "num_date": 2790
+    },
+    "examples": 6932,
+    "genes": [
+      "HA"
+    ],
+    "label": "avian influenza h9n2 HA",
+    "latest_tip_bound": 2025.999,
+    "n_tips": 2790,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h9n2_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 560,
+    "target_mutations": 8668,
+    "tier": "core",
+    "updated": "2026-02-02"
+  },
+  "h9n2_na": {
+    "at": "2026-05-01",
+    "dataset": "avian-flu/h9n2/na/all-time",
+    "date_sources": {
+      "num_date": 2963
+    },
+    "examples": 7278,
+    "genes": [
+      "NA"
+    ],
+    "label": "avian influenza h9n2 NA",
+    "latest_tip_bound": 2025.999,
+    "n_tips": 2963,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_h9n2_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 469,
+    "target_mutations": 8988,
+    "tier": "core",
+    "updated": "2026-02-02"
+  },
+  "hmpv_a_f": {
+    "at": "2026-05-01",
+    "dataset": "hmpv/a/F",
+    "date_sources": {
+      "num_date": 1350
+    },
+    "examples": 113,
+    "genes": [
+      "F"
+    ],
+    "label": "hMPV A F",
+    "latest_tip_bound": 2025.919,
+    "n_tips": 1350,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_hmpv_a_f@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 539,
+    "target_mutations": 365,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "hmpv_a_g": {
+    "at": "2026-05-01",
+    "dataset": "hmpv/a/G",
+    "date_sources": {
+      "num_date": 1762
+    },
+    "examples": 4251,
+    "genes": [
+      "G"
+    ],
+    "label": "hMPV A G",
+    "latest_tip_bound": 2025.919,
+    "n_tips": 1762,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_hmpv_a_g@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 237,
+    "target_mutations": 5283,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "hmpv_b_f": {
+    "at": "2026-05-01",
+    "dataset": "hmpv/b/F",
+    "date_sources": {
+      "num_date": 1173
+    },
+    "examples": 164,
+    "genes": [
+      "F"
+    ],
+    "label": "hMPV B F",
+    "latest_tip_bound": 2025.919,
+    "n_tips": 1173,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_hmpv_b_f@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 539,
+    "target_mutations": 379,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "hmpv_b_g": {
+    "at": "2026-05-01",
+    "dataset": "hmpv/b/G",
+    "date_sources": {
+      "num_date": 1085
+    },
+    "examples": 1982,
+    "genes": [
+      "G"
+    ],
+    "label": "hMPV B G",
+    "latest_tip_bound": 2025.919,
+    "n_tips": 1085,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_hmpv_b_g@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 225,
+    "target_mutations": 2603,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "lassa_gpc": {
+    "at": "2026-05-01",
+    "dataset": "lassa/gpc",
+    "date_sources": {
+      "num_date": 1173
+    },
+    "examples": 2663,
+    "genes": [
+      "GPC"
+    ],
+    "label": "Lassa GPC",
+    "latest_tip_bound": 2101.199,
+    "n_tips": 1173,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_lassa_gpc@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 491,
+    "target_mutations": 3352,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "measles_h": {
+    "at": "2026-05-01",
+    "dataset": "measles/genome/global",
+    "date_sources": {
+      "num_date": 2715
+    },
+    "examples": 418,
+    "genes": [
+      "H"
+    ],
+    "label": "measles H (panel)",
+    "latest_tip_bound": 2026.33,
+    "n_tips": 2715,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_measles_h@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 617,
+    "target_mutations": 707,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "measles_n450": {
+    "at": "2026-05-01",
+    "dataset": "measles/N450/global",
+    "date_sources": {
+      "num_date": 3278
+    },
+    "examples": 321,
+    "genes": [
+      "N"
+    ],
+    "label": "measles N450",
+    "latest_tip_bound": 2026.33,
+    "n_tips": 3278,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_measles_n450@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 150,
+    "target_mutations": 719,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "mpox": {
+    "at": "2026-05-01",
+    "dataset": "mpox/all-clades",
+    "date_sources": {
+      "date": 1175
+    },
+    "examples": 2442,
+    "genes": [
+      "OPG210"
+    ],
+    "label": "mpox OPG210",
+    "latest_tip_bound": 2026.9972602739726,
+    "n_tips": 1175,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_mpox@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 1881,
+    "target_mutations": 2553,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "mumps": {
+    "at": "2026-05-01",
+    "dataset": "mumps/global",
+    "date_sources": {
+      "num_date": 887
+    },
+    "examples": 203,
+    "genes": [
+      "HN"
+    ],
+    "label": "mumps HN",
+    "latest_tip_bound": 2025.399,
+    "n_tips": 887,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_mumps@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 582,
+    "target_mutations": 317,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "ncov": {
+    "at": "2026-05-01",
+    "dataset": "ncov/open/global/all-time",
+    "date_sources": {
+      "num_date": 2915
+    },
+    "examples": 1523,
+    "genes": [
+      "S"
+    ],
+    "label": "SARS-CoV-2 spike (panel)",
+    "latest_tip_bound": 2026.248,
+    "n_tips": 2915,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_ncov@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 1273,
+    "target_mutations": 2677,
+    "tier": "core",
+    "updated": "2026-04-26"
+  },
+  "nipah": {
+    "at": "2026-05-01",
+    "dataset": "nipah/all",
+    "date_sources": {
+      "num_date": 109
+    },
+    "examples": 67,
+    "genes": [
+      "G"
+    ],
+    "label": "Nipah virus glycoprotein",
+    "latest_tip_bound": 2025.404,
+    "n_tips": 109,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_nipah@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 602,
+    "target_mutations": 99,
+    "tier": "core",
+    "updated": "2026-03-09"
+  },
+  "norovirus_vp1": {
+    "at": "2026-05-01",
+    "dataset": "norovirus/all/VP1",
+    "date_sources": {
+      "num_date": 5811
+    },
+    "examples": 16738,
+    "genes": [
+      "VP1"
+    ],
+    "label": "norovirus VP1 (the capsid antigen)",
+    "latest_tip_bound": 2026.141,
+    "n_tips": 5811,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_norovirus_vp1@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 541,
+    "target_mutations": 19517,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "oropouche_m": {
+    "at": "2026-05-01",
+    "dataset": "oropouche/M",
+    "date_sources": {
+      "num_date": 769
+    },
+    "examples": 397,
+    "genes": [
+      "OROVsMgp1"
+    ],
+    "label": "Oropouche M (glycoprotein)",
+    "latest_tip_bound": 2025.283,
+    "n_tips": 769,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_oropouche_m@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 1420,
+    "target_mutations": 650,
+    "tier": "core",
+    "updated": "2026-02-14"
+  },
+  "rabies": {
+    "at": "2026-05-01",
+    "dataset": "rabies",
+    "date_sources": {
+      "date": 2995
+    },
+    "examples": 3002,
+    "genes": [
+      "RABVgp4"
+    ],
+    "label": "rabies",
+    "latest_tip_bound": 2025.9972602739726,
+    "n_tips": 2995,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rabies@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 524,
+    "target_mutations": 4060,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "rsv_a_f": {
+    "at": "2026-05-01",
+    "dataset": "rsv/a/F/all-time",
+    "date_sources": {
+      "num_date": 2941
+    },
+    "examples": 472,
+    "genes": [
+      "F"
+    ],
+    "label": "RSV-A F",
+    "latest_tip_bound": 2026.185,
+    "n_tips": 2941,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rsv_a_f@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 574,
+    "target_mutations": 1288,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "rsv_a_g": {
+    "at": "2026-05-01",
+    "dataset": "rsv/a/G/all-time",
+    "date_sources": {
+      "num_date": 2865
+    },
+    "examples": 4414,
+    "genes": [
+      "G"
+    ],
+    "label": "RSV-A G",
+    "latest_tip_bound": 2026.207,
+    "n_tips": 2865,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rsv_a_g@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 321,
+    "target_mutations": 6037,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "rsv_b_f": {
+    "at": "2026-05-01",
+    "dataset": "rsv/b/F/all-time",
+    "date_sources": {
+      "num_date": 2942
+    },
+    "examples": 382,
+    "genes": [
+      "F"
+    ],
+    "label": "RSV-B F",
+    "latest_tip_bound": 2026.193,
+    "n_tips": 2942,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rsv_b_f@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 574,
+    "target_mutations": 1136,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "rsv_b_g": {
+    "at": "2026-05-01",
+    "dataset": "rsv/b/G/all-time",
+    "date_sources": {
+      "num_date": 2620
+    },
+    "examples": 3845,
+    "genes": [
+      "G"
+    ],
+    "label": "RSV-B G",
+    "latest_tip_bound": 2026.207,
+    "n_tips": 2620,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rsv_b_g@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 310,
+    "target_mutations": 5346,
+    "tier": "core",
+    "updated": "2026-04-28"
+  },
+  "rubella_e1": {
+    "at": "2026-05-01",
+    "dataset": "rubella/E1",
+    "date_sources": {
+      "num_date": 2948
+    },
+    "examples": 268,
+    "genes": [
+      "E1"
+    ],
+    "label": "rubella E1",
+    "latest_tip_bound": 2025.486,
+    "n_tips": 2948,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_rubella_e1@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 481,
+    "target_mutations": 703,
+    "tier": "core",
+    "updated": "2025-12-25"
+  },
+  "vic_ha": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/vic/ha/12y",
+    "date_sources": {
+      "num_date": 1514
+    },
+    "examples": 325,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "label": "seasonal influenza vic HA",
+    "latest_tip_bound": 2026.273,
+    "n_tips": 1514,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_vic_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 585,
+    "target_mutations": 862,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "vic_na": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/vic/na/12y",
+    "date_sources": {
+      "num_date": 1514
+    },
+    "examples": 552,
+    "genes": [
+      "NA"
+    ],
+    "label": "seasonal influenza vic NA",
+    "latest_tip_bound": 2026.273,
+    "n_tips": 1514,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_vic_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 466,
+    "target_mutations": 1246,
+    "tier": "core",
+    "updated": "2026-04-30"
+  },
+  "wnv": {
+    "at": "2026-05-01",
+    "dataset": "WNV/all-lineages",
+    "date_sources": {
+      "num_date": 3088
+    },
+    "examples": 549,
+    "genes": [
+      "env"
+    ],
+    "label": "West Nile virus envelope",
+    "latest_tip_bound": 2025.788,
+    "n_tips": 3088,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_wnv@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 501,
+    "target_mutations": 1057,
+    "tier": "core",
+    "updated": "2026-05-01"
+  },
+  "yam_ha": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/yam/ha/12y",
+    "date_sources": {
+      "num_date": 2685
+    },
+    "examples": 320,
+    "genes": [
+      "SigPep",
+      "HA1",
+      "HA2"
+    ],
+    "label": "seasonal influenza yam HA",
+    "latest_tip_bound": 2020.217213114754,
+    "n_tips": 2685,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_yam_ha@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 584,
+    "target_mutations": 1050,
+    "tier": "core",
+    "updated": "2024-02-14"
+  },
+  "yam_na": {
+    "at": "2026-05-01",
+    "dataset": "seasonal-flu/yam/na/12y",
+    "date_sources": {
+      "num_date": 2543
+    },
+    "examples": 657,
+    "genes": [
+      "NA"
+    ],
+    "label": "seasonal influenza yam NA",
+    "latest_tip_bound": 2020.217213114754,
+    "n_tips": 2543,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_yam_na@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 466,
+    "target_mutations": 1627,
+    "tier": "core",
+    "updated": "2024-02-14"
+  },
+  "zika": {
+    "at": "2026-05-01",
+    "dataset": "zika",
+    "date_sources": {
+      "num_date": 1040
+    },
+    "examples": 53,
+    "genes": [
+      "ENV"
+    ],
+    "label": "zika",
+    "latest_tip_bound": 2024.695,
+    "n_tips": 1040,
+    "path": "/home/ivan.specht/antiGen/experiments/multitree/data/wide/examples_zika@2026-05-01_train.txt",
+    "route": "A",
+    "seq_len": 504,
+    "target_mutations": 195,
+    "tier": "core",
+    "updated": "2026-02-14"
+  }
+}

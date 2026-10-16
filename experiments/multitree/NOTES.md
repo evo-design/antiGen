@@ -2017,3 +2017,320 @@ and the forecast panel itself might be extendable.
 
 Nothing in this section has been run. No data fetched beyond the undated
 catalogue listing, which is saved at `~/.charon_datasets.txt`.
+
+---
+
+## 18. The wide corpus rebuilt at D = 2026-05-01 (2026-10-16)
+
+The cutoff moves to **2026-05-01** and the evaluation moves off the nine-tree panel
+entirely: it will be a single tree, supplied separately, observed wholly after that
+date. That changes what the panel trees are for -- they are now training trees like any
+other, taken at the cutoff -- and it changes the inclusion rule for everything else,
+because nothing has to straddle anything any more. A dataset is in the corpus if it can
+be shown to carry no information observed after the cutoff, by either route:
+
+**A, the archive.** Charon's `<path>@YYYY-MM-DD` resolves to the most recent build
+published at or before that date, and a build published before the cutoff cannot
+contain anything observed after it, whatever its tips look like. The guard is
+`meta.updated <= cutoff`: where the archive has no version that old Charon serves
+something newer, and that must not be mistaken for a snapshot.
+
+**B, today's build with all tips pre-cutoff.** Where no archived version exists, the
+live build still qualifies if every tip predates the cutoff.
+
+§17's first next-step -- *verify the `@date` suffix is actually honoured* -- is
+**done**, on four independent datasets rather than one:
+
+| dataset | `@2026-05-01` | current |
+|---|---|---|
+| measles/N450/global | updated 2026-05-01, 3278 tips, latest 2026.33 | updated 2026-10-13, 3290 tips, latest 2026.74 |
+| rsv/a/G/all-time | updated 2026-04-28, 2865 tips, latest 2026.21 | updated 2026-10-13, 2970 tips, latest 2026.52 |
+| seasonal-flu/h3n2/ha/12y | updated 2026-04-30, 1662 tips, latest 2026.30 | updated 2026-10-08, 1707 tips, latest 2026.70 |
+| hmpv/a/F | updated 2026-04-28, 1350 tips, latest 2025.92 | updated 2026-10-14, 1635 tips, latest 2026.39 |
+
+Fewer tips, an earlier `updated`, an earlier last tip, every time. The suffix is real.
+
+### The tip-date bug, found and fixed
+
+§17 suspected the exclusions on "no tip dates" were wrong, and they were, in two
+separate ways.
+
+`latest_tip()` reads `node_attrs.num_date` and nothing else. That is the *time-tree*
+inference, and plenty of builds are divergence trees that never carry it: the date sits
+in `node_attrs.date` as an ISO string, sometimes ambiguous (`1979-XX-XX`), or in
+`node_attrs.year`, which is what Auspice actually shows on ebola/all-outbreaks -- whose
+384 tips all read as undated under the old reader. Second, **one** unknown-date tip
+disqualified an entire tree: ebola/sudv has 141 of 148 tips dated and a latest tip of
+2025.05, and was dropped for the other seven.
+
+Dates are now read, per tip, from the first of
+
+    num_date (upper confidence bound) -> date -> year -> date_submitted
+    -> date_released / date_updated
+
+and each is converted to an *upper bound* in decimal years -- an ambiguous `2004-XX-XX`
+bounds at the end of 2004, and a submission or release date bounds the collection date
+from above, since a sequence cannot be released before it was sampled. Route B requires
+every tip to carry such a bound and all of them to fall before the cutoff.
+
+Three consequences, all checked:
+
+- **ebola/sudv and both h7nx segments qualify** where they did not before (sudv by
+  route B, all tips bounded, latest 2025.05).
+- **The hantavirus builds are excluded on their merits, not for being "undated".**
+  They carry no collection date of any kind -- only NCBI `date_released` /
+  `date_updated` -- and those run to 2026-07, past the cutoff, while the archive serves
+  no version of them at all (404 at the cutoff). The honest reading is that these ten
+  trees cannot be shown to be pre-cutoff, not that their dates were missed.
+- A tip with no bound at all still disqualifies its tree. That is not recoverable from
+  the data, and the report names the trees it costs.
+
+### Candidate selection: 318 paths, far fewer trees
+
+`charon/getAvailable` lists 318 datasets today, but most are cuts of a build already
+counted: ncov alone appears as 100 region x window combinations, seasonal flu as six
+windows per lineage x segment. Two cuts of one build would put the same sequences in the
+corpus twice, so `classify()` keeps one path per underlying build -- longest window,
+widest geography, gene-level over whole-genome -- and records a reason for every drop.
+The split is **56 core, 38 extra, 224 dropped**, the largest drop groups being 56 GISAID
+ncov mirrors, 27 ncov region/window cuts, 26 h5n1 clade cuts of h5nx (NOTES s8: 37%
+shared tip names) and 8 h7n9 cuts of h7nx.
+
+`extra` is the tier that would change what a "tree" means rather than how many there
+are: influenza's six internal segments per subtype, the seven non-capsid norovirus
+genes, and the nucleoprotein segments of the bunya/arenaviruses. They are probed and
+reported but not generated, so including them later is a one-flag change
+(`--generate-tiers core extra`) and not another fetch.
+
+### Code
+
+| file | purpose |
+|---|---|
+| `wide_corpus.py` | the whole thing: `classify()`, the fixed tip-date reader, the two-route probe, and generation through `make_tree_examples.py` |
+
+Generation passes `--ambiguous-ref gap --strip-trailing-stop` to every tree. Both are
+no-ops where they do not apply, and keeping them unconditional means every tree in the
+corpus goes through one recipe: **regenerating h5nx HA and denv1 E at the old
+D = 2025-01-01 with these flags reproduces `data/forecast/examples_*@2025-01-01_train.txt`
+byte-for-byte**, so the panel trees are not being treated differently from the new ones.
+
+### The corpus: 43 trees, 90,178 examples, 124,738 training mutations
+
+Probe and generation complete, at an **example floor of 40** (`MIN_EXAMPLES`; the
+earlier arms used 50). All 43 files pass `antiGen-validate-examples`. Manifest at
+`data/wide/corpus@2026-05-01.json`, examples at
+`data/wide/examples_<short>@<date>_train.txt`, probe record at
+`data/wide/probe@2026-05-01.json`.
+
+**All nine panel datasets are in, all by route A**, so the forecast panel is now a
+subset of this corpus rather than a separate thing. 40 trees come from the archive and
+3 (h7nx HA, h7nx NA, ebola/sudv) from today's build. For scale: `joint_panel` trained
+on 16,643 training mutations and `joint_all` on 25,250. This is **124,738** -- 7.5x
+`joint_panel` -- across 33 distinct sequence lengths and 22 viruses.
+
+Dropping the floor from 50 to 40 added exactly two trees, both small:
+ebola/ebov-2013 (49 examples, 189 mutations) and ebola/sudv (41, 54). Note that
+ebola/all-outbreaks, ebov-2013 and sudv now coexist: all-outbreaks and ebov-2013 share
+sequences from the 2013-16 epidemic, so these three are not independent trees.
+
+| tree | dataset | route | gene | L | tips | examples | training muts |
+|---|---|---|---|---|---|---|---|
+| norovirus_vp1 | norovirus/all/VP1 | A | VP1 | 541 | 5811 | 16738 | 19517 |
+| h9n2_na | avian-flu/h9n2/na/all-time | A | NA | 469 | 2963 | 7278 | 8988 |
+| h9n2_ha | avian-flu/h9n2/ha/all-time | A | HA | 560 | 2790 | 6932 | 8668 |
+| h7nx_na | avian-flu/h7nx/na/all-time | B | NA | 465 | 4719 | 6571 | 8199 |
+| h5nx_na | avian-flu/h5nx/na/all-time | A | NA | 470 | 1384 | 6614 | 7612 |
+| h7nx_ha | avian-flu/h7nx/ha/all-time | B | HA | 560 | 4998 | 4831 | 6768 |
+| rsv_a_g | rsv/a/G/all-time | A | G | 321 | 2865 | 4414 | 6037 |
+| rsv_b_g | rsv/b/G/all-time | A | G | 310 | 2620 | 3845 | 5346 |
+| hmpv_a_g | hmpv/a/G | A | G | 237 | 1762 | 4251 | 5283 |
+| h5nx_ha | avian-flu/h5nx/ha/all-time | A | HA | 569 | 1426 | 3856 | 4857 |
+| rabies | rabies | A | RABVgp4 | 524 | 2995 | 3002 | 4060 |
+| lassa_gpc | lassa/gpc | A | GPC | 491 | 1173 | 2663 | 3352 |
+| ncov | ncov/open/global/all-time | A | S | 1273 | 2915 | 1523 | 2677 |
+| hmpv_b_g | hmpv/b/G | A | G | 225 | 1085 | 1982 | 2603 |
+| mpox | mpox/all-clades | A | OPG210 | 1881 | 1175 | 2442 | 2553 |
+| denv4 | dengue/denv4/E | A | E | 495 | 3658 | 1297 | 2164 |
+| denv3 | dengue/denv3/E | A | E | 493 | 3940 | 975 | 1980 |
+| denv1 | dengue/denv1/E | A | E | 495 | 3906 | 766 | 1783 |
+| h3n2_ha | seasonal-flu/h3n2/ha/12y | A | SigPep+HA1+HA2 | 566 | 1662 | 903 | 1753 |
+| h3n2_na | seasonal-flu/h3n2/na/12y | A | NA | 469 | 1659 | 1021 | 1729 |
+| denv2 | dengue/denv2/E | A | E | 495 | 3893 | 734 | 1654 |
+| yam_na | seasonal-flu/yam/na/12y | A | NA | 466 | 2543 | 657 | 1627 |
+| evd68_vp1 | enterovirus/d68/vp1 | A | VP1 | 309 | 3437 | 739 | 1565 |
+| h1n1pdm_ha | seasonal-flu/h1n1pdm/ha/12y | A | SigPep+HA1+HA2 | 566 | 1543 | 752 | 1502 |
+| rsv_a_f | rsv/a/F/all-time | A | F | 574 | 2941 | 472 | 1288 |
+| h1n1pdm_na | seasonal-flu/h1n1pdm/na/12y | A | NA | 469 | 1543 | 583 | 1263 |
+| vic_na | seasonal-flu/vic/na/12y | A | NA | 466 | 1514 | 552 | 1246 |
+| rsv_b_f | rsv/b/F/all-time | A | F | 574 | 2942 | 382 | 1136 |
+| wnv | WNV/all-lineages | A | env | 501 | 3088 | 549 | 1057 |
+| yam_ha | seasonal-flu/yam/ha/12y | A | SigPep+HA1+HA2 | 584 | 2685 | 320 | 1050 |
+| vic_ha | seasonal-flu/vic/ha/12y | A | SigPep+HA1+HA2 | 585 | 1514 | 325 | 862 |
+| measles_n450 | measles/N450/global | A | N | 150 | 3278 | 321 | 719 |
+| measles_h | measles/genome/global | A | H | 617 | 2715 | 418 | 707 |
+| rubella_e1 | rubella/E1 | A | E1 | 481 | 2948 | 268 | 703 |
+| oropouche_m | oropouche/M | A | OROVsMgp1 | 1420 | 769 | 397 | 650 |
+| hmpv_b_f | hmpv/b/F | A | F | 539 | 1173 | 164 | 379 |
+| hmpv_a_f | hmpv/a/F | A | F | 539 | 1350 | 113 | 365 |
+| mumps | mumps/global | A | HN | 582 | 887 | 203 | 317 |
+| zika | zika | A | ENV | 504 | 1040 | 53 | 195 |
+| ebola_ebov2013 | ebola/ebov-2013 | A | GP | 677 | 1493 | 49 | 189 |
+| ebola_all | ebola/all-outbreaks | A | GP | 676 | 384 | 115 | 182 |
+| nipah | nipah/all | A | G | 602 | 109 | 67 | 99 |
+| ebola_sudv | ebola/sudv | B | GP | 676 | 148 | 41 | 54 |
+
+### What the 13 excluded core datasets cost, and why
+
+| dataset(s) | why |
+|---|---|
+| hantavirus andv/htnv/puuv/seov/tulv M | no archived version (404 at the cutoff), and the live builds' only dates are NCBI release dates running to 2026.52-2026.76 |
+| avian-flu h10nx HA, NA | no archived version; live tips run to 2026.38 |
+| seasonal-cov 229e, hku1, nl63, oc43 | the **dated** root-sequence sidecar 404s (below) |
+| chikv/global | no root sequence at any date, from Charon or `data.nextstrain.org` |
+| yellow-fever/prM-E (39) | below the 40-example floor, by one example |
+
+Two of these are worth more than a line.
+
+**The seasonal-cov builds are not recoverable by using today's sidecar.** Charon serves
+`seasonal-cov/<x>?type=root-sequence` (200) but not `@2026-05-01` (404), so the
+tempting fix is to reconstruct the April tree against today's reference. Measured, that
+is wrong on its own terms, never mind the leak: generating Spike against the current
+sidecar gives **450 from-base mismatches for oc43 and 144 for hku1** -- the reference
+frame does not match the dated tree. Only 229e is near-clean (6). These four stay out.
+
+**ebola/sudv is the tree the tip-date fix rescued**, and at the floor of 40 it is in,
+with 41 examples and 54 training mutations -- it would have been excluded twice over
+before (once as "7 undated tips", once by the floor of 50). The fix's yield is
+h7nx HA and NA (2 trees, 11,402 examples, 14,967 mutations, 12 percent of the corpus)
+plus sudv. Worth stating plainly: the bug was never what held back the hantavirus
+trees.
+
+### A cross-check on the selection
+
+The orphaned `data/wide/*@2026-05-01` files from the reset-away session cover **32
+datasets, and all 32 are in this corpus** (under different short names: that session's
+`bvic_ha`/`byam_ha` are `vic_ha`/`yam_ha` here, `lassa` is `lassa_gpc`, `rubella` is
+`rubella_e1`). The 9 this rebuild adds are exactly the panel trees. Two independent
+passes at the same rule, with the code for one of them gone, selected the same
+datasets; the difference is that this one also follows the instruction to carry the
+panel in. Nothing was taken from those files -- they are still in
+`data/wide_orphan_unprovenanced/` and can be deleted.
+
+### State
+
+Generated, validated, **not yet trained on**. The evaluation tree -- a single tree
+observed wholly after 2026-05-01 -- has not been supplied yet, so nothing here has been
+scored.
+
+### Fetching, after the first probe took 38 minutes and then hung
+
+`fetch_snapshots.request` does not ask for gzip and waits 900s per attempt x 3. One
+dead connection on `avian-flu/h10nx/ns@current` therefore stalled an entire stage, and
+16 of 94 archive lookups returned `Connection timed out` -- indistinguishable, in the
+old code, from "no archived version". `wide_corpus._get` asks for gzip and gives up
+after 150s x 4, a `failed` flag separates a dropped connection from a 404, and failures
+are retried serially. **The rerun completed the full 94-dataset probe in under a
+minute** (89 cache hits), and all 16 former timeouts resolved: ncov, measles/genome,
+h5nx HA and lassa/s are archive hits, and the nine hantavirus 404s are real.
+
+### Then nextstrain.org stopped answering, and the probe went offline
+
+After ~250 requests across four probe runs, `nextstrain.org` began returning nothing at
+all (`curl` -> HTTP 000 after 15s). Two things had already gone wrong by then and are
+worth recording, because both were self-inflicted:
+
+- **A pre-fix probe process outlived its `pkill` and overwrote the clean probe file.**
+  Its rows carried the old format (no `failed` flag) and reinstated `Connection timed
+  out` for ncov, measles/genome, h5nx HA and lassa/s. Generation then **silently
+  excluded four trees, three of them core**, reporting it as an ordinary exclusion. The
+  `failed` flag is what made it detectable: those rows did not have it. The probe record
+  now lives on local disk at `data/wide/probe@2026-05-01.json`, next to the corpus it
+  explains, instead of in the shared cache on `/large_storage`.
+- **Every "is it still running?" check was unreliable**, because
+  `pgrep -f "wide_corpus.py --probe"` matches the watcher whose own command line
+  contains that string. That is why a hung run was reported dead and two jobs were
+  reported finished when only their launcher had exited. Use `[w]ide_corpus.py` and
+  `ps -eo pid,lstart`.
+
+The fix for the throttling is `--offline`: classify from cached payloads only, never
+fetching. Every one of the 94 candidates already had a payload on disk (core: 46 at the
+cutoff date, 50 current, 56 of 56 with at least one), so the offline probe reproduced
+**the same 76 of 94 qualifying in 3.7 seconds**, with the same per-tier routes
+(core 46 A / 3 B / 7 out).
+
+**Offline mode can only under-include, never leak.** Where the archive payload is not
+cached (27 candidates, all of which an earlier probe recorded as genuine 404s), it falls
+back to route B -- every tip pre-cutoff -- which is the stricter test. A missing archive
+check can therefore cost a tree; it cannot admit post-cutoff data. Nine of the 27
+qualify that way, h7nx HA/NA and ebola/sudv among them.
+
+One wording caveat for whoever reads the generate log: under `--offline` the exclusion
+reasons read "not cached" and "reference not cached (offline)". For the five that
+matters for -- chikv/global and the four seasonal-cov -- the reference is a **confirmed
+404**, checked directly with curl at both `@2026-05-01` and undated, not merely
+uncached. Same for the hantavirus and h10nx archive versions, which two independent
+online probes recorded as 404.
+
+### Housekeeping, worth knowing before trusting anything in `data/`
+
+`git reflog` shows two resets to `origin/is-multitree` after the last commit (4f3afdf).
+The scripts a previous session wrote were tracked and went away with them; the example
+files it generated are gitignored and did not. That is where the 32 orphaned
+`data/wide/*@2026-05-01` files and `/large_storage/.../wide/probe@2026-05-01.json` come
+from -- real artifacts of real work, with the code that made them gone. The probe JSON
+was read for its structure (it records a route A/B distinction matching the rule above,
+and it is where the undated-tip exclusions were first visible); nothing was taken from
+it on trust. Separately, the working tree's `NOTES.md` is **124 lines shorter than
+HEAD's**: the s14 zero-shot sections and their retraction in s16 are missing from it.
+Nothing in this session removed them.
+
+---
+
+## 19. Training on the wide corpus (2026-10-16, RUNNING)
+
+`sbatch train_wide_esm2.sh` -> **job array 3327944, tasks 0-5, all six running** as of
+03:37 (nodes GPU71BA and GPU389E, partition gpu_batch, 24h limit).
+
+### Two arms, not one
+
+| task | arm | sources | train / val examples | batches per epoch |
+|---|---|---|---|---|
+| 0-2 | `joint_wide` seeds 0-2 | 43 | 81,163 / 9,015 | 10,519 |
+| 3-5 | `joint_panel` seeds 0-2 | 9 | 9,380 / 1,043 | 1,232 |
+
+The brief was one finetune; `joint_panel` is here because without it the evaluation
+cannot answer the question. The nine panel datasets taken **at this cutoff** are the
+only control that isolates the extra 34 trees -- same recipe, same seeds, same split
+rule, same evaluation tree. Without it, a number on the post-cutoff tree says only that
+some model scored something, not that the wider corpus did anything. It costs 3 short
+jobs against 3 long ones.
+
+### Recipe
+
+Identical to `train_forecast_esm2.sh`: `esm2_t12_35M_UR50D`, `--freeze-backbone
+--finetune-layers 4`, lr 1e-4, batch 8 / `--max-batch-tokens 8192`, 20 epochs,
+`--val-mode random --val-frac 0.1`, `--split-seed <seed>`, `--seed 42+seed`,
+`--ignore-dead-ends`, `--save-best --save-best-per-source --dump-cells`, tagged
+`--experiment wide@2026-05-01` so `antiGen-eval` keeps skipping these unless asked.
+Output under `/large_storage/hielab/ispecht/multitree/wide_train/<arm>_s<seed>/`.
+
+The arm reads its tree list from `data/wide/corpus@2026-05-01.json` rather than a
+hardcoded list, so a training arm cannot silently disagree with the corpus that was
+generated and validated. Both arms were dry-run before submission (43 and 9 sources,
+every file present).
+
+**Epoch selection is causally clean here even though the split is random.** The random
+split is drawn from pre-cutoff examples only, so it cannot see the evaluation tree; what
+it cannot support is any within-tree forecasting claim, which is not what this arm is
+for. The evaluation tree is not passed to this script and does not exist in the repo yet.
+
+### Watch items
+
+- **Length buckets now reach 1881** (mpox OPG210), with oropouche M at 1420 and ncov S
+  at 1273. s9 flagged >1022 as the two-pass stitching path and the suspected mpox
+  failure; the forecast panel never exercised it beyond ncov. If mpox or oropouche
+  produce degenerate per-source validation, that is the first place to look.
+- 20 epochs x 10,519 batches is ~5x the forecast arms' work. Expect hours. `--save-best`
+  picks the epoch, so the count only has to contain the minimum.
+
+Nothing scored. The corpus is frozen at 43 trees; the evaluation tree is still to come.
