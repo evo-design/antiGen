@@ -109,16 +109,36 @@ RUNG_COLORS <- c(
 SUBSET_LABELS <- c(all = "All substitutions", novel = "De novo only")
 SUBSET_COLORS <- c("All substitutions" = ANTIGEN_BLUE, "De novo only" = "#9bb8d4")
 
+## Which evaluation panel to draw. `9` is the published Figure 5; `11` adds the two
+## seasonal-flu HA trees, whose @2025-01-01 archives NOTES s8 wrongly ruled out (it
+## searched `flu/seasonal`; the real paths are `seasonal-flu/...`). Set
+## MULTITREE_PANEL=11 in the environment, or assign `multitree_panel` before
+## sourcing, to draw the wider one. Each panel reads its own CSVs and writes its own
+## figure files, so the two never overwrite each other.
+if (!exists("multitree_panel")) {
+  multitree_panel <- as.integer(Sys.getenv("MULTITREE_PANEL", "9"))
+}
+stopifnot(multitree_panel %in% c(9, 11))
+MULTITREE_DIR <- if (multitree_panel == 9) "data/multitree" else "data/multitree11"
+FIG_SUFFIX    <- if (multitree_panel == 9) "" else "11"
+
 ## One tree order for every forest panel in both columns, so a virus sits on the
-## same row throughout and the four panels can be read against each other.
+## same row throughout and the four panels can be read against each other. The two
+## flu trees go last so the nine shared rows keep the order the published figure
+## used and the panels can be compared across versions.
 TREE_ORDER <- c("ncov", "h5nx", "measles", "rsv_a", "rsv_b",
                 "denv1", "denv2", "denv3", "denv4")
+if (multitree_panel == 11) {
+  TREE_ORDER <- c(TREE_ORDER, "h3n2_ha", "h1n1pdm_ha")
+}
 TREE_LABELS <- c(
   ## Genes per data/multitree/trees.json: ncov S, h5nx HA, measles H (the
   ## hemagglutinin, pulled from the whole-genome build), rsv F, dengue E.
+  ## The seasonal-flu trees are the 12y HA builds, gene SigPep+HA1+HA2.
   ncov = "SARS-CoV-2 S", h5nx = "H5Nx HA", measles = "Measles H",
   rsv_a = "RSV A F", rsv_b = "RSV B F", denv1 = "DENV1 E",
-  denv2 = "DENV2 E", denv3 = "DENV3 E", denv4 = "DENV4 E", POOLED = "Pooled"
+  denv2 = "DENV2 E", denv3 = "DENV3 E", denv4 = "DENV4 E",
+  h3n2_ha = "H3N2 HA", h1n1pdm_ha = "H1N1pdm HA", POOLED = "Pooled"
 )
 FOREST_LEVELS <- c("Pooled", rev(unname(TREE_LABELS[TREE_ORDER])))
 
@@ -151,9 +171,9 @@ HIT_METRICS <- c("hit10", "hit1")
 HEADLINE_UNIVERSE <- "standard"
 SUPP_UNIVERSE     <- "common"
 
-ladder_all <- read.csv("data/multitree/ladder.csv")
-deltas_all <- read.csv("data/multitree/deltas.csv")
-agreement_all <- read.csv("data/multitree/agreement.csv")
+ladder_all <- read.csv(file.path(MULTITREE_DIR, "ladder.csv"))
+deltas_all <- read.csv(file.path(MULTITREE_DIR, "deltas.csv"))
+agreement_all <- read.csv(file.path(MULTITREE_DIR, "agreement.csv"))
 
 use_universe <- function(u) {
   ladder    <<- ladder_all[ladder_all$universe == u, ]
@@ -591,7 +611,7 @@ venn_block <- function(budget, labs_) plot_grid(
 save_figure(plot_grid(build(EVALS[2], NULL, LETTERS[1:4], metrics = "hit10"),
                       venn_block("hit10", c("E", "F")),
                       ncol = 1, rel_heights = c(8.0, 2.5)),
-            "multitree_results", width = 7.4, height = 14.4)
+            paste0("multitree_results", FIG_SUFFIX), width = 7.4, height = 14.4)
 
 
 ## --- Supplement: the random holdout, and the epoch rule --------------------
@@ -671,4 +691,5 @@ supp <- plot_grid(half(supp_1pct), venn_block("hit1", c("E", "F")),
                   half(supp_gap), half(supp_nll), supp_main, epoch_block,
                   ncol = 1, rel_heights = c(8.0, 2.6, 8.0, 8.0, 8.0, 1.68))
 
-save_figure(supp, "supp_multitree_results", width = 13, height = 48)
+save_figure(supp, paste0("supp_multitree_results", FIG_SUFFIX),
+            width = 13, height = 48)

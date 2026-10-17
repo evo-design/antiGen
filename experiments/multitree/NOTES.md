@@ -2286,7 +2286,7 @@ Nothing in this session removed them.
 
 ---
 
-## 19. Training on the wide corpus (2026-10-16, RUNNING)
+## 19. Training on the wide corpus (2026-10-16)
 
 `sbatch train_wide_esm2.sh` -> **job array 3327944, tasks 0-5, all six running** as of
 03:37 (nodes GPU71BA and GPU389E, partition gpu_batch, 24h limit).
@@ -2324,7 +2324,75 @@ split is drawn from pre-cutoff examples only, so it cannot see the evaluation tr
 it cannot support is any within-tree forecasting claim, which is not what this arm is
 for. The evaluation tree is not passed to this script and does not exist in the repo yet.
 
-### Watch items
+### Done: all six arms completed, exit 0:0
+
+`joint_wide` 2h09-2h12 per seed, `joint_panel` 20 min. Checkpoints and per-epoch
+metrics under `/large_storage/hielab/ispecht/multitree/wide_train/<arm>_s<seed>/`
+(5.9 GB per wide seed, 1.5 GB per panel seed -- `--save-best-per-source` writes one
+checkpoint per tree).
+
+| arm | zero-shot | best overall NLL | epoch | final (ep 19) |
+|---|---|---|---|---|
+| joint_wide s0/s1/s2 | 9.420 / 9.404 / 9.425 | 7.191 / 7.157 / 7.172 | 2 / 2 / 2 | 9.43 / 9.53 / 9.56 |
+| joint_panel s0/s1/s2 | 9.346 / 9.273 / 9.348 | 7.217 / 7.182 / 7.295 | 2 / 2 / 3 | 8.56 / 8.58 / 8.91 |
+
+Overall NLL is not comparable **between** arms -- the two validation sets hold different
+source mixes (12,233-12,643 held-out mutations for wide against 1,652-1,968 for panel).
+It is comparable **within** an arm across epochs, and it says the familiar thing: the
+minimum is at epoch 2 and everything after is overfitting, with `joint_wide`'s epoch-19
+model (9.43) no better than its zero-shot row (9.42). `--save-best` is doing the real
+work here; the final checkpoint is worthless and always was (README, s1).
+
+### A first paired read, on the nine shared trees
+
+`--split-seed s` draws each source's held-out set from a per-source RNG, so a given tree
+has the **same** validation examples in both arms at the same seed. That makes the nine
+panel trees a paired comparison, each at its own best epoch, 3 seeds averaged:
+
+| source | val muts | joint_panel | joint_wide | delta |
+|---|---|---|---|---|
+| ncov | 237 | 7.305 | 7.288 | -0.017 |
+| rsv_a_f | 101 | 7.186 | 7.141 | -0.045 |
+| rsv_b_f | 69 | 7.074 | 6.930 | -0.144 |
+| measles_h | 55 | 7.715 | 7.751 | +0.036 |
+| denv1 | 119 | 7.227 | 7.167 | -0.060 |
+| denv2 | 143 | 7.032 | 6.989 | -0.044 |
+| denv3 | 224 | 7.298 | 7.315 | +0.018 |
+| denv4 | 249 | 7.454 | 7.463 | +0.008 |
+| h5nx_ha | 473 | 6.970 | 6.906 | -0.064 |
+
+Mean delta **-0.035 nats**, wide ahead on 6 of 9. That is the same order as every
+joint-vs-single delta this arm has measured (s4: -0.011 to -0.045, read as a tie), on a
+random split that is not forecast-valid. **Read it as nothing yet.** The 34 extra trees
+did not hurt, which is the only claim this supports; the evaluation that matters is the
+post-cutoff tree, and it has not arrived.
+
+### The mpox watch item fired, and it is real
+
+s9's suspicion about the >1022 two-pass stitching path was half right. Length alone is
+fine -- ncov (L=1273) reaches 2.81 nats below uniform and oropouche M (L=1420) 2.47.
+**mpox (L=1881) learns nothing at all:**
+
+| source | L | zero-shot | best | uniform | best - uniform |
+|---|---|---|---|---|---|
+| mpox | 1881 | 17.26 | 10.57 | 10.58 | **-0.01** |
+| oropouche_m | 1420 | 9.85 | 7.83 | 10.30 | -2.47 |
+| ncov | 1273 | 10.89 | 7.38 | 10.19 | -2.81 |
+
+A zero-shot NLL of 17.26 against a uniform of 10.58 is not a hard tree, it is a broken
+one: no predictor that merely knew the alphabet could score that badly. Training pulls
+it back to exactly uniform and no further. mpox is 2,442 examples and 2,553 training
+mutations, 2 percent of the corpus, so the cost of leaving it in is small but it is not
+zero -- it is 2 percent of gradient steps spent on noise, and any per-source average
+that includes mpox is dragged by it.
+
+**Not fixed here.** The options are to drop mpox from the corpus (one line in the
+manifest, retrain), or to find out what the long-sequence path does to it -- the
+reference also carries 3 ambiguous residues mapped to `-`, which is a second candidate
+and would not show up as a length bug at all. Either way it should be settled before the
+post-cutoff evaluation, so that the number reported is not partly an artifact.
+
+### Watch items (as submitted)
 
 - **Length buckets now reach 1881** (mpox OPG210), with oropouche M at 1420 and ncov S
   at 1273. s9 flagged >1022 as the two-pass stitching path and the suspected mpox
@@ -2333,4 +2401,199 @@ for. The evaluation tree is not passed to this script and does not exist in the 
 - 20 epochs x 10,519 batches is ~5x the forecast arms' work. Expect hours. `--save-best`
   picks the epoch, so the count only has to contain the minimum.
 
-Nothing scored. The corpus is frozen at 43 trees; the evaluation tree is still to come.
+Nothing scored against the real target. The corpus is frozen at 43 trees; the
+evaluation tree is still to come.
+
+---
+
+## 20. Figure 5 on an eleven-tree panel: seasonal flu HA is forecastable after all (2026-10-16)
+
+The task: re-run the Figure 5 analysis unchanged, on the nine-tree forecast panel of
+s11 **plus seasonal flu H3N2 HA and H1N1pdm HA**. Same D, same recipe, same seeds,
+same split rules, same scoring code. The only thing that moves is the panel.
+
+### s8 was wrong about seasonal flu, and s17 said why
+
+s8 recorded two claims that together ruled seasonal flu out of every forecast arm:
+"Seasonal flu has no versions at any date probed" and "zero of Charon's 318 datasets
+match `flu/seasonal`". s17 suspected a prefix mismatch -- the paths are
+`seasonal-flu/<lineage>/<segment>/<window>`, which `flu/seasonal` cannot match -- and
+left it unverified. It is verified now, and s17 was right. Both HA builds are archived
+at D and qualify by **route A** (s18's rule: `meta.updated <= cutoff`):
+
+| dataset | `@2025-01-01` | today |
+|---|---|---|
+| seasonal-flu/h3n2/ha/12y | updated **2024-12-29**, 1576 tips, latest tip 2024.95 | updated 2026-10-08, 1707 tips, 2026.70 |
+| seasonal-flu/h1n1pdm/ha/12y | updated **2024-12-29**, 1470 tips, latest tip 2024.96 | updated 2026-10-08, 1544 tips, 2026.73 |
+
+Both guards hold, not just the first: the build was published before D **and** every
+tip predates D, so neither can carry anything observed after the cutoff. Independent
+corroboration for h1n1pdm: the undated `data.nextstrain.org` copy fetched on 2026-10-14
+is **byte-identical** (md5 `72176ae5...`) to the archived snapshot, so two different
+routes to the same frozen build agree.
+
+s3's "seasonal flu 12y is genuinely retired (2024-04-23, tip 2024.27) from *both*
+sources" is superseded for HA. The 12y builds are live and updating weekly.
+
+### Why they can be scored, and the two checks that had to pass
+
+`make_forecast_testset.py` requires the snapshot and today's build to share a reference
+frame, since train and test examples must share coordinates. They do, exactly:
+
+    h3n2     SigPep 18-65,  HA1 66-1052, HA2 1053-1715   (L = 566, both builds)
+    h1n1pdm  SigPep 21-71,  HA1 72-1052, HA2 1053-1718   (L = 566, both builds)
+
+0 from-base mismatches, 0 ambiguous, 0 out-of-range, both trees, both sides. The 12y
+window slides -- today's h3n2 build starts at 2009.26 where the snapshot started at
+2008.00 -- which drops old tips but cannot affect a branch crossing D.
+
+**No tip-name overlap**, checked because s8 found h5n1 and h5nx sharing 37% of tips:
+h3n2 vs h1n1pdm 0 shared, and each against h5nx HA 0 shared. Three independent HA
+trees, not cuts of one build.
+
+### What the panel gains
+
+| tree | examples | targets | novel |
+|---|---|---|---|
+| h3n2_ha | 47 | 95 | 22 (23%) |
+| h1n1pdm_ha | 38 | 65 | 18 (28%) |
+| **the old nine** | 272 | 564 | 156 |
+| **total** | **357** | **724** | **196** |
+
+The old nine reproduce 564/156 exactly, so nothing about the existing panel moved.
+Beyond the 28% more targets, the panel is **less top-heavy**: h5nx falls from 41% of
+the test set to 32%, which is the caveat s11 flagged on every pooled number.
+
+Training side, from the snapshots, through the unchanged generator with the s18 recipe
+(`--ambiguous-ref gap --strip-trailing-stop`): h3n2_ha 840 examples / 1,611 mutations,
+h1n1pdm_ha 682 / 1,394. Both pass `antiGen-validate-examples`; both regenerate
+byte-for-byte from the repo-local build copies rather than the `/large_storage` cache.
+
+### A note on `joint_all`
+
+s11's `joint_all` carries seven retired seasonal-flu builds as training-only context,
+and **two of them are h3n2 HA and h1n1pdm HA** -- the trees that are now eval trees.
+That arm is therefore not a clean control for this panel and is not used here. Nothing
+about its published null (-0.018 [-0.058, +0.024]) is retracted: at the time those
+trees were training-only and the evaluation was the nine, which this does not touch.
+
+### Code
+
+| file | purpose |
+|---|---|
+| `train_panel11_esm2.sh` | the 33 arms, both regimes (new) |
+
+`collect_figure_metrics.py` gains `--panel {9,11}`; `PANELS` holds each panel's tree
+list and its joint-arm roots. The nine-tree default is untouched and its runs are never
+read by the eleven-tree pass. `figures/fig5_multitree.R` gains `multitree_panel`
+(or `MULTITREE_PANEL` in the environment), which selects `data/multitree` vs
+`data/multitree11` and suffixes the output files.
+
+**Regression checked:** re-running the R script at the default redrew
+`figs/multitree_results.png` and `figs/supp_multitree_results.png` byte-identically
+(`git status` clean under `figs/`).
+
+### Arms (job array 3335279, 33 tasks, `gpu_high_mem`)
+
+| tasks | arm | regime | seeds | root |
+|---|---|---|---|---|
+| 0-7 | `joint_panel11` | temporal, 11 snapshots | 0-7 | `forecast11/` |
+| 8-23 | `single_h3n2_ha`, `single_h1n1pdm_ha` | temporal | 0-7 | `forecast/` |
+| 24-26 | `joint11` | random, three-way split | 0-2 | `matched/` |
+| 27-32 | the two singles | random, three-way split | 0-2 | `matched/` |
+
+The nine existing single-tree controls are **not** retrained -- a single-tree arm does
+not depend on the panel beside it, and `forecast/single_*_s{0..7}` and
+`matched/single_*_s{0..2}` already exist. The joint arms go to new roots so the
+nine-tree runs behind the published figure are never touched. K = 8 temporally (the
+matched K the figure reports; joint and single must ensemble at the same K), 3 in the
+random regime, which cannot ensemble at all.
+
+**Cluster note, part three.** `sbatch --test-only` put `gpu_high_mem` 1h20m ahead of
+`gpu` and 2h24m ahead of `gpu_batch`, so the array went there (s15's rule: test, then
+submit to the single best partition). Tasks 2-13 then came back
+`launch_failed_requeued_held` -- `namespace_p_join: open failed for
+/media/8TBNVME/scratch/<jobid>/.ns` on **GPU104C**, a node-level scratch failure with
+nothing to do with the job. Released with `ExcNodeList=GPU104C`. Worth knowing: a
+requeued-held array task is invisible to `squeue`'s collapsed array row and only shows
+up in `scontrol show job <array id>`, so an array can sit two-thirds held while
+`squeue` reports it pending.
+
+### Results: every claim survives the wider panel (2026-10-17)
+
+Array 3335279 finished **33/33 COMPLETED**, 25 tasks on GPU115A and 8 on GPU1256, one
+`_best.pt` timestamp per directory (no stale partials). Collection: job 3346288,
+5m13s, `--panel 11 --out antiGen-figures/data/multitree11`.
+
+Pooled contrasts, temporal holdout, pooled rule, standard universe, **K = 8 in both
+columns** (* = interval clears zero):
+
+| contrast | subset | 9-tree | 11-tree |
+|---|---|---|---|
+| vs single-tree, recall@10% | all | +0.053 [+0.031,+0.075]* | +0.045 [+0.025,+0.065]* |
+| vs single-tree, recall@10% | de novo | +0.164 [+0.087,+0.248]* | +0.172 [+0.097,+0.244]* |
+| vs `where x which`, recall@10% | all | +0.128 [+0.096,+0.158]* | +0.129 [+0.098,+0.158]* |
+| vs `where x which`, recall@10% | de novo | +0.104 [+0.018,+0.195]* | **+0.112 [+0.031,+0.191]*** |
+| vs single-tree, NLL | all | -0.219 [-0.336,-0.112]* | -0.188 [-0.276,-0.108]* |
+| vs `where x which`, NLL | de novo | +0.686 [+0.469,+0.882]* | +0.699 [+0.509,+0.879]* |
+
+Nothing moves by more than 0.01 on recall. **The de novo win over `where x which`
+holds** -- the contrast s15/s16 watched creep from +0.005 (K=3) to +0.104 (K=8) now
+reads +0.112 with a lower bound of +0.031, on 169 targets against 134. It was the
+narrowest claim in the figure and the one a wider panel was most likely to break.
+
+The NLL inversion is unchanged and still means what s11 said: the model loses to
+`where x which` on de novo NLL (+0.699) while beating it on ranking. A density
+failure, not a ranking failure.
+
+Note these 9-tree numbers are **K = 8**, not the K = 3 table in s16 -- that is why
+single-tree reads 0.818 rather than 0.808. Both columns are K = 8, so matched.
+
+#### The two new trees behave like panel members
+
+Per-tree vs single-tree, recall@10%, temporal/pooled/standard:
+
+| tree | all | de novo |
+|---|---|---|
+| h1n1pdm_ha | +0.062 [+0.000,+0.140] | +0.286 [+0.000,+0.545] |
+| h3n2_ha | +0.021 [-0.029,+0.074] | +0.143 [-0.056,+0.353] |
+
+Positive in all four cells, both mid-panel: neither carries the pooled result nor
+drags it. Joint training gains on them specifically -- multi-tree 0.876 all / 0.609
+de novo against single-tree 0.831 / 0.438.
+
+#### One caveat a reader comparing the two figures needs
+
+`substitution` gains more from the wider panel than any other rung (+0.029 all,
++0.036 de novo). Seasonal flu HA has a strong, well-sampled substitution signal, so
+the fitted 25-scalar baseline benefits from two more such trees in the pool. It does
+not threaten the contrasts -- the model gains too -- but **the baseline ladder is not
+identical between panels**, and a rung-by-rung comparison across the two figures
+should say why.
+
+`denv3` and `denv4` still read `+0.000 [+0.000,+0.000]` on all substitutions, the
+degenerate-tiny-n artifact s11 recorded. Not a real null; do not quote per-tree.
+
+### The cluster fault, and a correction to how it was diagnosed
+
+The `namespace_p_join: open failed for /media/8TBNVME/scratch/<jobid>/.ns` failure
+recurred through the whole run. It was first read here as **per-node** -- GPU1034 and
+GPU104C bad, GPU115A good -- on the evidence of 22 failures against 11 clean tasks.
+That reading was wrong: the next morning the collection job failed the same way **on
+GPU115A**, twice, after that node had run 25 tasks clean overnight. It is an
+intermittent fault across `gpu_high_mem` / `gpu_batch_high_mem`, not a property of
+particular nodes, and the exclusions worked by timing more than by diagnosis.
+
+What actually fixed it was leaving that node set: resubmitting to `gpu`
+(GPU3694/7094/7130/7220/70DC/71BA/389E/708E/C870/CACE) started **immediately** on
+GPU708E despite a `--test-only` estimate 25 minutes out, and ran clean.
+
+Two operational lessons, the second of which bit twice in one session:
+
+- `--test-only` estimates are near-useless under this fault. It put
+  `gpu_batch_high_mem` 13 hours ahead of `gpu`; `gpu` in fact started at once while
+  the high-mem partition could not launch a job at all.
+- **A requeued-held array task is invisible in `squeue`'s collapsed array row.**
+  `22 PD / 3 R` reads exactly like contention. Only
+  `scontrol show job <array id> | grep Reason=` distinguishes them. An array can sit
+  two-thirds dead while every summary view says it is queued and progressing.

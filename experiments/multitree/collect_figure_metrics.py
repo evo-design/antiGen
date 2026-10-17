@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Score both evaluation regimes on the same nine trees, two metrics, two subsets.
+"""Score both evaluation regimes on the same trees, two metrics, two subsets.
 
 Writes the tidy CSVs behind Figure 5. Everything is computed here rather than read
 back from the per-run JSONs, so the two regimes go through byte-identical scoring
 code and the same definition of "novel".
 
-Regimes (same nine trees, same evaluation trees):
+Regimes (same trees, same evaluation trees; --panel picks 9 or 11 of them):
   random    each tree's random held-out split. Not forecast-valid -- a held-out node's
             parent is usually in the training half.
   temporal  the D = 2025-01-01 holdout: trained on the build as published at D,
@@ -101,8 +101,6 @@ GAP = AL.index('-')
 ## substitution matrix at 1-2% and loses from 5% on.
 BUDGETS = {'hit10': 0.10, 'hit1': 0.01}
 
-PANEL = ['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
-         'denv1', 'denv2', 'denv3', 'denv4']
 SEEDS = [0, 1, 2]               # random regime: one model per split, no ensemble
 # Temporal regime: the seeds averaged into one ESM-2 predictor. `joint_panel` has 16
 # and the single-tree controls have 8, so 8 is the matched number -- K = 16 is a
@@ -116,6 +114,32 @@ FORECAST = '/large_storage/hielab/ispecht/multitree/forecast'
 # joint_panel retrained with --save-best-per-source; the original forecast/
 # runs are left untouched so the already-reported numbers still stand.
 FORECAST_PT = '/large_storage/hielab/ispecht/multitree/forecast_pertree'
+# The eleven-tree panel's joint arm: a separate root so the nine-tree runs
+# behind the published figure are never overwritten or mixed in.
+FORECAST11 = '/large_storage/hielab/ispecht/multitree/forecast11'
+
+## Two panels, selected with --panel. `9` is the published Figure 5. `11` adds
+## seasonal flu H3N2 HA and H1N1pdm HA, whose @2025-01-01 archives NOTES s8 wrongly
+## ruled out (it searched `flu/seasonal`; the paths are `seasonal-flu/...`). Both are
+## route A -- meta.updated 2024-12-29, every tip < 2025.0 -- and neither shares a tip
+## name with the other or with h5nx HA. The panel goes 564 -> 724 post-D targets and
+## 156 -> 196 novel, and h5nx falls from 41% to 32% of the test set.
+##
+## The joint arms differ per panel and live in their own roots, so the nine-tree runs
+## behind the published figure are never read by the eleven-tree pass or vice versa.
+## The nine shared single-tree controls ARE the same runs in both: a single-tree arm
+## does not depend on the panel it is scored beside.
+PANELS = {
+    9: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                   'denv1', 'denv2', 'denv3', 'denv4'],
+            temporal_joint=FORECAST_PT + '/joint_panel',
+            random_joint=MATCHED + '/joint9'),
+    11: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha'],
+             temporal_joint=FORECAST11 + '/joint_panel11',
+             random_joint=MATCHED + '/joint11'),
+}
+PANEL = PANELS[9]['trees']      # rebound from --panel in main()
 RUNGS = ['uniform', 'codon', 'where_only', 'pssm', 'substitution', 'frequency',
          'where_times_which', 'single', 'joint']
 METRICS = ['nll', 'hit10', 'hit1']
@@ -329,6 +353,11 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--out', default='antiGen-figures/data/multitree')
+    p.add_argument('--panel', type=int, default=9, choices=sorted(PANELS),
+                   help='which evaluation panel to score; see PANELS. 9 is the '
+                        'published Figure 5, 11 adds the two seasonal-flu HA trees. '
+                        'The joint arm comes from a different root per panel, so '
+                        'the two never read each other\'s runs.')
     p.add_argument('--universes', default=','.join(UNIVERSES),
                    help='scoring universes to emit; see UNIVERSES. All three are '
                         'written to the CSVs with a `universe` column and the R '
@@ -341,12 +370,21 @@ def main():
                         'with ensembling its control was denied.')
     args = p.parse_args()
     os.makedirs(args.out, exist_ok=True)
+    # PANEL is module-level because a dozen comprehensions below close over it; the
+    # panel choice rebinds it once, here, before any of them run.
+    global PANEL
+    panel = PANELS[args.panel]
+    PANEL = panel['trees']
+    temporal_joint, random_joint = panel['temporal_joint'], panel['random_joint']
+    print(f'panel: {len(PANEL)} trees ({", ".join(PANEL)})', flush=True)
     ens_seeds = [int(x) for x in args.ens_seeds.split(',')]
     universes = [u for u in args.universes.split(',') if u]
-    missing = [f'{root}/{nm}_s{s}' for s in ens_seeds
-               for root, nm in [(FORECAST_PT, 'joint_panel')]
+    missing = [f'{root}_s{s}' if nm is None else f'{root}/{nm}_s{s}'
+               for s in ens_seeds
+               for root, nm in [(temporal_joint, None)]
                + [(FORECAST, f'single_{t}') for t in PANEL]
-               if not glob.glob(f'{root}/{nm}_s{s}/*_best.pt')]
+               if not glob.glob((f'{root}_s{s}' if nm is None
+                                 else f'{root}/{nm}_s{s}') + '/*_best.pt')]
     if missing:
         raise SystemExit('missing runs for the requested ensemble:\n  '
                          + '\n  '.join(missing))
@@ -364,8 +402,8 @@ def main():
     # splits are averaged rather than tripled.
     agree, agree_n = {}, {}
     for regime, joint_root, single_root in (
-            ('Random holdout', f'{MATCHED}/joint9', MATCHED),
-            ('Temporal holdout', f'{FORECAST_PT}/joint_panel', FORECAST)):
+            ('Random holdout', random_joint, MATCHED),
+            ('Temporal holdout', temporal_joint, FORECAST)):
         temporal = regime.startswith('Temporal')
         for tree in PANEL:
             # Each job is (seeds averaged into one predictor, the split to score
