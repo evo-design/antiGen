@@ -44,8 +44,15 @@ Retention, by `@date` against the Charon dataset path (Y = served, `.` = 404):
   WNV                          .    .     .     .     .     .     Y     Y
 ```
 
-Post-D amino-acid substitutions (branches with parent date <= D < child date), measured
-against the **live** trees:
+Post-D amino-acid substitutions, measured against the **live** trees.
+
+**SUPERSEDED 2026-10-18.** This line originally read "branches with parent date <= D <
+child date" -- only the single step across the boundary -- and every arm up to that date
+scored that subset. The testing window was always meant to be *all* substitutions after
+D, which is also what the sc2 benchmark means by a test set. The counts in the table
+below are the old crossing-branch figures; see NOTES s26 for the corrected ones and for
+why the shortfall grows with the gap between D and today (1.8x at D = 2025-01-01, 8x at
+D = 2021-01-01):
 
 | tree | gene | D = 2024-07-01 | D = 2025-01-01 |
 |---|---|---|---|

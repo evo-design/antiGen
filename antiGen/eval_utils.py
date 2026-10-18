@@ -404,7 +404,9 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
            no loss). Passing None lets eval.py run the baseline sweep once instead
            of re-scoring baselines against every model.
     variants: list of (label, seen_mask) tuples. seen_mask is a (seq_len, E) bool tensor
-              (True = previously seen mutation to exclude) or None (no masking).
+              (True = cell to exclude), None (no masking), or a (score_mask,
+              target_mask) pair when the candidate pool and the target set should be
+              restricted differently -- either element may be None.
     baselines: list of (name, probs_2d) where probs_2d is a (seq_len, E) tensor
                used as a fixed baseline for all examples.
     model_gap_stop_mask: optional (seq_len, E) bool tensor. Cells that are True are
@@ -465,24 +467,45 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
                 masked_baselines[name] = bp
 
         for label, seen_mask in variants:
-            if seen_mask is None:
+            # A variant's mask is normally one (seq_len, E) bool applied to the scores,
+            # the baselines AND the targets together -- that is what makes the de novo
+            # subset "rank unseen cells among unseen cells". A variant may instead pass
+            # a (score_mask, target_mask) pair to decouple the two: restricting only
+            # the targets keeps the full candidate pool, which asks whether the listed
+            # mutations rank highly among ALL cells rather than among each other. Both
+            # readings are wanted for curated mutation lists, where the listed cells
+            # are nearly all observed and a pool restricted to them has almost no
+            # negatives left to rank against.
+            if isinstance(seen_mask, tuple):
+                score_mask, target_mask = seen_mask
+            else:
+                score_mask = target_mask = seen_mask
+
+            if score_mask is None and target_mask is None:
                 v_scores = scores
                 v_target = target_batch
                 v_masked_baselines = masked_baselines
             else:
-                sm_dev = seen_mask.to(device)
-                if scores is not None:
+                if scores is not None and score_mask is not None:
                     v_scores = scores.clone()
+                    sm_dev = score_mask.to(device)
                     v_scores[sm_dev.unsqueeze(0).expand_as(v_scores)] = float('nan')
                 else:
-                    v_scores = None
-                v_target = target_batch.clone()
-                v_target[sm_dev.unsqueeze(0).expand_as(v_target)] = 0
-                v_masked_baselines = {}
-                for name, mb in masked_baselines.items():
-                    mb_copy = mb.clone()
-                    mb_copy[seen_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
-                    v_masked_baselines[name] = mb_copy
+                    v_scores = scores
+                if target_mask is not None:
+                    v_target = target_batch.clone()
+                    tm_dev = target_mask.to(device)
+                    v_target[tm_dev.unsqueeze(0).expand_as(v_target)] = 0
+                else:
+                    v_target = target_batch
+                if score_mask is None:
+                    v_masked_baselines = masked_baselines
+                else:
+                    v_masked_baselines = {}
+                    for name, mb in masked_baselines.items():
+                        mb_copy = mb.clone()
+                        mb_copy[score_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
+                        v_masked_baselines[name] = mb_copy
 
             for i in range(n_buckets - 1):
                 qtile = (i + 1) / n_buckets

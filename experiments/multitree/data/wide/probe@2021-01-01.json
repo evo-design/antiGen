@@ -1,0 +1,3570 @@
+[
+ {
+  "dataset": "WNV/all-lineages",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "WNV/all-lineages@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "WNV/all-lineages",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "M",
+    "NS1",
+    "NS2A",
+    "NS2B",
+    "NS3",
+    "NS4A",
+    "NS4B",
+    "NS5",
+    "capsid",
+    "env",
+    "prM"
+   ],
+   "lens": {
+    "M": 75,
+    "NS1": 352,
+    "NS2A": 231,
+    "NS2B": 131,
+    "NS3": 619,
+    "NS4A": 149,
+    "NS4B": 255,
+    "NS5": 905,
+    "capsid": 123,
+    "env": 501,
+    "prM": 92
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5099,
+   "n_tips": 3086,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 3086
+   },
+   "latest_tip_bound": 2026.651,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "West Nile virus envelope"
+ },
+ {
+  "dataset": "avian-flu/h10nx/ha/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/ha/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/ha/all-time",
+   "at": "current",
+   "updated": "2026-09-22",
+   "genes": [
+    "HA"
+   ],
+   "lens": {
+    "HA": 562
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3428,
+   "n_tips": 1927,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1927
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h10nx HA"
+ },
+ {
+  "dataset": "avian-flu/h10nx/mp/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/mp/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/mp/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "M1",
+    "M2"
+   ],
+   "lens": {
+    "M1": 253,
+    "M2": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3293,
+   "n_tips": 1895,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1895
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment MP"
+ },
+ {
+  "dataset": "avian-flu/h10nx/na/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/na/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/na/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 473
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3566,
+   "n_tips": 1959,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1959
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h10nx NA"
+ },
+ {
+  "dataset": "avian-flu/h10nx/np/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/np/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/np/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "NP"
+   ],
+   "lens": {
+    "NP": 499
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3335,
+   "n_tips": 1863,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1863
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment NP"
+ },
+ {
+  "dataset": "avian-flu/h10nx/ns/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/ns/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/ns/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "NEP",
+    "NS1"
+   ],
+   "lens": {
+    "NEP": 0,
+    "NS1": 218
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3247,
+   "n_tips": 1874,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1874
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment NS"
+ },
+ {
+  "dataset": "avian-flu/h10nx/pa/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/pa/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/pa/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "PA",
+    "PA-X"
+   ],
+   "lens": {
+    "PA": 717,
+    "PA-X": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3250,
+   "n_tips": 1794,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1794
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment PA"
+ },
+ {
+  "dataset": "avian-flu/h10nx/pb1/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/pb1/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/pb1/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "PB1",
+    "PB1-F2"
+   ],
+   "lens": {
+    "PB1": 758,
+    "PB1-F2": 91
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3323,
+   "n_tips": 1831,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1831
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment PB1"
+ },
+ {
+  "dataset": "avian-flu/h10nx/pb2/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h10nx/pb2/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h10nx/pb2/all-time",
+   "at": "current",
+   "updated": "2026-09-26",
+   "genes": [
+    "PB2"
+   ],
+   "lens": {
+    "PB2": 760
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3153,
+   "n_tips": 1726,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1726
+   },
+   "latest_tip_bound": 2026.377,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h10nx internal segment PB2"
+ },
+ {
+  "dataset": "avian-flu/h5nx/ha/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/ha/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h5nx/ha/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "HA"
+   ],
+   "lens": {
+    "HA": 569
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 7650,
+   "n_tips": 4332,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4332
+   },
+   "latest_tip_bound": 2026.632,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h5nx HA"
+ },
+ {
+  "dataset": "avian-flu/h5nx/mp/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/mp/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/mp/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment MP"
+ },
+ {
+  "dataset": "avian-flu/h5nx/na/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/na/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h5nx/na/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 470
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8404,
+   "n_tips": 4574,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4574
+   },
+   "latest_tip_bound": 2026.511,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h5nx NA"
+ },
+ {
+  "dataset": "avian-flu/h5nx/np/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/np/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/np/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment NP"
+ },
+ {
+  "dataset": "avian-flu/h5nx/ns/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/ns/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/ns/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment NS"
+ },
+ {
+  "dataset": "avian-flu/h5nx/pa/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pa/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pa/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment PA"
+ },
+ {
+  "dataset": "avian-flu/h5nx/pb1/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pb1/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pb1/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment PB1"
+ },
+ {
+  "dataset": "avian-flu/h5nx/pb2/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pb2/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h5nx/pb2/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h5nx internal segment PB2"
+ },
+ {
+  "dataset": "avian-flu/h7nx/ha/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/ha/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/ha/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "HA",
+    "HA1",
+    "HA2",
+    "SigPep"
+   ],
+   "lens": {
+    "HA": 561,
+    "HA1": 321,
+    "HA2": 222,
+    "SigPep": 18
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8768,
+   "n_tips": 4998,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4998
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h7nx HA"
+ },
+ {
+  "dataset": "avian-flu/h7nx/mp/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/mp/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/mp/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "M1",
+    "M2"
+   ],
+   "lens": {
+    "M1": 253,
+    "M2": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8446,
+   "n_tips": 4698,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4698
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment MP"
+ },
+ {
+  "dataset": "avian-flu/h7nx/na/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/na/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/na/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 466
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8442,
+   "n_tips": 4719,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4719
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h7nx NA"
+ },
+ {
+  "dataset": "avian-flu/h7nx/np/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/np/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/np/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "NP"
+   ],
+   "lens": {
+    "NP": 499
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8913,
+   "n_tips": 4885,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4885
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment NP"
+ },
+ {
+  "dataset": "avian-flu/h7nx/ns/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/ns/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/ns/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "NS1",
+    "NS2"
+   ],
+   "lens": {
+    "NS1": 218,
+    "NS2": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8828,
+   "n_tips": 4942,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4942
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment NS"
+ },
+ {
+  "dataset": "avian-flu/h7nx/pa/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/pa/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/pa/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "PA"
+   ],
+   "lens": {
+    "PA": 717
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8720,
+   "n_tips": 4951,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4951
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment PA"
+ },
+ {
+  "dataset": "avian-flu/h7nx/pb1/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/pb1/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/pb1/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "PB1"
+   ],
+   "lens": {
+    "PB1": 758
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8725,
+   "n_tips": 4967,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4967
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment PB1"
+ },
+ {
+  "dataset": "avian-flu/h7nx/pb2/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h7nx/pb2/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h7nx/pb2/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "PB2"
+   ],
+   "lens": {
+    "PB2": 760
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8359,
+   "n_tips": 4813,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4813
+   },
+   "latest_tip_bound": 2026.089,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h7nx internal segment PB2"
+ },
+ {
+  "dataset": "avian-flu/h9n2/ha/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/ha/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h9n2/ha/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "HA"
+   ],
+   "lens": {
+    "HA": 561
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 9035,
+   "n_tips": 4940,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4940
+   },
+   "latest_tip_bound": 2026.44,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h9n2 HA"
+ },
+ {
+  "dataset": "avian-flu/h9n2/mp/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/mp/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/mp/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment MP"
+ },
+ {
+  "dataset": "avian-flu/h9n2/na/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/na/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "avian-flu/h9n2/na/all-time",
+   "at": "current",
+   "updated": "2026-09-28",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 470
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 8781,
+   "n_tips": 4875,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 4875
+   },
+   "latest_tip_bound": 2026.44,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "avian influenza h9n2 NA"
+ },
+ {
+  "dataset": "avian-flu/h9n2/np/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/np/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/np/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment NP"
+ },
+ {
+  "dataset": "avian-flu/h9n2/ns/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/ns/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/ns/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment NS"
+ },
+ {
+  "dataset": "avian-flu/h9n2/pa/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pa/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pa/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment PA"
+ },
+ {
+  "dataset": "avian-flu/h9n2/pb1/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pb1/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pb1/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment PB1"
+ },
+ {
+  "dataset": "avian-flu/h9n2/pb2/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pb2/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "avian-flu/h9n2/pb2/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "avian influenza h9n2 internal segment PB2"
+ },
+ {
+  "dataset": "chikv/global",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "chikv/global@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "chikv/global",
+   "at": "current",
+   "updated": "2026-10-13",
+   "genes": [
+    "6K",
+    "C",
+    "E1",
+    "E2",
+    "E3",
+    "nsp1",
+    "nsp2",
+    "nsp3",
+    "nsp4"
+   ],
+   "lens": {
+    "6K": 61,
+    "C": 261,
+    "E1": 439,
+    "E2": 423,
+    "E3": 64,
+    "nsp1": 535,
+    "nsp2": 798,
+    "nsp3": 530,
+    "nsp4": 611
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 2504,
+   "n_tips": 1413,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1413
+   },
+   "latest_tip_bound": 2026.415,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "chikungunya E1"
+ },
+ {
+  "dataset": "dengue/denv1/E",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv1/E@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv1/E@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "dengue denv1 E (panel)"
+ },
+ {
+  "dataset": "dengue/denv2/E",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv2/E@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv2/E@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "dengue denv2 E (panel)"
+ },
+ {
+  "dataset": "dengue/denv3/E",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv3/E@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv3/E@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "dengue denv3 E (panel)"
+ },
+ {
+  "dataset": "dengue/denv4/E",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv4/E@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "dengue/denv4/E@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "dengue denv4 E (panel)"
+ },
+ {
+  "dataset": "ebola/all-outbreaks",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "ebola/all-outbreaks@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "ebola/all-outbreaks",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "GP",
+    "L",
+    "NP",
+    "VP24",
+    "VP30",
+    "VP35",
+    "VP40",
+    "sGP",
+    "ssGP"
+   ],
+   "lens": {
+    "GP": 0,
+    "L": 2213,
+    "NP": 740,
+    "VP24": 252,
+    "VP30": 289,
+    "VP35": 341,
+    "VP40": 327,
+    "sGP": 365,
+    "ssGP": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 774,
+   "n_tips": 388,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date": 388
+   },
+   "latest_tip_bound": 2025.7452054794521,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "all-outbreaks GP"
+ },
+ {
+  "dataset": "ebola/ebov-2013",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "ebola/ebov-2013@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "ebola/ebov-2013",
+   "at": "current",
+   "updated": "2019-12-14",
+   "genes": [
+    "GP",
+    "L",
+    "NP",
+    "VP24",
+    "VP30",
+    "VP35",
+    "VP40",
+    "sGP"
+   ],
+   "lens": {
+    "GP": 676,
+    "L": 2213,
+    "NP": 740,
+    "VP24": 252,
+    "VP30": 289,
+    "VP35": 341,
+    "VP40": 327,
+    "sGP": 365
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 2648,
+   "n_tips": 1493,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1493
+   },
+   "latest_tip_bound": 2015.8131416837782,
+   "updated_before_cutoff": true,
+   "tips_all_before_cutoff": true
+  },
+  "route": "B",
+  "at": "current",
+  "tier": "core",
+  "tier_reason": "ebov-2013 GP"
+ },
+ {
+  "dataset": "ebola/sudv",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "ebola/sudv@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "ebola/sudv",
+   "at": "current",
+   "updated": "2026-09-02",
+   "genes": [
+    "GP",
+    "L",
+    "NP",
+    "VP24",
+    "VP30",
+    "VP35",
+    "VP40",
+    "sGP",
+    "ssGP"
+   ],
+   "lens": {
+    "GP": 0,
+    "L": 2211,
+    "NP": 739,
+    "VP24": 252,
+    "VP30": 289,
+    "VP35": 330,
+    "VP40": 327,
+    "sGP": 373,
+    "ssGP": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 295,
+   "n_tips": 148,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date": 141,
+    "date_submitted": 7
+   },
+   "latest_tip_bound": 2025.0493150684931,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "sudv GP"
+ },
+ {
+  "dataset": "enterovirus/d68/vp1",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "enterovirus/d68/vp1@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "enterovirus/d68/vp1",
+   "at": "current",
+   "updated": "2025-11-16",
+   "genes": [
+    "VP1"
+   ],
+   "lens": {
+    "VP1": 309
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 5651,
+   "n_tips": 3437,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 3437
+   },
+   "latest_tip_bound": 2024.999,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "EV-D68 VP1"
+ },
+ {
+  "dataset": "hantavirus/andv/m",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/andv/m@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/andv/m",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "GPC",
+    "Gc",
+    "Gn"
+   ],
+   "lens": {
+    "GPC": 1139,
+    "Gc": 488,
+    "Gn": 651
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 517,
+   "n_tips": 259,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 259
+   },
+   "latest_tip_bound": 2026.7452054794521,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hantavirus ANDV M (glycoprotein)"
+ },
+ {
+  "dataset": "hantavirus/andv/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/andv/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/andv/s",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "N",
+    "NSs"
+   ],
+   "lens": {
+    "N": 429,
+    "NSs": 64
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 387,
+   "n_tips": 194,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 194
+   },
+   "latest_tip_bound": 2026.7452054794521,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "hantavirus ANDV S (nucleoprotein)"
+ },
+ {
+  "dataset": "hantavirus/htnv/m",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/htnv/m@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/htnv/m",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "HTNVsMgp1"
+   ],
+   "lens": {
+    "HTNVsMgp1": 1136
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1087,
+   "n_tips": 544,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 544
+   },
+   "latest_tip_bound": 2026.6657534246576,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hantavirus HTNV M (glycoprotein)"
+ },
+ {
+  "dataset": "hantavirus/htnv/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/htnv/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/htnv/s",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "HTNVsSgp1"
+   ],
+   "lens": {
+    "HTNVsSgp1": 430
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1527,
+   "n_tips": 764,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 764
+   },
+   "latest_tip_bound": 2026.6657534246576,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "hantavirus HTNV S (nucleoprotein)"
+ },
+ {
+  "dataset": "hantavirus/puuv/m",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/puuv/m@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/puuv/m",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "PUUVsMgp1"
+   ],
+   "lens": {
+    "PUUVsMgp1": 1149
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1269,
+   "n_tips": 635,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 635
+   },
+   "latest_tip_bound": 2026.517808219178,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hantavirus PUUV M (glycoprotein)"
+ },
+ {
+  "dataset": "hantavirus/puuv/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/puuv/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/puuv/s",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "PUUVsSgp1",
+    "PUUVsSgp2"
+   ],
+   "lens": {
+    "PUUVsSgp1": 434,
+    "PUUVsSgp2": 91
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3455,
+   "n_tips": 1728,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 1728
+   },
+   "latest_tip_bound": 2026.517808219178,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "hantavirus PUUV S (nucleoprotein)"
+ },
+ {
+  "dataset": "hantavirus/seov/m",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/seov/m@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/seov/m",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "SEOVsMgp1"
+   ],
+   "lens": {
+    "SEOVsMgp1": 1134
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1803,
+   "n_tips": 902,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 902
+   },
+   "latest_tip_bound": 2026.7452054794521,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hantavirus SEOV M (glycoprotein)"
+ },
+ {
+  "dataset": "hantavirus/seov/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/seov/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/seov/s",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "SEOVsSgp1"
+   ],
+   "lens": {
+    "SEOVsSgp1": 430
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1201,
+   "n_tips": 601,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 601
+   },
+   "latest_tip_bound": 2026.7452054794521,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "hantavirus SEOV S (nucleoprotein)"
+ },
+ {
+  "dataset": "hantavirus/tulv/m",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/tulv/m@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/tulv/m",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "TULVsMgp1"
+   ],
+   "lens": {
+    "TULVsMgp1": 1142
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 477,
+   "n_tips": 239,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 239
+   },
+   "latest_tip_bound": 2026.7561643835616,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hantavirus TULV M (glycoprotein)"
+ },
+ {
+  "dataset": "hantavirus/tulv/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hantavirus/tulv/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hantavirus/tulv/s",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "TULV_gp1",
+    "TULV_gp2"
+   ],
+   "lens": {
+    "TULV_gp1": 430,
+    "TULV_gp2": 91
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1797,
+   "n_tips": 899,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date_released": 899
+   },
+   "latest_tip_bound": 2026.7561643835616,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "hantavirus TULV S (nucleoprotein)"
+ },
+ {
+  "dataset": "hmpv/a/F",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hmpv/a/F@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hmpv/a/F",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "F"
+   ],
+   "lens": {
+    "F": 540
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2840,
+   "n_tips": 1635,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1635
+   },
+   "latest_tip_bound": 2026.393,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hMPV A F"
+ },
+ {
+  "dataset": "hmpv/a/G",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hmpv/a/G@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hmpv/a/G",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "G"
+   ],
+   "lens": {
+    "G": 237
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3690,
+   "n_tips": 2092,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2092
+   },
+   "latest_tip_bound": 2026.393,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hMPV A G"
+ },
+ {
+  "dataset": "hmpv/b/F",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hmpv/b/F@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hmpv/b/F",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "F"
+   ],
+   "lens": {
+    "F": 540
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2472,
+   "n_tips": 1425,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1425
+   },
+   "latest_tip_bound": 2026.401,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hMPV B F"
+ },
+ {
+  "dataset": "hmpv/b/G",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "hmpv/b/G@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "hmpv/b/G",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "G"
+   ],
+   "lens": {
+    "G": 225
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2372,
+   "n_tips": 1340,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1340
+   },
+   "latest_tip_bound": 2026.401,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "hMPV B G"
+ },
+ {
+  "dataset": "lassa/gpc",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "lassa/gpc@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "lassa/gpc",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "GPC"
+   ],
+   "lens": {
+    "GPC": 492
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2296,
+   "n_tips": 1201,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1201
+   },
+   "latest_tip_bound": 7001.96,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "Lassa GPC"
+ },
+ {
+  "dataset": "lassa/s",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "lassa/s@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "lassa/s",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "GPC",
+    "NP"
+   ],
+   "lens": {
+    "GPC": 492,
+    "NP": 570
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1635,
+   "n_tips": 837,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 837
+   },
+   "latest_tip_bound": 3002.17,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "Lassa S segment (nucleoprotein)"
+ },
+ {
+  "dataset": "measles/N450/global",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "measles/N450/global@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "measles/N450/global",
+   "at": "current",
+   "updated": "2026-10-13",
+   "genes": [
+    "N"
+   ],
+   "lens": {
+    "N": 150
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5616,
+   "n_tips": 3290,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 3290
+   },
+   "latest_tip_bound": 2026.739,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "measles N450"
+ },
+ {
+  "dataset": "measles/genome/global",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "measles/genome/global@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "measles/genome/global",
+   "at": "current",
+   "updated": "2026-10-15",
+   "genes": [
+    "C",
+    "F",
+    "H",
+    "L",
+    "M",
+    "N",
+    "P",
+    "V"
+   ],
+   "lens": {
+    "C": 187,
+    "F": 551,
+    "H": 618,
+    "L": 2184,
+    "M": 336,
+    "N": 526,
+    "P": 508,
+    "V": 0
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5708,
+   "n_tips": 3128,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 3128
+   },
+   "latest_tip_bound": 2026.722,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "measles H (panel)"
+ },
+ {
+  "dataset": "mpox/all-clades",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "mpox/all-clades@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "mpox/all-clades",
+   "at": "current",
+   "updated": "2026-10-14",
+   "genes": [
+    "OPG001",
+    "OPG001_dup",
+    "OPG002",
+    "OPG002_dup",
+    "OPG003",
+    "OPG003_dup",
+    "OPG005",
+    "OPG015",
+    "OPG015_dup",
+    "OPG016",
+    "OPG019",
+    "OPG021",
+    "OPG022",
+    "OPG023",
+    "OPG024",
+    "OPG025",
+    "OPG027",
+    "OPG029",
+    "OPG030",
+    "OPG031",
+    "OPG034",
+    "OPG035",
+    "OPG036",
+    "OPG037",
+    "OPG038",
+    "OPG039",
+    "OPG040",
+    "OPG042",
+    "OPG043",
+    "OPG044",
+    "OPG045",
+    "OPG046",
+    "OPG047",
+    "OPG048",
+    "OPG049",
+    "OPG050",
+    "OPG051",
+    "OPG052",
+    "OPG053",
+    "OPG054",
+    "OPG055",
+    "OPG056",
+    "OPG057",
+    "OPG058",
+    "OPG059",
+    "OPG060",
+    "OPG061",
+    "OPG062",
+    "OPG063",
+    "OPG064",
+    "OPG065",
+    "OPG066",
+    "OPG068",
+    "OPG069",
+    "OPG070",
+    "OPG071",
+    "OPG072",
+    "OPG073",
+    "OPG074",
+    "OPG075",
+    "OPG076",
+    "OPG077",
+    "OPG078",
+    "OPG079",
+    "OPG080",
+    "OPG081",
+    "OPG082",
+    "OPG083",
+    "OPG084",
+    "OPG085",
+    "OPG086",
+    "OPG087",
+    "OPG088",
+    "OPG089",
+    "OPG090",
+    "OPG091",
+    "OPG092",
+    "OPG093",
+    "OPG094",
+    "OPG095",
+    "OPG096",
+    "OPG097",
+    "OPG098",
+    "OPG099",
+    "OPG100",
+    "OPG101",
+    "OPG102",
+    "OPG103",
+    "OPG104",
+    "OPG105",
+    "OPG106",
+    "OPG107",
+    "OPG108",
+    "OPG109",
+    "OPG110",
+    "OPG111",
+    "OPG112",
+    "OPG113",
+    "OPG114",
+    "OPG115",
+    "OPG116",
+    "OPG117",
+    "OPG118",
+    "OPG119",
+    "OPG120",
+    "OPG121",
+    "OPG122",
+    "OPG123",
+    "OPG124",
+    "OPG125",
+    "OPG126",
+    "OPG127",
+    "OPG128",
+    "OPG129",
+    "OPG130",
+    "OPG131",
+    "OPG132",
+    "OPG133",
+    "OPG134",
+    "OPG135",
+    "OPG136",
+    "OPG137",
+    "OPG138",
+    "OPG139",
+    "OPG140",
+    "OPG141",
+    "OPG142",
+    "OPG143",
+    "OPG144",
+    "OPG145",
+    "OPG146",
+    "OPG147",
+    "OPG148",
+    "OPG149",
+    "OPG150",
+    "OPG151",
+    "OPG153",
+    "OPG154",
+    "OPG155",
+    "OPG156",
+    "OPG157",
+    "OPG158",
+    "OPG159",
+    "OPG160",
+    "OPG161",
+    "OPG162",
+    "OPG163",
+    "OPG164",
+    "OPG165",
+    "OPG166",
+    "OPG167",
+    "OPG170",
+    "OPG171",
+    "OPG172",
+    "OPG173",
+    "OPG174",
+    "OPG175",
+    "OPG176",
+    "OPG178",
+    "OPG180",
+    "OPG181",
+    "OPG185",
+    "OPG187",
+    "OPG188",
+    "OPG189",
+    "OPG190",
+    "OPG191",
+    "OPG192",
+    "OPG193",
+    "OPG195",
+    "OPG197",
+    "OPG198",
+    "OPG199",
+    "OPG200",
+    "OPG204",
+    "OPG205",
+    "OPG208",
+    "OPG209",
+    "OPG210"
+   ],
+   "lens": {
+    "OPG001": 247,
+    "OPG001_dup": 247,
+    "OPG002": 350,
+    "OPG002_dup": 350,
+    "OPG003": 589,
+    "OPG003_dup": 589,
+    "OPG005": 154,
+    "OPG015": 438,
+    "OPG015_dup": 438,
+    "OPG016": 177,
+    "OPG019": 143,
+    "OPG021": 243,
+    "OPG022": 127,
+    "OPG023": 661,
+    "OPG024": 65,
+    "OPG025": 631,
+    "OPG027": 151,
+    "OPG029": 156,
+    "OPG030": 207,
+    "OPG031": 317,
+    "OPG034": 215,
+    "OPG035": 118,
+    "OPG036": 178,
+    "OPG037": 443,
+    "OPG038": 221,
+    "OPG039": 285,
+    "OPG040": 376,
+    "OPG042": 425,
+    "OPG043": 277,
+    "OPG044": 150,
+    "OPG045": 220,
+    "OPG046": 152,
+    "OPG047": 483,
+    "OPG048": 320,
+    "OPG049": 319,
+    "OPG050": 76,
+    "OPG051": 75,
+    "OPG052": 65,
+    "OPG053": 213,
+    "OPG054": 440,
+    "OPG055": 355,
+    "OPG056": 636,
+    "OPG057": 373,
+    "OPG058": 74,
+    "OPG059": 50,
+    "OPG060": 159,
+    "OPG061": 232,
+    "OPG062": 102,
+    "OPG063": 480,
+    "OPG064": 738,
+    "OPG065": 154,
+    "OPG066": 260,
+    "OPG068": 568,
+    "OPG069": 167,
+    "OPG070": 274,
+    "OPG071": 1007,
+    "OPG072": 96,
+    "OPG073": 130,
+    "OPG074": 666,
+    "OPG075": 109,
+    "OPG076": 36,
+    "OPG077": 313,
+    "OPG078": 74,
+    "OPG079": 270,
+    "OPG080": 772,
+    "OPG081": 80,
+    "OPG082": 383,
+    "OPG083": 424,
+    "OPG084": 677,
+    "OPG085": 592,
+    "OPG086": 112,
+    "OPG087": 221,
+    "OPG088": 125,
+    "OPG089": 435,
+    "OPG090": 64,
+    "OPG091": 166,
+    "OPG092": 372,
+    "OPG093": 261,
+    "OPG094": 341,
+    "OPG095": 251,
+    "OPG096": 93,
+    "OPG097": 345,
+    "OPG098": 252,
+    "OPG099": 129,
+    "OPG100": 153,
+    "OPG101": 178,
+    "OPG102": 334,
+    "OPG103": 186,
+    "OPG104": 134,
+    "OPG105": 1287,
+    "OPG106": 172,
+    "OPG107": 190,
+    "OPG108": 325,
+    "OPG109": 796,
+    "OPG110": 211,
+    "OPG111": 315,
+    "OPG112": 147,
+    "OPG113": 846,
+    "OPG114": 147,
+    "OPG115": 234,
+    "OPG116": 219,
+    "OPG117": 786,
+    "OPG118": 638,
+    "OPG119": 162,
+    "OPG120": 305,
+    "OPG121": 214,
+    "OPG122": 249,
+    "OPG123": 632,
+    "OPG124": 288,
+    "OPG125": 552,
+    "OPG126": 151,
+    "OPG127": 225,
+    "OPG128": 78,
+    "OPG129": 645,
+    "OPG130": 282,
+    "OPG131": 162,
+    "OPG132": 373,
+    "OPG133": 711,
+    "OPG134": 293,
+    "OPG135": 101,
+    "OPG136": 892,
+    "OPG137": 319,
+    "OPG138": 191,
+    "OPG139": 71,
+    "OPG140": 91,
+    "OPG141": 54,
+    "OPG142": 95,
+    "OPG143": 378,
+    "OPG144": 205,
+    "OPG145": 493,
+    "OPG146": 78,
+    "OPG147": 116,
+    "OPG148": 427,
+    "OPG149": 188,
+    "OPG150": 383,
+    "OPG151": 1165,
+    "OPG153": 510,
+    "OPG154": 111,
+    "OPG155": 147,
+    "OPG156": 306,
+    "OPG157": 79,
+    "OPG158": 43,
+    "OPG159": 146,
+    "OPG160": 301,
+    "OPG161": 182,
+    "OPG162": 169,
+    "OPG163": 177,
+    "OPG164": 229,
+    "OPG165": 269,
+    "OPG166": 60,
+    "OPG167": 278,
+    "OPG170": 222,
+    "OPG171": 134,
+    "OPG172": 197,
+    "OPG173": 75,
+    "OPG174": 347,
+    "OPG175": 126,
+    "OPG176": 241,
+    "OPG178": 205,
+    "OPG180": 560,
+    "OPG181": 335,
+    "OPG185": 314,
+    "OPG187": 304,
+    "OPG188": 504,
+    "OPG189": 562,
+    "OPG190": 318,
+    "OPG191": 169,
+    "OPG192": 183,
+    "OPG193": 268,
+    "OPG195": 222,
+    "OPG197": 101,
+    "OPG198": 283,
+    "OPG199": 345,
+    "OPG200": 150,
+    "OPG204": 352,
+    "OPG205": 788,
+    "OPG208": 358,
+    "OPG209": 191,
+    "OPG210": 1881
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 1246,
+   "n_tips": 812,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date": 812
+   },
+   "latest_tip_bound": 2026.5479452054794,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "mpox OPG210"
+ },
+ {
+  "dataset": "mumps/global",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "mumps/global@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "mumps/global",
+   "at": "current",
+   "updated": "2026-08-19",
+   "genes": [
+    "F",
+    "HN",
+    "I",
+    "L",
+    "M",
+    "NC",
+    "P",
+    "SH",
+    "V"
+   ],
+   "lens": {
+    "F": 539,
+    "HN": 583,
+    "I": 0,
+    "L": 2262,
+    "M": 376,
+    "NC": 437,
+    "P": 0,
+    "SH": 58,
+    "V": 225
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1566,
+   "n_tips": 904,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 904
+   },
+   "latest_tip_bound": 2025.399,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "mumps HN"
+ },
+ {
+  "dataset": "ncov/open/global/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "ncov/open/global/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "ncov/open/global/all-time",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "E",
+    "M",
+    "N",
+    "ORF1a",
+    "ORF1b",
+    "ORF3a",
+    "ORF6",
+    "ORF7a",
+    "ORF7b",
+    "ORF8",
+    "ORF9b",
+    "S"
+   ],
+   "lens": {
+    "E": 76,
+    "M": 223,
+    "N": 420,
+    "ORF1a": 4401,
+    "ORF1b": 2696,
+    "ORF3a": 276,
+    "ORF6": 62,
+    "ORF7a": 122,
+    "ORF7b": 44,
+    "ORF8": 122,
+    "ORF9b": 98,
+    "S": 1274
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 5735,
+   "n_tips": 2942,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2942
+   },
+   "latest_tip_bound": 2026.684,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "SARS-CoV-2 spike (panel)"
+ },
+ {
+  "dataset": "nipah/all",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "nipah/all@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "nipah/all",
+   "at": "current",
+   "updated": "2026-09-11",
+   "genes": [
+    "F",
+    "G",
+    "L",
+    "M",
+    "N",
+    "P"
+   ],
+   "lens": {
+    "F": 547,
+    "G": 603,
+    "L": 2245,
+    "M": 353,
+    "N": 533,
+    "P": 710
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 217,
+   "n_tips": 122,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 122
+   },
+   "latest_tip_bound": 3681.396,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "Nipah virus glycoprotein"
+ },
+ {
+  "dataset": "norovirus/all/3CLpro",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/3CLpro@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/3CLpro@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene 3CLpro"
+ },
+ {
+  "dataset": "norovirus/all/NTPase",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/NTPase@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/NTPase@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene NTPase"
+ },
+ {
+  "dataset": "norovirus/all/RdRp",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/RdRp@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/RdRp@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene RdRp"
+ },
+ {
+  "dataset": "norovirus/all/VP1",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/VP1@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "norovirus/all/VP1",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "VP1"
+   ],
+   "lens": {
+    "VP1": 541
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 11098,
+   "n_tips": 5674,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 5674
+   },
+   "latest_tip_bound": 2026.574,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "norovirus VP1 (the capsid antigen)"
+ },
+ {
+  "dataset": "norovirus/all/VP2",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/VP2@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/VP2@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene VP2"
+ },
+ {
+  "dataset": "norovirus/all/VPg",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/VPg@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/VPg@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene VPg"
+ },
+ {
+  "dataset": "norovirus/all/p22",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/p22@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/p22@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene p22"
+ },
+ {
+  "dataset": "norovirus/all/p48",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/p48@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "norovirus/all/p48@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "norovirus non-capsid gene p48"
+ },
+ {
+  "dataset": "oropouche/M",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "oropouche/M@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "oropouche/M",
+   "at": "current",
+   "updated": "2026-08-08",
+   "genes": [
+    "OROVsMgp1"
+   ],
+   "lens": {
+    "OROVsMgp1": 1421
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1720,
+   "n_tips": 993,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 993
+   },
+   "latest_tip_bound": 2037.855,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "Oropouche M (glycoprotein)"
+ },
+ {
+  "dataset": "oropouche/S",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "oropouche/S@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "oropouche/S",
+   "at": "current",
+   "updated": "2026-08-08",
+   "genes": [
+    "OROVsNgp1",
+    "OROVsNgp2"
+   ],
+   "lens": {
+    "OROVsNgp1": 232,
+    "OROVsNgp2": 92
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1852,
+   "n_tips": 947,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 947
+   },
+   "latest_tip_bound": 2050.298,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "extra",
+  "tier_reason": "Oropouche S (nucleoprotein)"
+ },
+ {
+  "dataset": "rabies",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rabies@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "rabies",
+   "at": "current",
+   "updated": "2026-10-12",
+   "genes": [
+    "RABVgp1",
+    "RABVgp2",
+    "RABVgp3",
+    "RABVgp4",
+    "RABVgp5"
+   ],
+   "lens": {
+    "RABVgp1": 451,
+    "RABVgp2": 298,
+    "RABVgp3": 203,
+    "RABVgp4": 525,
+    "RABVgp5": 2143
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 6175,
+   "n_tips": 3088,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date": 3088
+   },
+   "latest_tip_bound": 2026.131506849315,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "rabies"
+ },
+ {
+  "dataset": "rsv/a/F/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/a/F/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/a/F/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "RSV-A F"
+ },
+ {
+  "dataset": "rsv/a/G/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/a/G/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "rsv/a/G/all-time",
+   "at": "current",
+   "updated": "2026-10-13",
+   "genes": [
+    "G"
+   ],
+   "lens": {
+    "G": 322
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5612,
+   "n_tips": 2970,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2970
+   },
+   "latest_tip_bound": 2026.519,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "RSV-A G"
+ },
+ {
+  "dataset": "rsv/b/F/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/b/F/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/b/F/all-time@current not cached"
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "RSV-B F"
+ },
+ {
+  "dataset": "rsv/b/G/all-time",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rsv/b/G/all-time@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "rsv/b/G/all-time",
+   "at": "current",
+   "updated": "2026-10-13",
+   "genes": [
+    "G"
+   ],
+   "lens": {
+    "G": 311
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5225,
+   "n_tips": 2725,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2725
+   },
+   "latest_tip_bound": 2026.456,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "RSV-B G"
+ },
+ {
+  "dataset": "rubella/E1",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "rubella/E1@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "rubella/E1",
+   "at": "current",
+   "updated": "2026-09-30",
+   "genes": [
+    "E1"
+   ],
+   "lens": {
+    "E1": 481
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 5520,
+   "n_tips": 3023,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 3023
+   },
+   "latest_tip_bound": 2025.486,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "rubella E1"
+ },
+ {
+  "dataset": "seasonal-cov/229e",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-cov/229e@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-cov/229e",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "4a",
+    "4b",
+    "E",
+    "M",
+    "N",
+    "ORF1a",
+    "ORF1b",
+    "S1",
+    "S2",
+    "Spike"
+   ],
+   "lens": {
+    "4a": 134,
+    "4b": 89,
+    "E": 78,
+    "M": 226,
+    "N": 390,
+    "ORF1a": 4076,
+    "ORF1b": 2683,
+    "S1": 545,
+    "S2": 614,
+    "Spike": 1174
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 975,
+   "n_tips": 538,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 538
+   },
+   "latest_tip_bound": 2026.116,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal-cov/229e"
+ },
+ {
+  "dataset": "seasonal-cov/hku1",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-cov/hku1@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-cov/hku1",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "E",
+    "HE",
+    "M",
+    "N",
+    "N2",
+    "ORF1a",
+    "ORF1b",
+    "ORF4",
+    "S1",
+    "S2",
+    "Spike"
+   ],
+   "lens": {
+    "E": 83,
+    "HE": 387,
+    "M": 224,
+    "N": 442,
+    "N2": 206,
+    "ORF1a": 4465,
+    "ORF1b": 2718,
+    "ORF4": 110,
+    "S1": 748,
+    "S2": 110,
+    "Spike": 1357
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 388,
+   "n_tips": 208,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 208
+   },
+   "latest_tip_bound": 2025.999,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal-cov/hku1"
+ },
+ {
+  "dataset": "seasonal-cov/nl63",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-cov/nl63@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-cov/nl63",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "E",
+    "M",
+    "N",
+    "ORF1a",
+    "ORF1b",
+    "ORF3",
+    "S1",
+    "S2",
+    "Spike"
+   ],
+   "lens": {
+    "E": 78,
+    "M": 227,
+    "N": 378,
+    "ORF1a": 4051,
+    "ORF1b": 2679,
+    "ORF3": 226,
+    "S1": 734,
+    "S2": 608,
+    "Spike": 1357
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 692,
+   "n_tips": 388,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 388
+   },
+   "latest_tip_bound": 2025.999,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal-cov/nl63"
+ },
+ {
+  "dataset": "seasonal-cov/oc43",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-cov/oc43@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-cov/oc43",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "E",
+    "HE",
+    "M",
+    "N",
+    "N2",
+    "NS2",
+    "NS2a",
+    "ORF1a",
+    "ORF1b",
+    "S1",
+    "S2",
+    "Spike"
+   ],
+   "lens": {
+    "E": 85,
+    "HE": 425,
+    "M": 231,
+    "N": 449,
+    "N2": 116,
+    "NS2": 110,
+    "NS2a": 279,
+    "ORF1a": 4374,
+    "ORF1b": 2722,
+    "S1": 753,
+    "S2": 596,
+    "Spike": 1362
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 1521,
+   "n_tips": 817,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 817
+   },
+   "latest_tip_bound": 2025.899,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal-cov/oc43"
+ },
+ {
+  "dataset": "seasonal-flu/h1n1pdm/ha/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/h1n1pdm/ha/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/h1n1pdm/ha/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "HA1",
+    "HA2",
+    "SigPep"
+   ],
+   "lens": {
+    "HA1": 327,
+    "HA2": 222,
+    "SigPep": 17
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3016,
+   "n_tips": 1544,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1544
+   },
+   "latest_tip_bound": 2026.73,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza h1n1pdm HA"
+ },
+ {
+  "dataset": "seasonal-flu/h1n1pdm/na/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/h1n1pdm/na/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/h1n1pdm/na/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 470
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3016,
+   "n_tips": 1544,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1544
+   },
+   "latest_tip_bound": 2026.73,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza h1n1pdm NA"
+ },
+ {
+  "dataset": "seasonal-flu/h3n2/ha/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/h3n2/ha/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/h3n2/ha/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "HA1",
+    "HA2",
+    "SigPep"
+   ],
+   "lens": {
+    "HA1": 329,
+    "HA2": 221,
+    "SigPep": 16
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3341,
+   "n_tips": 1707,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1707
+   },
+   "latest_tip_bound": 2026.703,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza h3n2 HA"
+ },
+ {
+  "dataset": "seasonal-flu/h3n2/na/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/h3n2/na/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/h3n2/na/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 470
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 3301,
+   "n_tips": 1704,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1704
+   },
+   "latest_tip_bound": 2026.703,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza h3n2 NA"
+ },
+ {
+  "dataset": "seasonal-flu/vic/ha/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/vic/ha/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/vic/ha/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "HA1",
+    "HA2",
+    "SigPep"
+   ],
+   "lens": {
+    "HA1": 347,
+    "HA2": 223,
+    "SigPep": 15
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2911,
+   "n_tips": 1503,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1503
+   },
+   "latest_tip_bound": 2026.703,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza vic HA"
+ },
+ {
+  "dataset": "seasonal-flu/vic/na/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/vic/na/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/vic/na/12y",
+   "at": "current",
+   "updated": "2026-10-08",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 467
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 2895,
+   "n_tips": 1503,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1503
+   },
+   "latest_tip_bound": 2026.703,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "seasonal influenza vic NA"
+ },
+ {
+  "dataset": "seasonal-flu/yam/ha/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/yam/ha/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/yam/ha/12y",
+   "at": "current",
+   "updated": "2024-02-14",
+   "genes": [
+    "HA1",
+    "HA2",
+    "SigPep"
+   ],
+   "lens": {
+    "HA1": 346,
+    "HA2": 224,
+    "SigPep": 15
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 5157,
+   "n_tips": 2685,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2685
+   },
+   "latest_tip_bound": 2020.217213114754,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": true
+  },
+  "route": "B",
+  "at": "current",
+  "tier": "core",
+  "tier_reason": "seasonal influenza yam HA"
+ },
+ {
+  "dataset": "seasonal-flu/yam/na/12y",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "seasonal-flu/yam/na/12y@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "seasonal-flu/yam/na/12y",
+   "at": "current",
+   "updated": "2024-02-14",
+   "genes": [
+    "NA"
+   ],
+   "lens": {
+    "NA": 467
+   },
+   "root_sequence_embedded": false,
+   "n_nodes": 4839,
+   "n_tips": 2543,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 2543
+   },
+   "latest_tip_bound": 2020.217213114754,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": true
+  },
+  "route": "B",
+  "at": "current",
+  "tier": "core",
+  "tier_reason": "seasonal influenza yam NA"
+ },
+ {
+  "dataset": "yellow-fever/prM-E",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "yellow-fever/prM-E@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "yellow-fever/prM-E",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "E",
+    "M",
+    "prM"
+   ],
+   "lens": {
+    "E": 113,
+    "M": 75,
+    "prM": 111
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1779,
+   "n_tips": 890,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "date": 890
+   },
+   "latest_tip_bound": 2026.282191780822,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "yellow fever prM-E"
+ },
+ {
+  "dataset": "zika",
+  "archive": {
+   "served": false,
+   "cache_miss": true,
+   "why": "zika@2021-01-01 not cached"
+  },
+  "current": {
+   "served": true,
+   "cached": true,
+   "dataset": "zika",
+   "at": "current",
+   "updated": "2026-10-11",
+   "genes": [
+    "2K",
+    "CA",
+    "ENV",
+    "MP",
+    "NS1",
+    "NS2A",
+    "NS2B",
+    "NS3",
+    "NS4A",
+    "NS4B",
+    "NS5",
+    "PRO"
+   ],
+   "lens": {
+    "2K": 23,
+    "CA": 122,
+    "ENV": 504,
+    "MP": 75,
+    "NS1": 352,
+    "NS2A": 226,
+    "NS2B": 130,
+    "NS3": 617,
+    "NS4A": 127,
+    "NS4B": 251,
+    "NS5": 903,
+    "PRO": 93
+   },
+   "root_sequence_embedded": true,
+   "n_nodes": 1828,
+   "n_tips": 1045,
+   "n_unbounded": 0,
+   "unbounded_sample": [],
+   "date_sources": {
+    "num_date": 1045
+   },
+   "latest_tip_bound": 2026.223,
+   "updated_before_cutoff": false,
+   "tips_all_before_cutoff": false
+  },
+  "route": null,
+  "at": null,
+  "tier": "core",
+  "tier_reason": "zika"
+ }
+]

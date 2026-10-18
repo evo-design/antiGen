@@ -1,1 +1,1 @@
-{"date": "2025-01-01", "seq_len": 495, "n_examples": 3, "n_targets": 3, "n_novel": 1, "per_example": {"0": [[156, "S", false]], "1": [[444, "A", false]], "2": [[238, "I", true]]}}
+{"date": "2025-01-01", "seq_len": 495, "window": "all", "n_examples": 3, "n_targets": 3, "n_novel": 1, "per_example": {"0": [[156, "S", false]], "1": [[444, "A", false]], "2": [[238, "I", true]]}}

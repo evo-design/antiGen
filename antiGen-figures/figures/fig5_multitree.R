@@ -118,9 +118,10 @@ SUBSET_COLORS <- c("All substitutions" = ANTIGEN_BLUE, "De novo only" = "#9bb8d4
 if (!exists("multitree_panel")) {
   multitree_panel <- as.integer(Sys.getenv("MULTITREE_PANEL", "9"))
 }
-stopifnot(multitree_panel %in% c(9, 11))
-MULTITREE_DIR <- if (multitree_panel == 9) "data/multitree" else "data/multitree11"
-FIG_SUFFIX    <- if (multitree_panel == 9) "" else "11"
+stopifnot(multitree_panel %in% c(9, 11, 13, 15))
+MULTITREE_DIR <- if (multitree_panel == 9) "data/multitree" else
+                 paste0("data/multitree", multitree_panel)
+FIG_SUFFIX    <- if (multitree_panel == 9) "" else as.character(multitree_panel)
 
 ## One tree order for every forest panel in both columns, so a virus sits on the
 ## same row throughout and the four panels can be read against each other. The two
@@ -128,8 +129,14 @@ FIG_SUFFIX    <- if (multitree_panel == 9) "" else "11"
 ## used and the panels can be compared across versions.
 TREE_ORDER <- c("ncov", "h5nx", "measles", "rsv_a", "rsv_b",
                 "denv1", "denv2", "denv3", "denv4")
-if (multitree_panel == 11) {
+if (multitree_panel >= 11) {
   TREE_ORDER <- c(TREE_ORDER, "h3n2_ha", "h1n1pdm_ha")
+}
+if (multitree_panel == 13) {
+  TREE_ORDER <- c(TREE_ORDER, "hmpv_b_g", "vic_ha")
+}
+if (multitree_panel >= 15) {
+  TREE_ORDER <- c(TREE_ORDER, "hmpv_a_g", "hmpv_b_g", "h9n2_ha", "vic_ha")
 }
 TREE_LABELS <- c(
   ## Genes per data/multitree/trees.json: ncov S, h5nx HA, measles H (the
@@ -138,7 +145,9 @@ TREE_LABELS <- c(
   ncov = "SARS-CoV-2 S", h5nx = "H5Nx HA", measles = "Measles H",
   rsv_a = "RSV A F", rsv_b = "RSV B F", denv1 = "DENV1 E",
   denv2 = "DENV2 E", denv3 = "DENV3 E", denv4 = "DENV4 E",
-  h3n2_ha = "H3N2 HA", h1n1pdm_ha = "H1N1pdm HA", POOLED = "Pooled"
+  h3n2_ha = "H3N2 HA", h1n1pdm_ha = "H1N1pdm HA",
+  hmpv_a_g = "hMPV A G", hmpv_b_g = "hMPV B G", h9n2_ha = "H9N2 HA",
+  vic_ha = "B/Victoria HA", POOLED = "Pooled"
 )
 FOREST_LEVELS <- c("Pooled", rev(unname(TREE_LABELS[TREE_ORDER])))
 

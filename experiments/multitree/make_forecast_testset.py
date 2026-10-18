@@ -71,15 +71,35 @@ def reconstruct(tree_json, ref_seq, genes, offsets, seq_len, stats):
     return seq
 
 
-def crossing_branches(tree_json, genes, offsets, seq_len, cutoff, stats):
-    """(parent, child, [(pos, alt)]) for every branch straddling D with substitutions."""
+def post_cutoff_branches(tree_json, genes, offsets, seq_len, cutoff, stats,
+                         window="all"):
+    """(parent, child, [(pos, alt)]) for branches in the testing window.
+
+    ``window="all"`` -- every branch whose CHILD postdates D. This is the testing
+    window: all substitutions that happened after the cutoff, which is what the sc2
+    eval has always meant by a test set and what the metrics are supposed to cover.
+
+    ``window="crossing"`` -- only branches with ``parent <= D < child``, i.e. the
+    single step across the boundary. This is what FORECAST_DESIGN.md line 47 wrote
+    down and what every arm up to 2026-10-18 scored. It is a strict subset, and the
+    shortfall grows with the gap between D and today, because deeper post-D structure
+    is discarded: measured 1.8x at D = 2025-01-01 (844 of 1,545 substitutions) and
+    8x at D = 2021-01-01 (280 of 2,215). Kept only to reproduce the earlier numbers.
+
+    Under ``all`` a query genotype may itself postdate D. That is not a leak of the
+    answer -- the target is still what happens NEXT from that genotype -- and it is
+    the same convention the sc2 benchmark uses, where testing examples are post-cutoff
+    nodes. It does mean the task is "given the current state, predict the next
+    substitution" rather than "predict forward from the last pre-D state".
+    """
     out = []
     stack = [(tree_json, None)]
     while stack:
         node, parent = stack.pop()
         if parent is not None:
             pd, cd = node_date(parent), node_date(node)
-            if pd is not None and cd is not None and pd <= cutoff < cd:
+            if cd is not None and cd > cutoff and (
+                    window == "all" or (pd is not None and pd <= cutoff)):
                 muts = parse_mutations(node, genes, offsets, seq_len, stats)
                 if muts:
                     out.append((parent, node, [(pos, to) for _, pos, to in muts]))
@@ -114,6 +134,12 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--strip-trailing-stop", action="store_true")
     p.add_argument("--ambiguous-ref", choices=["error", "gap"], default="error")
+    p.add_argument("--window", choices=["all", "crossing"], default="all",
+                   help="Which post-D branches are the test set. 'all' (default) is "
+                        "every branch whose child postdates D -- the testing window. "
+                        "'crossing' is only the step across the boundary, which is "
+                        "what arms before 2026-10-18 scored; it is a strict subset "
+                        "and discards deeper post-D structure.")
     args = p.parse_args(argv)
 
     cutoff = decimal_year(args.date)
@@ -150,8 +176,8 @@ def main(argv=None):
     seq = reconstruct(cur_json["tree"], cur_ref, args.genes, offsets, seq_len, stats)
     known = snapshot_substitutions(snap_json["tree"], args.genes, snap_offsets,
                                    seq_len, stats)
-    branches = crossing_branches(cur_json["tree"], args.genes, offsets, seq_len,
-                                 cutoff, stats)
+    branches = post_cutoff_branches(cur_json["tree"], args.genes, offsets, seq_len,
+                                    cutoff, stats, window=args.window)
 
     # One example per crossing-branch parent: several children of one parent can each
     # cross D, and the examples format already carries several targets per query.
@@ -197,13 +223,14 @@ def main(argv=None):
 
     side = os.path.splitext(args.out)[0] + "_novelty.json"
     with open(side, "w") as handle:
-        json.dump({"date": args.date, "seq_len": seq_len,
+        json.dump({"date": args.date, "seq_len": seq_len, "window": args.window,
                    "n_examples": len(by_parent), "n_targets": n_targets,
                    "n_novel": n_novel, "per_example": novelty}, handle)
 
     print(f"{args.current} (targets)\n  + {args.snapshot} (novelty) -> {args.out}")
     print(f"  genes={'+'.join(args.genes)} seq_len={seq_len} D={args.date}")
-    print(f"  crossing branches={len(branches)}  examples={len(by_parent)}  "
+    print(f"  window={args.window}  branches={len(branches)}  "
+          f"examples={len(by_parent)}  "
           f"targets={n_targets}  novel={n_novel} "
           f"({100 * n_novel / max(n_targets, 1):.0f}%)")
     print(f"  novel-only file: {novel_path} ({n_novel_examples} examples)")

@@ -26,9 +26,14 @@ from torch.utils.data import Dataset, DataLoader
 
 from antiGen.config import ModelType
 from antiGen import datasets
+from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.models.factory import create_model
 from antiGen.load import load_examples, load_pssms
-from antiGen.eval_utils import (
+from antiGen.mutation_lists import (cells_to_mask, describe as describe_list,
+                                    load_mutation_list)
+from antiGen.eval_utils import (fit_substitution_baseline,
+                                positional_marginal_counts,
+                                WhereTimesWhichPredictor,
     RBD_RANGE,
     evaluate_full,
     variant_hit_rates,
@@ -267,6 +272,38 @@ def parse_args():
                         help='Directory for unified comparison CSVs')
     parser.add_argument('--data-dir', type=str, default=None,
                         help="Override the data directory (else derived from checkpoints' train_args)")
+    parser.add_argument('--multitree-baselines', action='store_true',
+                        help='Also score the factored baselines from the cross-tree '
+                             'experiment: codon, substitution (a fitted codon x '
+                             'BLOSUM62 matrix) and where_times_which (P(i) * '
+                             'P(a|wt_i)). Unlike the CSV baselines these are '
+                             'query-dependent -- they read the residue at each '
+                             'position -- so they are scored through the model path, '
+                             'one forward pass per example, not broadcast as a fixed '
+                             '(L, E) map.')
+    parser.add_argument('--substitution-seed', type=int, default=0,
+                        help="Seed for fit_substitution_baseline's minibatch sampler. "
+                             "NOTES s14 found it saturates by K=2, so one fit is "
+                             "enough here; the multitree arm averages three only "
+                             "because its ESM-2 rungs are seed-ensembled too.")
+    parser.add_argument('--eval-range', choices=('default', 'full'), default='default',
+                        help="Which positions to score. 'default' uses the dataset's "
+                             "own range -- for sc2 that is the RBD (1-based 331-531), "
+                             "where the DMS baselines are defined. 'full' scores every "
+                             "position. Baselines with no signal outside the RBD "
+                             "(the Omicron DMS sets and EVEscape are a constant -1 "
+                             "there, which load_baselines turns into NaN) keep only "
+                             "their RBD cells as candidates while non-RBD targets "
+                             "still count against them, so they degrade rather than "
+                             "disappear; the per-baseline coverage is printed.")
+    parser.add_argument('--mutation-list', action='append', default=None,
+                        metavar='LABEL=PATH',
+                        help='Curated mutation list to evaluate as its own subset, '
+                             'e.g. --mutation-list ecdc=ecdc.csv. Repeatable. Each adds '
+                             'quantile_hit_rates_list_<LABEL>* and '
+                             'variant_emergence_list_<LABEL>* outputs, scored exactly '
+                             'like the de novo subset: the listed (position, alt) cells '
+                             'are the only candidates and the only targets.')
     parser.add_argument('--variant', type=str, default=None,
                         help='Override the variant name (else from train_args or dataset default)')
     parser.add_argument('--models', type=str, default=None,
@@ -391,6 +428,11 @@ def main():
     seq_len = len(all_examples[0].aa_idx)
     print(f"Sequence length: {seq_len}")
     eval_range = list(range(seq_len)) if args.dataset in ('flu', 'rsv_a', 'denv2') else RBD_RANGE
+    if args.eval_range == 'full':
+        eval_range = list(range(seq_len))
+    print(f"Eval range: {len(eval_range)} positions "
+          f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)"
+          f"{' [--eval-range full]' if args.eval_range == 'full' else ''}")
 
     # ── 3. Select the newest dataset-matching checkpoint per (prefix, config) ─
     # Match by train_args when present, else (legacy checkpoints) by seq_len.
@@ -476,6 +518,20 @@ def main():
             num_workers=4, pin_memory=True, drop_last=False,
         )
 
+    # Baseline coverage inside the eval range. A baseline with no signal outside the
+    # RBD (the Omicron DMS sets, EVEscape) is a constant -1 there, which
+    # load_baselines turns into NaN, so under --eval-range full its candidate pool is
+    # only the RBD while non-RBD targets still count in its denominator. That is the
+    # intended "abstention is not rewarded" behaviour, but a reader comparing rungs
+    # needs to know which ones are scoring a fifth of the protein.
+    print("\nBaseline coverage over the eval range "
+          "(finite cells; low = the baseline is absent over most of it):")
+    for _name, _probs in baselines:
+        _sub_probs = _probs[eval_range, :]
+        _cov = float(torch.isfinite(_sub_probs).float().mean())
+        _flag = "   <-- partial" if _cov < 0.9 else ""
+        print(f"  {_name:24s} {100 * _cov:5.1f}%{_flag}")
+
     # ── 4. Eval-variant masks ────────────────────────────────────────────────
     special_mask = build_special_mask(seq_len, E, gap_idx, stop_idx)
     hit_rate_seen_mask = pssm_root > 0  # (seq_len, E) True = seen in training root
@@ -486,6 +542,48 @@ def main():
         ("All (no gap/stop)", "all_nogapstop", special_mask),
         ("Unseen (no gap/stop)", "unseen_nogapstop", hit_rate_seen_mask | special_mask),
     ]
+
+    # ── 4b. Curated mutation lists as subsets ────────────────────────────────
+    # Each list restricts BOTH the candidate pool and the targets to its cells, which
+    # is what the de novo subset does and what --mutation-list's help promises. The
+    # consequence is worth stating when the numbers are read: the pool is no longer
+    # every RBD cell but only the listed ones, so "top 10%" is the top 10% of a few
+    # hundred cells, or a few dozen. A list eval ranks within the list; it does not
+    # measure whether the model would surface the list out of the whole protein.
+    mutation_lists = []          # (label, in_mask_full, in_mask_sub)
+    root_seq_str = "".join(allowed_aas[i] for i in global_wt_aa_idx.tolist())
+    for item in (args.mutation_list or []):
+        if "=" not in item:
+            raise SystemExit(f"--mutation-list wants LABEL=PATH, got {item!r}")
+        label, path = item.split("=", 1)
+        label = label.strip()
+        if not label.isidentifier():
+            raise SystemExit(f"--mutation-list label {label!r} must be a bare name")
+        cells, report = load_mutation_list(path, allowed_aas, seq_len,
+                                           root_seq=root_seq_str, label=label)
+        in_full = cells_to_mask(cells, seq_len, E)
+        in_sub = cells_to_mask(cells, seq_len, E, eval_range=eval_range)
+        n_in_range = int(in_sub.sum())
+        print(describe_list(report, in_range=n_in_range))
+        if n_in_range == 0:
+            raise SystemExit(
+                f"mutation list {label!r} has no cells inside the eval range "
+                f"(positions {eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based). "
+                f"Nothing could be scored.")
+        mutation_lists.append((label, in_full, in_sub))
+        # Restricted pool: the listed cells are the whole universe, as for de novo.
+        test_variants.append((f"List: {label}", f"list_{label}", ~in_full))
+        test_variants.append((f"List: {label} (no gap/stop)",
+                              f"list_{label}_nogapstop", (~in_full) | special_mask))
+        # Full pool: the listed cells are the targets but every eval-range cell is
+        # still a candidate, which is Figure 2's question asked of a subset of
+        # mutations. Reported alongside because the restricted-pool numbers are hard
+        # to read on their own -- on sc2 cutoff 1 every one of ECDC's 74 in-range
+        # cells is observed at some point, so a pool restricted to them contains
+        # almost no negatives and the metric becomes "are the frequent list members
+        # ranked above the rare ones" rather than "can the list be found".
+        test_variants.append((f"List: {label} (full pool)",
+                              f"list_{label}_fullpool", (None, ~in_full)))
     variant_variants = [
         ("Variant-descended", "variant", None),
         ("Variant-descended (no gap/stop)", "variant_nogapstop", special_mask),
@@ -546,6 +644,24 @@ def main():
             s[combined_mask] = float('nan')
             bl_unseen_nogapstop.append((n, s))
 
+        # Curated lists: the same construction as `unseen`, with the mask inverted --
+        # everything NOT in the list is NaN, so the list's cells are the whole universe
+        # for the PSSM-precision curve as well as for recall.
+        list_emergence = {}      # label -> (pssm_list, baseline_set)
+        for label, _in_full, in_sub in mutation_lists:
+            out_of_list = ~in_sub
+            pv_list = []
+            for pv in pssm_variant_sub:
+                pvm = pv.clone()
+                pvm[out_of_list] = float('nan')
+                pv_list.append(pvm)
+            bl_list = []
+            for n, bp in baselines:
+                sc = _sub(bp)
+                sc[out_of_list] = float('nan')
+                bl_list.append((n, sc))
+            list_emergence[label] = (pv_list, bl_list)
+
         # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set, threshold)
         emergence_specs = [
             ("all", pssm_variant_sub, "base", wt_mask_2d, bl_base, T0),
@@ -557,6 +673,12 @@ def main():
             ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0),
             ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1),
         ]
+        for label, (pv_list, bl_list) in list_emergence.items():
+            emergence_specs.append(
+                (f"list_{label}", pv_list, f"list_{label}", wt_mask_2d, bl_list, T0))
+            emergence_specs.append(
+                (f"list_{label}_thresh1", pv_list, f"list_{label}", wt_mask_2d,
+                 bl_list, 1))
 
         n_steps = len(pssm_variant_sub)
         # Accumulators: suffix -> {name: {q: [hit rate per step]}}
@@ -648,6 +770,51 @@ def main():
                 _, _, baseline_hits = vb_results[label]
                 variant_baseline_rows[suffix] = baseline_hits
 
+    # ── 7b. Query-dependent baselines from the cross-tree experiment ─────────
+    # codon, substitution and where_times_which read the residue at each position, so
+    # they cannot be expressed as the fixed (L, E) maps `baselines` holds and are
+    # instead scored through the model path. They are built here, once, and appended
+    # to `candidates` so that resume, the gap/stop mask and every eval variant treat
+    # them exactly like a checkpointed model.
+    builtin_models = {}
+    if args.multitree_baselines:
+        print("\n=== Building cross-tree factored baselines ===")
+
+        def _codon():
+            return create_model(ModelConfig(
+                model_type=ModelType.CODON, seq_len=seq_len,
+                alphabet=AlphabetConfig(amino_acids=allowed_aas),
+                codon=CodonConfig()), device)
+
+        # Fitted on the TRAINING examples only -- the same data the models saw, and
+        # never the test set.
+        _fit_cache = {}
+
+        def _fit():
+            if "fit" not in _fit_cache:
+                print(f"  fitting substitution matrix on {len(training_examples)} "
+                      f"training examples (seed={args.substitution_seed})...",
+                      flush=True)
+                _fit_cache["fit"] = fit_substitution_baseline(
+                    training_examples, device, allowed_aas,
+                    seed=args.substitution_seed)
+            return _fit_cache["fit"]
+
+        def _substitution():
+            return _fit()
+
+        def _where_times_which():
+            pm = positional_marginal_counts(training_examples, seq_len, E)
+            return WhereTimesWhichPredictor(_fit().config, pm, _fit()).to(device)
+
+        builtin_models = {"codon": _codon,
+                          "substitution": _substitution,
+                          "where_times_which": _where_times_which}
+        for name in builtin_models:
+            candidates.append((name, None, None))
+        print(f"  added {len(builtin_models)} factored baselines: "
+              f"{', '.join(builtin_models)}")
+
     # Persist baselines / emergence baselines now, before the first (possibly slow) model.
     flush_outputs()
 
@@ -673,17 +840,27 @@ def main():
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(args.seed)
         print(f"\n=== Evaluating model group: {prefix} ===")
-        try:
+        ckpt = None
+        if prefix in builtin_models:
+            # No checkpoint: these are constructed from the training examples.
+            try:
+                model = builtin_models[prefix]()
+                model.eval()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[skip] {prefix}: factored baseline build failed ({exc})")
+                continue
+        else:
+         try:
             ckpt, model_config = load_checkpoint(path, map_location=device)
-        except Exception as exc:  # noqa: BLE001
+         except Exception as exc:  # noqa: BLE001
             print(f"[skip] {prefix}: load_checkpoint failed ({exc})")
             continue
 
-        if model_config.seq_len != seq_len:
+         if model_config.seq_len != seq_len:
             print(f"[skip] {prefix}: checkpoint seq_len={model_config.seq_len} != data seq_len={seq_len}")
             continue
 
-        try:
+         try:
             model = create_model(model_config, device)
             missing, unexpected = model.load_state_dict(ckpt['model_state_dict'], strict=False)
             if missing:
@@ -691,7 +868,7 @@ def main():
             if unexpected:
                 print(f"  [warn] {prefix}: {len(unexpected)} unexpected state_dict keys (e.g. {unexpected[:3]})")
             model.eval()
-        except Exception as exc:  # noqa: BLE001
+         except Exception as exc:  # noqa: BLE001
             print(f"[skip] {prefix}: model build/load failed ({exc})")
             del ckpt
             gc.collect()
@@ -743,6 +920,10 @@ def main():
                 "base": mp_base, "unseen": mp_unseen,
                 "nogapstop": mp_nogapstop, "unseen_nogapstop": mp_unseen_nogapstop,
             }
+            for label, _in_full, in_sub in mutation_lists:
+                mp_list = tr_scores.clone()
+                mp_list[~in_sub] = float('nan')
+                mp_by_key[f"list_{label}"] = mp_list
             for suffix, pssm_list, mp_key, wt_m, _bl, thr in emergence_specs:
                 emergence_model_rows[suffix][prefix] = variant_hit_rates(
                     mp_by_key[mp_key], wt_m, pssm_list, threshold_count=thr,
@@ -754,7 +935,9 @@ def main():
         print(f"[write] flushed outputs after model: {prefix}")
 
         # Free model between groups
-        del model, ckpt
+        del model
+        if ckpt is not None:
+            del ckpt
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

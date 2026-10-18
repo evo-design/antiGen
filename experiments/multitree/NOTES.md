@@ -2597,3 +2597,578 @@ Two operational lessons, the second of which bit twice in one session:
   `22 PD / 3 R` reads exactly like contention. Only
   `scontrol show job <array id> | grep Reason=` distinguishes them. An array can sit
   two-thirds dead while every summary view says it is queued and progressing.
+
+---
+
+## 21. A 2025-01-01 panel probe, and four more trees (2026-10-17)
+
+s20 added the two seasonal-flu HA trees by chasing one specific bug. The obvious
+follow-up -- *are there others?* -- had never been asked at this cutoff: s18's probe
+ran at D = 2026-05-01 and nothing re-ran it at 2025-01-01.
+
+### The rule a forecast tree must clear is stricter than the corpus rule
+
+`wide_corpus.py` asks only whether a build can be shown to carry nothing observed
+after the cutoff, because there it is training context. `probe_forecast_panel.py`
+(new) adds the five bars an *evaluation* tree must also clear:
+
+1. **Route A only.** Route B -- today's build with every tip pre-cutoff -- means the
+   dataset is frozen and has no post-D history. Fine as training context (s11's
+   `joint_all` is exactly that), useless as an eval tree.
+2. **Matching reference frames** between snapshot and current build, or train and
+   test examples do not share coordinates.
+3. **A time tree.** `crossing_branches` reads `node_attrs.num_date` and nothing else,
+   which is strictly stronger than wide_corpus's tip-date reader.
+4. **A post-D budget worth scoring.**
+5. **No tip overlap with a panel tree** (s8: h5n1/h5nx share 37%).
+
+`wide_corpus.py --probe --cutoff 2025-01-01 --tiers core` -> **40 of 56 core datasets
+are route A**, zero fetch failures. Of those, nine cleared all five bars.
+
+### Three bugs in the probe, all of which under-reported
+
+Each silently *removed* a valid tree, so the direction of error was toward finding
+too few. Worth recording because the same shapes will recur:
+
+- The overlap rule excluded on **any** shared tip name. `hmpv/a/G` shares exactly one
+  with `rsv_b` -- a coincidence -- and was dropped. It has 427 post-D targets, the
+  largest of any candidate. The rule now uses a fraction of the smaller tree (5%).
+- `--current-ref` was gated on a probe field that route-A rows do not carry, so four
+  datasets failed as "test failed" when their reference simply lives in a sidecar.
+- The embedded-root-sequence check was a substring scan of the first 2 MB.
+  `hmpv/a/G` embeds its root sequence at **byte 3,204,972**. Parse, do not scan.
+
+A fourth is cosmetic but misleading: `wide_corpus._why_not` hardcodes the module's
+`CUTOFF`, so exclusion messages read `@2026-05-01` even when probing 2025-01-01. The
+404s are real; the date in the text is not.
+
+### Nine eligible, of which four are duplicate strain sets
+
+| dataset | gene | train ex | targets | novel |
+|---|---|---|---|---|
+| hmpv/a/G | G | 2101 | 427 | 79 |
+| hmpv/b/G | G | 1878 | 363 | 91 |
+| avian-flu/h9n2/ha | HA | 7174 | 354 | 46 |
+| avian-flu/h9n2/na | NA | 6651 | 232 | 26 |
+| seasonal-flu/vic/na | NA | 518 | 135 | 28 |
+| seasonal-flu/vic/ha | SigPep+HA1+HA2 | 339 | 74 | 14 |
+| hmpv/b/F | F | 91 | 55 | 33 |
+| hmpv/a/F | F | 86 | 38 | 25 |
+| oropouche/M | OROVsMgp1 | 349 | 10 | 6 |
+
+The first screen compared candidates only against the *panel*, not against each
+other. Pairwise: vic/ha vs vic/na **100%** shared tips, h9n2 ha/na 65%, hmpv/a F vs G
+53%, hmpv/b F vs G 51%. These are the same viruses at two proteins -- the same reason
+`h3n2/na` and `h1n1pdm/na` were kept out of the panel -- so one per pair.
+
+**Chosen: hmpv/a/G, hmpv/b/G, h9n2/ha, vic/ha** (HA/G members, no NA).
+
+Negative results that confirm the screen is not inventing candidates: `yam/ha` and
+`yam/na` return **zero** post-D crossing branches (B/Yamagata stopped circulating in
+2020), mumps 4 targets, zika 1. Real exclusions: `mpox/all-clades`, `h5nx/na` and
+`lassa/gpc` changed reference frame between builds; `rabies` and `evd68/vp1` are
+divergence trees; the four `seasonal-cov` builds and `ebola/ebov-2013` have no dated
+root-sequence sidecar (404), matching s18 at the other cutoff.
+
+**Not probed: the 38 `extra`-tier datasets** (influenza internal segments, norovirus
+non-capsid genes, bunya/arenavirus N segments). s18 excluded them by choice.
+
+### Two data-quality defects, recorded before training
+
+- **h9n2 HA drops 46.5% of its branch mutations** (7,665 of 16,498) to ambiguous `X`.
+  The kept mutations are real; its targets are a biased subsample of positions that
+  happened to be called unambiguously. Every other panel tree is 0-7.5%.
+- **hmpv/a/G is 12.4% gap targets** (53 of 427) against the panel's ~2%.
+
+---
+
+## 22. Panel 15: the de novo claim does not survive (2026-10-17)
+
+Array 3353040, 55 tasks, **all COMPLETED**, one `_best.pt` timestamp per directory.
+Collection 3353797 (8m56s) -> `antiGen-figures/data/multitree15/`, figure
+`figs/multitree_results15.png`.
+
+Pooled contrasts, temporal/pooled/standard, K = 8:
+
+| contrast | subset | 11-tree | 15-tree |
+|---|---|---|---|
+| vs single-tree | all | +0.045 [+0.025,+0.065]* | **+0.016 [+0.002,+0.029]*** |
+| vs single-tree | de novo | +0.172 [+0.097,+0.244]* | **+0.107 [+0.056,+0.159]*** |
+| vs `where x which` | all | +0.129 [+0.098,+0.158]* | **+0.112 [+0.088,+0.135]*** |
+| vs `where x which` | de novo | +0.112 [+0.031,+0.191]* | **+0.022 [-0.036,+0.081]** |
+
+**The de novo win over `where x which` reopens across zero**, on 317 targets against
+169. That is the claim s15/s16 tracked from +0.005 (K=3) through +0.104 and +0.112.
+Joint-vs-single survives everywhere but shrinks to +0.016 on all substitutions.
+
+Every rung falls on de novo (wxw -0.100, substitution -0.093) and the model falls
+most (-0.190): the new trees are harder for the model specifically. Per-tree, none of
+the four clears zero, and two are negative (hmpv_b_g -0.020 all / -0.021 de novo).
+They are **1,148 of 1,856 targets (62%)**, so they dominate rather than perturb.
+
+**This is not a clean refutation and must not be reported as one.** h9n2_ha and
+hmpv_a_g carry the defects above and are 42% of the panel's targets, so the run
+cannot separate "sensitive to harder trees" from "sensitive to dirtier ones".
+
+### Gaps are masked -- checked, and one earlier claim retracted
+
+Under `standard`, `cols_for()` returns `(STOP, GAP)` and `keep[:, :, c] = False`
+strips both columns from the **targets** as well as the pool. Measured on panel 15:
+all 1,856 standard vs 1,935 common (**79 gap targets excluded**), de novo 317 vs 341
+(**24 excluded**). Deletions are not scored, for any rung.
+
+**Correction.** s21 flagged hmpv_a_g's 12.4% gap targets as a reason the ESM-2 arms
+might be penalised. That is wrong: `standard` drops those targets entirely, so the
+gap column is not an explanation for the contrast reopening. hmpv_a_g is simply a
+smaller tree than its raw count suggests (374 scored of 427). The h9n2 ambiguity
+caveat is untouched -- that is about which mutations exist, not which columns score.
+
+---
+
+## 23. Panel 13: the clean two only (2026-10-17, RUNNING)
+
+Array **3353910**, 11 tasks. The eleven plus **vic_ha and hmpv_b_g** -- the two of
+s21's four with no known data-quality defect -- to separate "harder" from "dirtier".
+
+Only the joint arms are trained: single-tree controls do not depend on the panel and
+already exist from the panel15 array at the right seeds (`forecast/single_*_s0-7`,
+`matched/single_*_s0-2`). Hence 11 tasks, not 33.
+
+**hmpv_b_g is kept despite being slightly negative on its own per-tree contrast at 15
+trees.** The selection rule here is data quality, not outcome; dropping it on its
+result would be choosing the panel from the answer. Note vic_ha contributes 74
+targets against hmpv_b_g's 363, so the pooled de novo number will be driven mostly by
+the tree with the negative contrast.
+
+**If the result lands between 11 and 15, the honest conclusion is that the de novo
+claim is composition-sensitive and +0.112 was optimistic.**
+
+---
+
+## 24. Capacity sweep on panel 15 (2026-10-17, RUNNING)
+
+Two axes crossed, matched by **proportion** of encoder layers so size and depth are
+separable (`train_capacity15_esm2.sh`, arrays **3353096** 35M / **3353097** 650M):
+
+| fraction | 0 | 1/6 | 1/3 | 2/3 | all |
+|---|---|---|---|---|---|
+| 35M (12 layers) | ft0 | ft2 | ft4 | ft8 | ft12 |
+| 650M (33 layers) | ft0 | ft6 | ft11 | ft22 | ft33 |
+
+3 seeds each, everything else pinned to the joint_panel15 recipe, into `capacity15/`.
+35M arms measured at 24-26 min. The 650M half is 14 of 15 still queued; on the
+nine-tree panel those ran 1h48-2h40, and this panel roughly doubles the data.
+
+An **orphaned prior sweep** exists at `capacity/` (`panel_35M_ft{0,2,8,12,full}`,
+`panel_650M_ft{0,4,11}`, 3 seeds) on the *nine*-tree panel, with no script and no
+NOTES section -- lost to the reset s18 records. Its configs and timings were
+recovered from the run manifests. It also has a `full` cell (nothing frozen); that is
+omitted here because at 35M it was indistinguishable from ft12 (both 31 min).
+
+**650M/ft33 is untested** -- the prior sweep stopped at ft11, so nothing establishes
+that 33 unfrozen layers fit in memory at batch 8 / 8192 tokens.
+
+The 35M/ft4 cell duplicates `joint_panel15` deliberately, so the sweep reads as a
+self-contained factorial; the two should agree at seeds 0-2.
+
+---
+
+## 25. Main-model work: curated mutation lists and the cross-tree baselines (2026-10-17)
+
+**Not the multi-tree arm.** This section is here because this file is the running log
+and splitting it would lose it. The code is in `antiGen/` and `examples/slurm/`; the
+figures are 2 (sc2) and 4 (endemic), not 5.
+
+### Two curated lists as evaluation subsets
+
+`ecdc.csv` (ECDC variant-defining mutations) and `coguk.csv` (CoG-UK mutations of
+interest) as subsets of Figure 2's metrics. `antiGen/mutation_lists.py` (new) parses
+them; `antiGen/eval.py` gains `--mutation-list LABEL=PATH`, repeatable.
+
+Facts established, each verified rather than assumed:
+
+- **Coordinates are 1-based Spike.** All 323 CoG-UK wild-type letters match the root
+  at `pos-1`; a 0-based reading matches 19.
+- **Key on (position, alt), ignore the listed wild type.** ECDC annotates each lineage
+  relative to *its* parent, so `D339H` names a residue the root does not carry (G at
+  339). Ten of 372 parsable entries are of this kind.
+- **The eval range for sc2 is the RBD**, where the DMS baselines live. ECDC
+  contributes 74 of its 142 cells there, CoG-UK 247 of 323. ECDC collapses 386 rows
+  to 142 cells because it repeats mutations across lineages.
+- Deletions parse to a gap cell (`Δ69-70` -> two); insertions and `E484X` cannot be
+  expressed as (position, residue) and are dropped -- 11 ECDC rows, counted.
+- "Ignore it if the alt matches the query" needs no code: `compute_hit_rate`
+  NaN-masks each example's own residue and the emergence path masks the root's.
+
+**A restricted pool is not harmless here.** De novo restricts pool and targets
+together safely because the pool is huge and mostly negative. On sc2 cutoff 1 **all
+74 in-RBD ECDC cells and 235 of CoG-UK's 247 are observed at some point**, so a pool
+restricted to the list has almost no negatives and the metric quietly becomes "are
+the frequent list members ranked above the rare ones". Hence three recall variants
+per list: `list_<L>` (de novo convention), `_nogapstop`, and `_fullpool` (targets
+restricted, full candidate pool = Figure 2's question on a subset). `evaluate_full`
+now accepts a `(score_mask, target_mask)` pair for this; existing call sites unchanged.
+
+`--eval-range full` scores all 1273 positions. Nothing breaks: the Omicron DMS sets
+and EVEscape are a **constant -1 outside the RBD**, which `load_baselines` turns into
+NaN, so their pool stays the RBD while out-of-RBD targets still count against them.
+Coverage is printed at startup (Omicron 14.3-14.4%, EVEscape 13.6%, CoVFit 80.3%,
+MSA_Transformer 95.5%, pssm_root/pyr0 100%). **Their full-Spike numbers are not
+like-for-like with the full-coverage rungs.**
+
+Jobs **3353354** (RBD) and **3353452** (full), `gpu_batch`, queued. Both recompute
+`all`/`unseen` alongside, so they re-derive the published Figure 2 numbers as a check.
+
+### Single-query list recall (`antiGen/list_recall.py`)
+
+The more direct question: train on the first year, put **one** query to each model,
+rank every mutation it could make, read off what fraction of a list lands in the top
+q. Mutations seen in the training window are masked from the pool **and** the list --
+`pssm_root > 0`, the same seen mask Figure 2's de novo subset uses. Two queries (root,
+BA.2 root), two ranges, two universes.
+
+The masking bites unevenly: CoG-UK keeps 143 of 247 RBD cells (58%), ECDC keeps **21
+of 74** (28%). ECDC is largely a record of what already happened by the end of year
+one. **ECDC is too small to read** and is being dropped.
+
+Job 3353561: 28 predictors scored, then **OUT_OF_MEMORY at 43 min**. It kept its
+results only because the kill landed after the final write -- the script accumulated
+everything in memory and wrote once at the end. Fixed: it now writes after every
+predictor via an atomic `os.replace`, and resumes by skipping predictors already in
+the CSV. `eval.py` has flushed per model all along; this should have copied it.
+Memory raised 64G -> 192G, resumed as **3353946** for the five missing
+(`evcouplings`, `vespag`, three `esmc_300m` which fail on
+`'esmc_fitness_predictor' is not a valid ModelType` -- a pre-existing package gap).
+
+**Precision, and why it changes no ranking.** The natural reading is "what fraction of
+my top 10% is on the list" -- precision, not recall. At fixed q they are related
+exactly by `precision = recall * n_targets / (q * n_candidates)`, and both factors are
+model-independent, so **precision is recall times a constant and the ranking is
+identical**. What it buys is interpretability. CoG-UK RBD, root query, de novo pool of
+3,605 cells holding 143 list cells (base rate 3.97%):
+
+| model | prec@1% | prec@10% | enrichment |
+|---|---|---|---|
+| EVEscape | 17.6% | 15.3% | 3.84x |
+| antiGen ESM2-35M | 8.3% | 11.4% | 2.87x |
+| EVE finetuned | 14.7% | 10.6% | 2.66x |
+| antiGen ESM2-650M | 11.1% | 9.7% | 2.45x |
+| blosum62 | 3.3% | 6.9% | 1.75x |
+| antiGen transformer | 2.8% | 4.2% | 1.05x |
+| pssm_root | 4.0% | 4.0% | 1.00x |
+
+`pssm_root` at exactly the base rate is the correct degenerate result: it is zero on
+every unseen cell by construction, so it is entirely tied and the fractional tie rule
+pays out exactly q. Useful confirmation the masking does what it claims.
+
+Two things recall hid: **Omicron_BA2_bind is best-in-class at 1%** (17.7%) and
+mid-table at 10% (6.5%) -- sharp at the head, then spent. And full-Spike enrichments
+are much larger (EVEscape 21x) only because the base rate there is 0.72%, so
+**enrichment is not comparable across ranges** even though precision is.
+
+35M beats 650M in every cell of this eval.
+
+### The cross-tree factored baselines in Figures 2 and 4
+
+codon, substitution and `where_times_which` added to the sc2 and endemic ladders via
+`--multitree-baselines` (`eval_multitree_baselines.sh`, jobs **3353663** sc2,
+**3353664** flu, **3353665** rsv_a, **3353666** denv2, all `gpu_batch`).
+
+**These are not like the CSV baselines and must not be added as such.** Everything in
+`data/baselines/` is a fixed (L, E) map broadcast to every example; these three read
+the residue at each position of the query. They are appended to `candidates` and
+scored through the model path -- one forward pass per example -- which also means they
+inherit the gap/stop masking automatically (codon has
+`OUTPUTS_LEGITIMATE_GAP=False`). Fitted on training examples only, one seed (s14:
+saturates by K=2).
+
+Output goes to `evals_<dataset>_mtb/`, not the published directories.
+
+**The R scripts are NOT updated.** The new rungs will appear as model rows but
+`fig2_sc2_benchmarks.R` groups models into `subsets` for colour and legend, and fig4
+has its own inventory; they need a group assignment before they render.
+
+### Housekeeping: /home was at 99%
+
+917G of 932G used, 15G free -- tight enough to fail a job mid-write. `old/` (299G,
+nothing modified since April, bulk untouched since 2026-01-28, zero references in the
+repo) archived to `/large_storage/hielab/ispecht/home-archive/old/` with
+`rsync -a --remove-source-files`, which deletes each file only after it transfers.
+**99% -> 77%, 220G free** and still running at the time of writing.
+
+Deliberately untouched, because queued jobs read them: `antiGen-data` (244G,
+FITNESS_DATA_ROOT, 48 references), `sc2-open-data` (29G, the EVcouplings MSA),
+`h3n2`/`denv2`/`rsv-a` (62G), `miniconda`, and `.cache/huggingface` (15G) which holds
+the ESM-2 35M and 650M weights every running job loads. `juniper-out` (133G, modified
+2026-10-10) left alone on instruction -- it would take home to ~53% if ever archived.
+
+---
+
+## 26. The eval window: all post-D examples, not boundary-crossing ones (2026-10-18)
+
+**This supersedes the test-set definition behind every forecast number in s11-s25.**
+No model changes; the models never saw this data. What changes is which post-D
+substitutions are scored.
+
+### The old definition, and where it came from
+
+`FORECAST_DESIGN.md` line 47 defined the test set as *"branches with parent date <= D <
+child date"* -- only the single step across the cutoff -- and `make_forecast_testset.py`
+implemented exactly that. So this was never a coding slip: the restriction was written
+into the design doc at the start and silently inherited by every arm since. The doc has
+now been corrected at the source, with a SUPERSEDED note pointing here.
+
+**The intended definition, and the one in force from now on: every branch whose CHILD
+postdates D** -- all substitutions that happened in the testing window. This is also
+what the sc2 benchmark has always meant by a test set, where testing examples are
+post-cutoff nodes.
+
+`make_forecast_testset.py --window {all,crossing}` now selects, defaulting to `all`.
+`crossing` is kept to reproduce the old numbers rather than deleted.
+
+### Why it matters, and why it is not just "more data"
+
+The shortfall is the post-D *internal* structure the crossing rule discards, so it
+grows with the gap between D and today:
+
+| D | gap | crossing | all post-D | |
+|---|---|---|---|---|
+| 2025-01-01 | 1.8 y | 844 | 1,545 | 1.8x |
+| 2021-01-01 | 5.8 y | 280 | 2,215 | 8x |
+
+On the fifteen-tree panel the regenerated test sets go **1,942 -> 2,697 targets** and
+**426 -> 632 novel**. Per tree the correction is **uneven**, which is the part that
+matters: it REWEIGHTS the panel rather than scaling it.
+
+| tree | old | new | |
+|---|---|---|---|
+| h1n1pdm_ha | 65 | 224 | 3.4x |
+| h3n2_ha | 95 | 264 | 2.8x |
+| ncov | 101 | 213 | 2.1x |
+| measles | 64 | 107 | 1.7x |
+| h5nx | 229 | 354 | 1.5x |
+| h9n2_ha | 354 | 419 | 1.2x |
+| hmpv_a_g / hmpv_b_g / vic_ha / rsv_a / rsv_b | | | 1.0-1.7x |
+| denv1-4 | 51 | 51 | 1.0x |
+
+Dengue and RSV barely move -- their post-D structure is shallow, so nearly every post-D
+branch already *was* a crossing branch. The flu trees and ncov gain most. **Any movement
+in the pooled contrasts is therefore partly a change in panel composition, not only
+added power, and must not be read as "more data, tighter intervals".**
+
+### Two bugs found while regenerating, both mine
+
+- **The flag set is not uniform across the panel.** Regenerating with
+  `--strip-trailing-stop` for every tree aborts on h5nx: its *snapshot* HA reference
+  ends in an ambiguous `X` (mapped to gap) while *today's* ends in a stop, so stripping
+  shortens one side only (569 vs 568) and `make_forecast_testset` correctly refuses on
+  the reference-frame check. h5nx is `strip=False`; the other 14 are `strip=True`.
+  The s3 gotcha about `X` residues in the H5 polybasic cleavage site, resurfacing.
+- **ncov needs explicit `--current-ref` / `--snapshot-ref`** -- its builds do not embed
+  a root sequence -- and a diagnostic loop that tried both flag settings left the
+  *wrong* one (seq_len 1274) on disk.
+
+Both are now prevented by an invariant rather than by memory: **the test file's
+`seq_len` must equal the train file's**, since the model was trained on that frame. The
+regeneration script determines the flag set per tree by trying both and keeping
+whichever reproduces the train `seq_len`, and reports FAILED otherwise. All 15 pass.
+
+**Process note.** Two regeneration attempts silently did nothing and still exited 0:
+a `grep` in the pipeline swallowed the output and `set -e` killed the loop after h5nx
+failed first. It was caught only by comparing the regenerated counts against the 1.8x
+derived independently from the trees -- the logs and exit status were both useless.
+Third time in one session that a `set -e` / `grep` pipeline hid a failure.
+
+### The set-difference alternative was considered and does not work
+
+Proposal: generate all examples from the snapshot and all from today's tree, and let
+the test set be the **difference** -- no dates needed, assuming trees grow additively.
+Elegant, and it fails empirically: Nextstrain builds are **re-subsampled, not
+additive**. Tip survival from the 2025-01-01 snapshot into today's build:
+
+| tree | snapshot tips | still present | dropped |
+|---|---|---|---|
+| h3n2_ha | 1,576 | 962 (61%) | 39% |
+| ncov | 2,896 | 845 (29%) | 71% |
+| h5nx | 2,508 | 718 (29%) | 71% |
+| rsv_a | 2,774 | **0** | **100%** |
+| measles | 579 | **0** | **100%** |
+
+Two causes, both already recorded in s11 when snapshot-anchored matching was tried and
+abandoned: all-time builds re-subsample to a target size every run, and Nextstrain
+renamed tips between builds (measles to Pathoplexus `PP_*`, RSV to full strain names),
+which is why rsv_a and measles are at zero.
+
+Measured on h3n2_ha, the *best* case: the set difference yields **1,077 (query,
+mutation) pairs against the 264 that actually happened after D -- 4x too many**, the
+excess being pre-D evolution that reappears as "new" because re-subsampling changed the
+ancestral reconstruction. On rsv_a and measles it would be far worse: with zero tip
+overlap essentially the whole current tree reads as new, putting pre-D branches the
+model trained on into the test set. **Exact matching on reconstructed ancestral
+sequences cannot establish that something did not exist before D.**
+
+### Train/test overlap under the date window, measured
+
+A related guard -- dropping test `(query, mutation)` pairs that also occur in training
+-- was measured and **not adopted**, because it catches almost nothing:
+
+| tree | test examples | queries also in train | shared (query, mutation) pairs |
+|---|---|---|---|
+| rsv_a | 41 | **32 (78%)** | 5 of 56 targets |
+| h3n2_ha | 139 | 19 (14%) | 5 of 264 |
+| ncov | 79 | 10 (13%) | 1 of 213 |
+| measles | 88 | 8 (9%) | 0 of 107 |
+| h5nx | 152 | **0** | 0 of 354 |
+
+~11 pairs of ~994 targets, about 1%. The dominant overlap is shared *query genotypes*
+(rsv_a 78%), which is not duplication: the model is asked what happens NEXT from a
+genotype it trained on, and the de novo subset already quarantines the case where the
+answer itself was seen. **The shared-query rate tracks how much post-D structure a tree
+has** -- h5nx 0% because `window=all` gives it post-D parents, rsv_a 78% because its
+post-D structure is shallow -- and is worth reporting per tree, since rsv_a's 56 targets
+are a much softer test than h5nx's 354.
+
+### State
+
+Test sets regenerated for all 15 trees, invariant checked. Rescoring resubmitted:
+**3354481** panel 9 (COMPLETED, 4m46s), **3354482** panel 11, **3354483** panel 15,
+all into their existing data directories -- the crossing-window CSVs and figures they
+replace are recoverable from git, and `--window crossing` regenerates the old test
+files exactly. Panel 13 (3353910) is still training and will be scored on the corrected
+sets. Nothing in s11-s25 has been re-reported yet.
+
+---
+
+## 27. Rescored on the corrected window, and a 2021 sc2 arm (2026-10-18)
+
+### The corrected numbers: the claims hold, and tighten
+
+Panels 9 and 11 rescored with `--window all` (s26). Recall@10%, temporal/pooled/
+standard, K = 8. Old = crossing window, new = full testing window:
+
+**Panel 9** (818 targets / 197 de novo, was 562 / 134):
+
+| contrast | subset | old | new |
+|---|---|---|---|
+| vs single-tree | all | +0.053 [+0.031,+0.075]* | +0.055 [+0.038,+0.073]* |
+| vs single-tree | de novo | +0.164 [+0.087,+0.248]* | +0.162 [+0.104,+0.228]* |
+| vs `where x which` | all | +0.128 [+0.096,+0.158]* | +0.131 [+0.102,+0.159]* |
+| vs `where x which` | de novo | +0.104 [+0.018,+0.195]* | **+0.071 [+0.000,+0.149]** |
+
+**Panel 11** (1,306 / 331):
+
+| contrast | subset | old | new |
+|---|---|---|---|
+| vs single-tree | all | +0.045 [+0.025,+0.065]* | +0.047 [+0.032,+0.063]* |
+| vs single-tree | de novo | +0.172 [+0.097,+0.244]* | +0.166 [+0.116,+0.217]* |
+| vs `where x which` | all | +0.129 [+0.098,+0.158]* | +0.137 [+0.114,+0.160]* |
+| vs `where x which` | de novo | +0.112 [+0.031,+0.191]* | **+0.085 [+0.030,+0.138]*** |
+
+Point estimates barely move (<=0.008) except the de novo contrast against
+`where x which`, which **falls** in both panels: 0.104 -> 0.071 at nine trees and
+0.112 -> 0.085 at eleven. Intervals tighten everywhere, as expected from 1.5x the
+targets. At nine trees that contrast now has a lower bound of **exactly +0.000** --
+it no longer clears zero; at eleven it still does, narrowly.
+
+So the correction does not overturn joint-vs-single, which is unmoved and better
+determined. What it erodes is the same narrow claim panel 15 already put back across
+zero. Three independent perturbations -- more trees (s22), the window fix (here), and
+the K sweep (s15/s16) -- all push that one contrast toward zero. **It should be treated
+as unresolved, not as established.**
+
+Panel 15 rescore (3354483) still running; panel 13 (3353910) 9 of 11 trained.
+
+### A SARS-CoV-2 arm at D = 2021-01-01 (array 3354617, 16 tasks)
+
+Narrow question: does training on *other viruses* improve the sc2 forecast? Only ncov
+is a training **and** evaluation tree; everything else is training-only context, so
+frozen or unforecastable trees are perfectly good here.
+
+`joint_2021` (6 trees) vs `single_ncov`, 8 seeds each, matched K.
+
+| tree | examples | muts | gene | |
+|---|---|---|---|---|
+| ncov | 347 | 1,194 | S | the eval tree |
+| h3n2_ha | 1,079 | 2,188 | HA | |
+| h1n1pdm_ha | 980 | 2,037 | HA | |
+| yam_ha | 320 | 1,050 | HA | B/Yamagata, extinct since 2020 |
+| evd68_vp1 | 239 | 481 | VP1 | |
+| ebola_gp | 49 | 189 | GP | |
+
+**Eval: 986 examples, 2,210 targets, 1,537 novel (70%)** -- stronger than anything in
+the 2025 panel, and only because of the s26 window fix: under the crossing rule the
+same tree gave 275/123.
+
+### Where the 2021 data comes from
+
+**Charon cannot serve it.** The ncov archive floor is **2022-05-01** (404 at
+2022-04-29, bisected). Nothing earlier exists.
+
+**The Wayback Machine can.** A CDX sweep of
+`nextstrain.org/charon/getDataset*` before 2021-01-01 returns **43 distinct datasets**
+with a 200 capture over 100 KB. The training tree is `/ncov/global` captured
+**2020-12-29**: `meta.updated` 2020-12-28, 3,848 tips, **zero at or after 2021.0** --
+it clears the route A and route B guards independently, which no tree in the 2025 panel
+does. Its root-sequence sidecar is the 2020-11-21 capture (Wuhan-Hu-1, S = 1273+stop).
+Generation is clean: 1 from-base mismatch on the train side, 0 on the test side, frame
+identical to today's build.
+
+**A REQUESTED CAPTURE DATE IS NOT A GUARANTEE.** Wayback falls back to the nearest
+capture. Asking for `/ncov/north-america` and `/ncov/africa` at 2020-12-20 returned
+builds **updated 2021-04-29 carrying ~2,200 post-cutoff tips each**, and
+`/ncov/south-america` returned 2021-01-15. Caught only by checking `meta.updated` and
+tip dates on the payload. Had they gone in, ~4,500 post-cutoff sequences would have
+trained a model that forecasts post-2021 evolution. **Apply both guards to archive
+fetches exactly as to Charon ones.**
+
+### Sidecars: relaxed, deliberately
+
+Only 4 datasets have a usable archived root-sequence capture, all ncov-family -- every
+other sidecar capture is a server-side **500** recorded faithfully by the archive, and
+none of the non-ncov builds embed one. Standing decision: **use today's reference**,
+since for these builds it is a fixed reference genome rather than a re-inferred
+ancestral state, and record the from-base mismatch count as a check rather than a gate.
+Measured: ebola/yam/evd68 0-3, h3n2 56 and h1n1pdm 48 of ~2,100 (~2.5%), **WNV 78 of
+382 (20%)**.
+
+### Exclusions, each on a rule rather than an outcome
+
+| excluded | why |
+|---|---|
+| all ncov cuts (`/ncov/{europe,asia,oceania}`, `20A.EU1`, `S.N501`) | same species as the eval tree -- re-subsamples of one sequence pool, not independent trees |
+| flu NA builds | HA only, by instruction |
+| zika | 28 examples, below the floor of 40 |
+| WNV | 20% from-base mismatch; the 2018 reference and today's genuinely disagree |
+| `sars-like-cov` | 49 tips, no tip dates, and **no S annotation** -- the one true relative is unusable |
+| h5n1 HA, denv1 | modern sidecar not cached; recoverable, not fetched |
+
+Two notes on the ncov cuts, kept because they will come up again. `20A.EU1` (8,653
+tips) and `S.N501` (6,891) are Neher-lab cluster builds -- far denser than the 3,848-tip
+global build, since they focus one lineage rather than subsampling the pandemic. And
+**`S.N501`'s inclusion criterion points at the answer**: its tips were selected for
+carrying a change at spike 501, the site that became N501Y in Alpha/Beta/Gamma and a
+large part of what the eval asks about. Not a leak (all tips pre-D), but not a neutral
+training set either.
+
+### State at the end of this session
+
+| job | arm | state |
+|---|---|---|
+| 3354481 / 3354482 | panel 9 / 11 rescore, `--window all` | COMPLETED (numbers above) |
+| 3354483 | panel 15 rescore | RUNNING |
+| 3353910 | panel 13 training | 9 of 11 complete |
+| 3354617 | sc2 2021, joint vs single, 16 tasks | queued |
+| 3353096 | capacity sweep 35M, 15 tasks | COMPLETE |
+| 3353097 | capacity sweep 650M | 18 running, 1 pending |
+| 3353664 / 3353665 / 3353666 | factored baselines: flu, rsv_a, denv2 | COMPLETED |
+| 3353663 | factored baselines: sc2 | RUNNING |
+| 3353354 / 3353452 | sc2 mutation-list eval, RBD / full Spike | RUNNING |
+| 3353946 | list_recall resume for the 5 missing predictors | RUNNING |
+
+Nothing from s11-s25 has been re-reported against the corrected window beyond panels
+9 and 11 above. Panels 13 and 15, every figure, and the capacity sweep all still need
+rescoring or rebuilding on `--window all` before any of their numbers are quoted.
+
+`Nice` values were set to prioritise the rescores among my own queued work:
+panel13 5000, the 650M sweep 10000, rescores left at 0. Those should be reset once
+the rescores land, or panel13 and the sweep will keep losing the queue.

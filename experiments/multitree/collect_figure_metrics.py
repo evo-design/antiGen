@@ -117,6 +117,8 @@ FORECAST_PT = '/large_storage/hielab/ispecht/multitree/forecast_pertree'
 # The eleven-tree panel's joint arm: a separate root so the nine-tree runs
 # behind the published figure are never overwritten or mixed in.
 FORECAST11 = '/large_storage/hielab/ispecht/multitree/forecast11'
+FORECAST13 = '/large_storage/hielab/ispecht/multitree/forecast13'
+FORECAST15 = '/large_storage/hielab/ispecht/multitree/forecast15'
 
 ## Two panels, selected with --panel. `9` is the published Figure 5. `11` adds
 ## seasonal flu H3N2 HA and H1N1pdm HA, whose @2025-01-01 archives NOTES s8 wrongly
@@ -138,6 +140,31 @@ PANELS = {
                     'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha'],
              temporal_joint=FORECAST11 + '/joint_panel11',
              random_joint=MATCHED + '/joint11'),
+    ## 13 is the eleven plus ONLY the two clean additions, vic_ha and hmpv_b_g. It
+    ## exists because panel 15's de novo contrast against `where x which` fell back
+    ## across zero (+0.112 -> +0.022) while two of its four new trees carry known
+    ## defects -- h9n2_ha drops 46.5% of its mutations as ambiguous `X` and
+    ## hmpv_a_g is 12.4% gap targets -- and those two are 42% of that panel's
+    ## targets. 13 separates "sensitive to harder trees" from "sensitive to dirtier
+    ## ones". hmpv_b_g is kept despite being slightly negative on its own per-tree
+    ## contrast at 15 trees: selecting it out on that would be choosing the panel
+    ## from the outcome.
+    13: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
+                    'hmpv_b_g', 'vic_ha'],
+             temporal_joint=FORECAST13 + '/joint_panel13',
+             random_joint=MATCHED + '/joint13'),
+    ## 15 adds the HA/G members of the four qualifying pairs found by
+    ## probe_forecast_panel.py: hMPV A/G, hMPV B/G, avian H9N2 HA, B/Victoria HA.
+    ## Two caveats live with these and belong in any per-tree reading: h9n2_ha drops
+    ## 46.5% of its branch mutations to ambiguous `X`, so its targets are a biased
+    ## subsample; hmpv_a_g is 12.4% gap targets against the panel's ~2%, a column the
+    ## ESM-2 arms put no mass on (s16).
+    15: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
+                    'hmpv_a_g', 'hmpv_b_g', 'h9n2_ha', 'vic_ha'],
+             temporal_joint=FORECAST15 + '/joint_panel15',
+             random_joint=MATCHED + '/joint15'),
 }
 PANEL = PANELS[9]['trees']      # rebound from --panel in main()
 RUNGS = ['uniform', 'codon', 'where_only', 'pssm', 'substitution', 'frequency',
