@@ -24,6 +24,17 @@
 #   list_<L>_nogapstop the same, minus the gap and stop columns
 #   list_<L>_fullpool  listed cells are the targets, every eval-range cell is still a
 #                      candidate -- Figure 2's question asked of a subset
+#   list_<L>_unseen           as list_<L>, minus every cell seen in the training window
+#   list_<L>_unseen_fullpool  as _fullpool, with the seen mask on targets AND pool
+#
+# The de novo pair is the cut the plain list variants cannot make, and it is not a
+# minor refinement. 104 of CoG-UK's 247 in-RBD cells occur in the training window, but
+# because those cells recur across the test set they carry 81% of the list's target
+# EVENTS -- so the unfiltered list numbers are four fifths a memorization test. That is
+# why a plain composition baseline (pssm_root) places near the top of them and at
+# chance on `unseen`. The de novo variants ask the list question of the 143 cells the
+# model could not have memorized; _unseen_fullpool is the many-query analogue of what
+# antiGen/list_recall.py does with a single query.
 #
 # The distinction matters here in a way it does not for de novo: on sc2 cutoff 1 all
 # 74 of ECDC's in-RBD cells and 235 of CoG-UK's 247 are observed at some point, so a
@@ -33,6 +44,13 @@
 #
 #   sbatch eval_sc2_mutation_lists.sh                            # RBD (331-531)
 #   sbatch --time=7-00:00:00 eval_sc2_mutation_lists.sh full     # every position
+#   sbatch eval_sc2_mutation_lists.sh default mtb                # RBD + factored baselines
+#
+# A NEW OUTPUT DIRECTORY IS REQUIRED WHENEVER A VARIANT IS ADDED. Resume decides a
+# model is done from its row in the hit-rate `all` CSV, so pointing a run with new
+# variants at an existing directory skips every model already there and those models
+# never acquire the new columns. The `mtb` suffix gives the de novo list variants and
+# the factored baselines a directory of their own for exactly this reason.
 #
 # The full range is ~6x the positions and needs a longer wall clock than the 2-day
 # default: the first attempt (3353452) spent 10h on setup and the CSV baselines alone
@@ -59,8 +77,22 @@ echo "Job ID: $SLURM_JOB_ID"
 
 REPO=/home/ivan.specht/antiGen
 RANGE=${1:-default}
+MODE=${2:-plain}
 if [ "$RANGE" = "full" ]; then SUFFIX=_fullseq; else SUFFIX=; fi
-echo "Eval range: $RANGE"
+
+# Second argument `mtb` adds the cross-tree factored baselines (codon, substitution,
+# where x which) and writes to its own directory. They are NOT like the CSV baselines
+# in data/baselines/: those are a fixed (L, E) map broadcast to every example, while
+# these read the residue at each position of the query, so they are appended to
+# `candidates` and scored through the model path -- one forward pass per example. That
+# also means they appear as model rows in every eval variant, the curated-list ones
+# included, which is the point of running them here.
+MTB_ARGS=()
+if [ "$MODE" = "mtb" ]; then
+    MTB_ARGS=(--multitree-baselines)
+    SUFFIX="${SUFFIX}_mtb"
+fi
+echo "Eval range: $RANGE | mode: $MODE | output suffix: '${SUFFIX}'"
 
 # --- Preflight: the ESM-2 backbone must be importable ------------------------
 #
@@ -102,6 +134,7 @@ python "$REPO/antiGen/eval.py" \
     --output-dir "/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists${SUFFIX}" \
     --mutation-list ecdc="$REPO/ecdc.csv" \
     --mutation-list coguk="$REPO/coguk.csv" \
+    "${MTB_ARGS[@]}" \
     --priority-models blosum62,esm2
 
 echo "Job finished at: $(date)"

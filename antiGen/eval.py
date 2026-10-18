@@ -584,6 +584,24 @@ def main():
         # ranked above the rare ones" rather than "can the list be found".
         test_variants.append((f"List: {label} (full pool)",
                               f"list_{label}_fullpool", (None, ~in_full)))
+        # De novo x list: the two pool definitions above, with the training-window
+        # cells struck from the targets AND the pool. This is the cut the plain list
+        # variants cannot make, and the difference is large: on sc2 cutoff 1, 104 of
+        # CoG-UK's 247 in-RBD cells occur in the training window, but because those
+        # cells recur across the test set they carry 81% of the list's target EVENTS.
+        # So the unfiltered list numbers are four-fifths a memorization test, which is
+        # why a plain composition baseline places near the top of them and at chance
+        # on `unseen`. These two variants ask the list question of the 143 cells the
+        # model could not have memorized.
+        test_variants.append((f"List: {label} (de novo)", f"list_{label}_unseen",
+                              (~in_full) | hit_rate_seen_mask))
+        # Full pool here means every UNSEEN eval-range cell is a candidate, not every
+        # cell -- the pool and the targets must agree on the seen mask or the metric
+        # would spend its budget on cells it has already excluded from scoring. This
+        # is the many-query analogue of what list_recall.py does with one query.
+        test_variants.append((f"List: {label} (de novo, full pool)",
+                              f"list_{label}_unseen_fullpool",
+                              (hit_rate_seen_mask, (~in_full) | hit_rate_seen_mask)))
     variant_variants = [
         ("Variant-descended", "variant", None),
         ("Variant-descended (no gap/stop)", "variant_nogapstop", special_mask),
@@ -647,20 +665,27 @@ def main():
         # Curated lists: the same construction as `unseen`, with the mask inverted --
         # everything NOT in the list is NaN, so the list's cells are the whole universe
         # for the PSSM-precision curve as well as for recall.
-        list_emergence = {}      # label -> (pssm_list, baseline_set)
+        # Keyed by the suffix stem, so `coguk` and `coguk_unseen` sit side by side and
+        # the spec loop below does not need to know which is which.
+        list_emergence = {}      # stem -> (pssm_list, baseline_set)
         for label, _in_full, in_sub in mutation_lists:
             out_of_list = ~in_sub
-            pv_list = []
-            for pv in pssm_variant_sub:
-                pvm = pv.clone()
-                pvm[out_of_list] = float('nan')
-                pv_list.append(pvm)
-            bl_list = []
-            for n, bp in baselines:
-                sc = _sub(bp)
-                sc[out_of_list] = float('nan')
-                bl_list.append((n, sc))
-            list_emergence[label] = (pv_list, bl_list)
+            # The de novo cut, as for recall: strike the training-window cells from
+            # the list's universe so the precision curve is read off the cells the
+            # model could not have memorized.
+            for stem, drop in ((label, out_of_list),
+                               (f"{label}_unseen", out_of_list | emergence_seen_mask)):
+                pv_list = []
+                for pv in pssm_variant_sub:
+                    pvm = pv.clone()
+                    pvm[drop] = float('nan')
+                    pv_list.append(pvm)
+                bl_list = []
+                for n, bp in baselines:
+                    sc = _sub(bp)
+                    sc[drop] = float('nan')
+                    bl_list.append((n, sc))
+                list_emergence[stem] = (pv_list, bl_list)
 
         # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set, threshold)
         emergence_specs = [
@@ -673,11 +698,11 @@ def main():
             ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0),
             ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1),
         ]
-        for label, (pv_list, bl_list) in list_emergence.items():
+        for stem, (pv_list, bl_list) in list_emergence.items():
             emergence_specs.append(
-                (f"list_{label}", pv_list, f"list_{label}", wt_mask_2d, bl_list, T0))
+                (f"list_{stem}", pv_list, f"list_{stem}", wt_mask_2d, bl_list, T0))
             emergence_specs.append(
-                (f"list_{label}_thresh1", pv_list, f"list_{label}", wt_mask_2d,
+                (f"list_{stem}_thresh1", pv_list, f"list_{stem}", wt_mask_2d,
                  bl_list, 1))
 
         n_steps = len(pssm_variant_sub)
@@ -924,6 +949,9 @@ def main():
                 mp_list = tr_scores.clone()
                 mp_list[~in_sub] = float('nan')
                 mp_by_key[f"list_{label}"] = mp_list
+                mp_list_unseen = tr_scores.clone()
+                mp_list_unseen[~in_sub | emergence_seen_mask] = float('nan')
+                mp_by_key[f"list_{label}_unseen"] = mp_list_unseen
             for suffix, pssm_list, mp_key, wt_m, _bl, thr in emergence_specs:
                 emergence_model_rows[suffix][prefix] = variant_hit_rates(
                     mp_by_key[mp_key], wt_m, pssm_list, threshold_count=thr,
