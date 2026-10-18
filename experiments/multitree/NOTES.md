@@ -3391,3 +3391,146 @@ Both rung labels are renamed for this arm alone: **antiGen (six trees)** and
 **antiGen (ncov alone)**, rather than multi-tree/single-tree. The joint arm trains
 on six trees and scores one, so "multi-tree" would invite the reader to think the
 pooled row spans them.
+
+---
+
+## 30. The CoG-UK list eval, RBD as the headline (2026-10-18)
+
+Array **3353354** (RBD) COMPLETED, 9h06m, `evals_sc2_lists/`. The full-Spike twin
+**3353452** is still RUNNING at 13h54m. **RBD is the headline** and full Spike the
+supplement, for the reason s25 gave when the pair was built: the RBD is where the DMS
+baselines are defined, and over the full range Omicron DMS covers 14.3-14.4% of cells,
+EVEscape 13.6%. Those rungs degrade honestly rather than vanish, but their full-Spike
+numbers are not like-for-like and the RBD run needs no such caveat.
+
+Within the RBD, **`_fullpool` is the headline variant**: listed cells are the targets,
+every eval-range cell is still a candidate, which is Figure 2's question asked of a
+subset. The restricted-pool variant is reported beside it but is the weaker object --
+s25 measured 235 of CoG-UK's 247 in-RBD cells as observed at some point in `output1`,
+so a pool restricted to the list has almost no negatives left and the metric slides
+toward "are the frequent list members ranked above the rare ones".
+
+`list_coguk_nogapstop` is **byte-identical** to `list_coguk` and can be dropped for
+this list: CoG-UK parses 323 rows to 323 cells with no indel rows (the 9 indel rows in
+s25's note are ECDC's), so there is no gap or stop cell in the RBD slice to mask.
+
+### The table
+
+CoG-UK, RBD, recall at top 10%. `fullpool` and `restricted` as above; the right-hand
+columns are this directory's recomputed Figure 2 numbers, carried so each row can be
+read against the model's unrestricted behaviour.
+
+| # | model | fullpool@10% | fullpool@20% | restricted@10% | fig2 all | fig2 de novo |
+|---:|---|---|---|---|---|---|
+| 1 | **antiGen as EVE full FT** | **0.837** | 0.917 | **0.499** | 0.684 | 0.509 |
+| 2 | EVE | 0.780 | 0.863 | 0.481 | 0.636 | 0.455 |
+| 3 | PSSM | 0.735 | 0.821 | 0.361 | 0.731 | 0.100 |
+| 4 | antiGen | 0.722 | 0.868 | 0.354 | 0.636 | 0.526 |
+| 5 | antiGen as Tranception full FT | 0.688 | 0.806 | 0.383 | 0.530 | 0.282 |
+| 6 | Tranception | 0.600 | 0.713 | 0.402 | 0.478 | 0.313 |
+| 7 | EVEscape | 0.504 | 0.780 | 0.181 | 0.218 | 0.284 |
+| 8 | PSSM Conservation | 0.406 | 0.654 | 0.167 | 0.296 | 0.180 |
+| 9 | PyR0 | 0.405 | 0.471 | 0.355 | 0.228 | 0.100 |
+| 10 | BA.1 DMS (bind) | 0.385 | 0.614 | 0.168 | 0.311 | 0.167 |
+| 11 | BA.2 DMS (bind) | 0.334 | 0.551 | 0.147 | 0.279 | 0.179 |
+| 12 | BA.2 DMS (expression) | 0.311 | 0.642 | 0.168 | 0.197 | 0.246 |
+| 13 | EVmutation | 0.300 | 0.403 | 0.165 | 0.361 | 0.255 |
+| 14 | BA.1 DMS (expression) | 0.294 | 0.674 | 0.118 | 0.186 | 0.253 |
+| 15 | BLOSUM62 | 0.256 | 0.431 | 0.168 | 0.247 | 0.345 |
+| 16 | MSA Trans. (XFG eval) | 0.204 | 0.334 | 0.109 | 0.193 | 0.145 |
+| 17 | MSA Trans. (BA.2 eval) | 0.182 | 0.319 | 0.126 | 0.180 | 0.168 |
+| 18 | MSA Transformer | 0.180 | 0.327 | 0.127 | 0.178 | 0.175 |
+| 19 | CoVFit | 0.050 | 0.105 | 0.068 | 0.049 | 0.073 |
+
+**`antiGen as EVE full FT` tops both variants**, and by a clear margin on the
+fullpool: +0.057 over frozen EVE and +0.115 over antiGen itself. It is the same model
+Figure 2 already bolds, so the curated list agrees with the headline rather than
+reopening it.
+
+**The ladder reorders between the two pool definitions and the reorder is not
+cosmetic.** antiGen is 4th on the fullpool (0.722) and 7th on the restricted pool
+(0.354), while Tranception climbs 6th -> 3rd and PyR0 9th -> 6th. Nothing should be
+quoted from one variant as though it held in the other.
+
+### The check the directory exists to provide, and it passes
+
+`eval_sc2_mutation_lists.sh` recomputes `all` and `unseen` alongside the list subsets
+precisely so this directory re-derives the published Figure 2 numbers. Over the 19
+models it shares with `evals_sc2/`, every cell of both files agrees to within
+**2.2e-4** (worst: evcouplings, `top_40.0%`), which is sampler noise. The scoring path
+is sound.
+
+### But eight model groups are missing, and they are the ESM-2 arms
+
+The 19 rows above are not the roster. `evals_sc2/` carries **27** models; this
+directory has 19. Every one of the eight absentees is an ESM-2 group:
+
+| absent | |
+|---|---|
+| antiGen as ESM 2 (35M) partial / full / LM head FT | three antiGen arms |
+| antiGen as ESM 2 (650M) partial / full / LM head FT | three antiGen arms |
+| ESM 2 (35M), ESM 2 (650M) | the two untrained backbones |
+
+All eight were found, kept at checkpoint selection, and then skipped at build time:
+
+```
+[skip] esm2_...: model build/load failed
+       (Could not import module 'EsmForMaskedLM'. ...)
+```
+
+`eval.py` catches a build/load failure and moves on, so the array **exited 0** and
+wrote a complete-looking set of CSVs. Nothing in the output says the roster is short.
+
+**The cause is not ESM-2 and not `eval.py`.** It is an ABI break in the base conda
+environment: `torchvision 0.21.0+cu124` is built against torch 2.6 while
+`torch 2.7.1+cu126` is installed, so `torchvision::nms` never registers and importing
+torchvision raises `RuntimeError: operator torchvision::nms does not exist`.
+`transformers 4.57.6` imports torchvision from `image_utils` behind an
+`is_torchvision_available()` guard that checks metadata rather than importability, and
+that exception propagates out of the lazy import of `EsmForMaskedLM`. Reproduced
+directly:
+
+```
+>>> from transformers import EsmForMaskedLM
+ModuleNotFoundError: Could not import module 'EsmForMaskedLM'. ...
+>>> import transformers.models.esm.modeling_esm
+RuntimeError: operator torchvision::nms does not exist
+```
+
+Anything in this environment that loads an ESM-2 backbone through `transformers` is
+affected, not just this eval. **3353452 has the identical eight skips in its log**, so
+the full-Spike run will land with the same hole.
+
+### Why the absentees are contenders rather than also-rans
+
+`list_recall` (s25) is a different question -- one query, de novo-masked pool -- but it
+is the only eval that has scored all of these predictors, and there **two ESM-2 arms
+outrank `antiGen as EVE full FT`**: on CoG-UK/RBD/root at q = 10%, the 35M partial-FT
+arm is 3rd (0.287) and the 35M full-FT arm 6th (0.266), against eve_ft 9th (0.252,
+tied with frozen EVE).
+
+That does not transfer. Spearman between the two evals over the 18 models they share
+is **0.34** on the fullpool and **0.18** on the restricted pool -- they disagree on
+rank order at a level that forbids reading one off the other. What it does establish is
+that the eight absentees are not predictors one can assume would have placed low.
+**"antiGen as EVE full FT is best on CoG-UK RBD" is therefore true of the table as it
+stands and NOT yet a result.** It needs the rerun before it is quoted.
+
+### What the rerun needs
+
+Not yet done, and deliberately not done from this session: the fix is to install the
+torchvision matching torch 2.7.1 (0.22.1), and **3353452 is still running inside that
+environment**. Resolve it after that job lands, then resubmit both ranges.
+
+### One thing this table does settle
+
+s29 left open why `pssm_root` (0.735) edges out the main model (0.722) on the CoG-UK
+fullpool eval, having withdrawn the "the lists are dominated by already-seen
+mutations" explanation. The full table narrows it: PSSM is **3rd, not 1st**. It is
+beaten by `antiGen as EVE full FT` (0.837) and frozen EVE (0.780), so the puzzle is
+not "a composition baseline beats the models" but specifically **"a composition
+baseline beats `simple_d128_n2`"** -- while the same baseline collapses to 0.100,
+exactly chance, on Figure 2's de novo subset where antiGen scores 0.526. A model that
+loses to PSSM on a curated list and beats it by 5x on de novo targets is the shape of
+a list that is mostly not de novo, which is the measurement s29 named as missing: the
+list's overlap with Figure 2's own training window. Still unmeasured.
