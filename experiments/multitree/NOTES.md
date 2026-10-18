@@ -3172,3 +3172,60 @@ rescoring or rebuilding on `--window all` before any of their numbers are quoted
 `Nice` values were set to prioritise the rescores among my own queued work:
 panel13 5000, the 650M sweep 10000, rescores left at 0. Those should be reset once
 the rescores land, or panel13 and the sweep will keep losing the queue.
+
+---
+
+## 28. Panel 13: the clean two are enough to reopen it (2026-10-18)
+
+Array **3353910** finished 11/11 COMPLETED (8 temporal -> `forecast13/`, 3 random ->
+`matched/joint13_s0-2`), one `_best.pt` per directory. Collection **3360341**, 6m58s,
+`--panel 13 --out antiGen-figures/data/multitree13`; figures
+`figs/multitree_results13.png` and `figs/supp_multitree_results13.png`.
+
+All four panels now rescored on `--window all`, recall@10%, temporal/pooled/standard,
+K = 8. Panel 13 is the eleven plus **vic_ha and hmpv_b_g** -- the two of s21's four
+with no known data-quality defect:
+
+| contrast | subset | 9 | 11 | **13** | 15 |
+|---|---|---|---|---|---|
+| vs single-tree | all | +0.055* | +0.047* | **+0.038*** | +0.024* |
+| vs single-tree | de novo | +0.162* | +0.166* | **+0.152*** | +0.116* |
+| vs `where x which` | all | +0.131* | +0.137* | **+0.118*** | +0.117* |
+| vs `where x which` | de novo | +0.071 | +0.085* | **+0.043 [-0.010,+0.096]** | +0.020 |
+
+Targets: 818/197, 1,306/331, **1,790/400**, 2,600/498.
+
+**This is the case s23 pre-registered as decisive, and it came out the way that
+settles the question.** Panel 13 lands between 11 and 15 on every contrast, and the
+de novo contrast against `where x which` falls back across zero **without any of the
+dirty trees**. h9n2_ha's 46.5% ambiguous `X` and hmpv_a_g's gap fraction are not the
+explanation. The honest conclusion stands as written: **the de novo claim is
+composition-sensitive and +0.112 was optimistic.** Joint-vs-single survives on all
+four panels and decays monotonically with panel size on all substitutions.
+
+### One tree carries it, and s23 said it would
+
+Per-tree, de novo vs `where x which` at 13 trees:
+
+| tree | est | interval |
+|---|---|---|
+| hmpv_b_g | **-0.167** | [-0.304,-0.043] -- clears zero, negative |
+| vic_ha | +0.000 | [-0.286,+0.312] |
+
+So the pooled drop from +0.085 to +0.043 is **hmpv_b_g actively pulling down**, not
+the two new trees diluting a real effect. s23 called this in advance: vic_ha brings 74
+targets against hmpv_b_g's 363, so the pooled de novo number would be driven by the
+tree with the negative contrast, and it is. hmpv_b_g was only -0.021 de novo at 15
+trees; at 13, where it is a larger share, it is -0.167 and significant.
+
+**That is a weaker refutation than the pooled row alone suggests, and must be reported
+as such.** What panel 13 establishes is that one clean tree is enough to reopen the
+contrast -- not that clean trees in general do. The remaining question is whether
+hmpv_b_g is genuinely a tree the joint model loses on, or carries a defect s21 did not
+look for. Nothing here distinguishes those.
+
+### State
+
+Still unscored on the corrected window: the capacity sweep. Still unscored at all: the
+sc2 2021 arm (16/16 trained, no scoring path exists -- `collect_figure_metrics.py`
+knows only panels 9/11/13/15, all keyed to the 2026-05-01 corpus).
