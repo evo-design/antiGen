@@ -1,0 +1,145 @@
+universe,eval,rule,subset,metric,contrast,tree,est,lo,hi,pooled
+standard,Temporal holdout,pooled,all,nll,vs single-tree model,ncov,-0.389426,-0.434569,-0.343638,0
+standard,Temporal holdout,pooled,all,nll,vs single-tree model,POOLED,-0.389426,-0.434569,-0.343638,1
+standard,Temporal holdout,pooled,all,nll,vs where x which,ncov,0.073447,-0.007291,0.152336,0
+standard,Temporal holdout,pooled,all,nll,vs where x which,POOLED,0.073447,-0.007291,0.152336,1
+standard,Temporal holdout,pooled,all,hit10,vs single-tree model,ncov,0.002501,-0.017179,0.021459,0
+standard,Temporal holdout,pooled,all,hit10,vs single-tree model,POOLED,0.002501,-0.017179,0.021459,1
+standard,Temporal holdout,pooled,all,hit10,vs where x which,ncov,0.111836,0.088706,0.135507,0
+standard,Temporal holdout,pooled,all,hit10,vs where x which,POOLED,0.111836,0.088706,0.135507,1
+standard,Temporal holdout,pooled,all,hit1,vs single-tree model,ncov,-0.005003,-0.011760,0.001564,0
+standard,Temporal holdout,pooled,all,hit1,vs single-tree model,POOLED,-0.005003,-0.011760,0.001564,1
+standard,Temporal holdout,pooled,all,hit1,vs where x which,ncov,0.065425,0.048175,0.083074,0
+standard,Temporal holdout,pooled,all,hit1,vs where x which,POOLED,0.065425,0.048175,0.083074,1
+standard,Temporal holdout,pooled,novel,nll,vs single-tree model,ncov,-0.764763,-0.828999,-0.700216,0
+standard,Temporal holdout,pooled,novel,nll,vs single-tree model,POOLED,-0.764763,-0.828999,-0.700216,1
+standard,Temporal holdout,pooled,novel,nll,vs where x which,ncov,0.852559,0.755665,0.948112,0
+standard,Temporal holdout,pooled,novel,nll,vs where x which,POOLED,0.852559,0.755665,0.948112,1
+standard,Temporal holdout,pooled,novel,hit10,vs single-tree model,ncov,0.093137,0.063354,0.123206,0
+standard,Temporal holdout,pooled,novel,hit10,vs single-tree model,POOLED,0.093137,0.063354,0.123206,1
+standard,Temporal holdout,pooled,novel,hit10,vs where x which,ncov,0.014098,-0.022065,0.050670,0
+standard,Temporal holdout,pooled,novel,hit10,vs where x which,POOLED,0.014098,-0.022065,0.050670,1
+standard,Temporal holdout,pooled,novel,hit1,vs single-tree model,ncov,0.008578,0.002137,0.016375,0
+standard,Temporal holdout,pooled,novel,hit1,vs single-tree model,POOLED,0.008578,0.002137,0.016375,1
+standard,Temporal holdout,pooled,novel,hit1,vs where x which,ncov,-0.023004,-0.041412,-0.005690,0
+standard,Temporal holdout,pooled,novel,hit1,vs where x which,POOLED,-0.023004,-0.041412,-0.005690,1
+standard,Temporal holdout,per-tree,all,nll,vs single-tree model,ncov,-0.320688,-0.363645,-0.277556,0
+standard,Temporal holdout,per-tree,all,nll,vs single-tree model,POOLED,-0.320688,-0.363645,-0.277556,1
+standard,Temporal holdout,per-tree,all,nll,vs where x which,ncov,0.142185,0.058467,0.224135,0
+standard,Temporal holdout,per-tree,all,nll,vs where x which,POOLED,0.142186,0.058467,0.224135,1
+standard,Temporal holdout,per-tree,all,hit10,vs single-tree model,ncov,0.021511,0.003006,0.040213,0
+standard,Temporal holdout,per-tree,all,hit10,vs single-tree model,POOLED,0.021511,0.003006,0.040213,1
+standard,Temporal holdout,per-tree,all,hit10,vs where x which,ncov,0.130846,0.107345,0.154633,0
+standard,Temporal holdout,per-tree,all,hit10,vs where x which,POOLED,0.130846,0.107345,0.154633,1
+standard,Temporal holdout,per-tree,all,hit1,vs single-tree model,ncov,-0.008504,-0.015897,-0.001473,0
+standard,Temporal holdout,per-tree,all,hit1,vs single-tree model,POOLED,-0.008504,-0.015897,-0.001473,1
+standard,Temporal holdout,per-tree,all,hit1,vs where x which,ncov,0.061923,0.044153,0.080121,0
+standard,Temporal holdout,per-tree,all,hit1,vs where x which,POOLED,0.061923,0.044153,0.080121,1
+standard,Temporal holdout,per-tree,novel,nll,vs single-tree model,ncov,-0.622492,-0.685167,-0.559227,0
+standard,Temporal holdout,per-tree,novel,nll,vs single-tree model,POOLED,-0.622491,-0.685167,-0.559227,1
+standard,Temporal holdout,per-tree,novel,nll,vs where x which,ncov,0.994831,0.899200,1.090202,0
+standard,Temporal holdout,per-tree,novel,nll,vs where x which,POOLED,0.994831,0.899200,1.090202,1
+standard,Temporal holdout,per-tree,novel,hit10,vs single-tree model,ncov,0.096814,0.068063,0.125512,0
+standard,Temporal holdout,per-tree,novel,hit10,vs single-tree model,POOLED,0.096814,0.068063,0.125512,1
+standard,Temporal holdout,per-tree,novel,hit10,vs where x which,ncov,0.017774,-0.018339,0.054291,0
+standard,Temporal holdout,per-tree,novel,hit10,vs where x which,POOLED,0.017774,-0.018339,0.054291,1
+standard,Temporal holdout,per-tree,novel,hit1,vs single-tree model,ncov,0.006127,0.000000,0.012920,0
+standard,Temporal holdout,per-tree,novel,hit1,vs single-tree model,POOLED,0.006127,0.000000,0.012920,1
+standard,Temporal holdout,per-tree,novel,hit1,vs where x which,ncov,-0.025455,-0.044500,-0.007391,0
+standard,Temporal holdout,per-tree,novel,hit1,vs where x which,POOLED,-0.025455,-0.044500,-0.007391,1
+common,Temporal holdout,pooled,all,nll,vs single-tree model,ncov,-0.318787,-0.363853,-0.275069,0
+common,Temporal holdout,pooled,all,nll,vs single-tree model,POOLED,-0.318788,-0.363853,-0.275069,1
+common,Temporal holdout,pooled,all,nll,vs where x which,ncov,0.216020,0.134111,0.295750,0
+common,Temporal holdout,pooled,all,nll,vs where x which,POOLED,0.216019,0.134111,0.295750,1
+common,Temporal holdout,pooled,all,hit10,vs single-tree model,ncov,0.005430,-0.012483,0.022796,0
+common,Temporal holdout,pooled,all,hit10,vs single-tree model,POOLED,0.005430,-0.012483,0.022796,1
+common,Temporal holdout,pooled,all,hit10,vs where x which,ncov,0.105181,0.084066,0.127148,0
+common,Temporal holdout,pooled,all,hit10,vs where x which,POOLED,0.105181,0.084066,0.127148,1
+common,Temporal holdout,pooled,all,hit1,vs single-tree model,ncov,-0.007692,-0.014017,-0.001344,0
+common,Temporal holdout,pooled,all,hit1,vs single-tree model,POOLED,-0.007692,-0.014017,-0.001344,1
+common,Temporal holdout,pooled,all,hit1,vs where x which,ncov,0.056416,0.040893,0.072179,0
+common,Temporal holdout,pooled,all,hit1,vs where x which,POOLED,0.056416,0.040893,0.072179,1
+common,Temporal holdout,pooled,novel,nll,vs single-tree model,ncov,-0.576756,-0.646792,-0.508253,0
+common,Temporal holdout,pooled,novel,nll,vs single-tree model,POOLED,-0.576756,-0.646792,-0.508253,1
+common,Temporal holdout,pooled,novel,nll,vs where x which,ncov,0.980449,0.891402,1.067442,0
+common,Temporal holdout,pooled,novel,nll,vs where x which,POOLED,0.980449,0.891402,1.067442,1
+common,Temporal holdout,pooled,novel,hit10,vs single-tree model,ncov,0.083588,0.059454,0.107785,0
+common,Temporal holdout,pooled,novel,hit10,vs single-tree model,POOLED,0.083588,0.059454,0.107785,1
+common,Temporal holdout,pooled,novel,hit10,vs where x which,ncov,0.019827,-0.010234,0.050336,0
+common,Temporal holdout,pooled,novel,hit10,vs where x which,POOLED,0.019827,-0.010234,0.050336,1
+common,Temporal holdout,pooled,novel,hit1,vs single-tree model,ncov,0.007136,0.001794,0.013641,0
+common,Temporal holdout,pooled,novel,hit1,vs single-tree model,POOLED,0.007136,0.001794,0.013641,1
+common,Temporal holdout,pooled,novel,hit1,vs where x which,ncov,-0.019368,-0.034826,-0.004878,0
+common,Temporal holdout,pooled,novel,hit1,vs where x which,POOLED,-0.019368,-0.034826,-0.004878,1
+common,Temporal holdout,per-tree,all,nll,vs single-tree model,ncov,-0.246479,-0.289061,-0.204331,0
+common,Temporal holdout,per-tree,all,nll,vs single-tree model,POOLED,-0.246479,-0.289061,-0.204331,1
+common,Temporal holdout,per-tree,all,nll,vs where x which,ncov,0.288328,0.202910,0.372001,0
+common,Temporal holdout,per-tree,all,nll,vs where x which,POOLED,0.288328,0.202910,0.372001,1
+common,Temporal holdout,per-tree,all,hit10,vs single-tree model,ncov,0.016742,0.000000,0.033762,0
+common,Temporal holdout,per-tree,all,hit10,vs single-tree model,POOLED,0.016742,0.000000,0.033762,1
+common,Temporal holdout,per-tree,all,hit10,vs where x which,ncov,0.116493,0.094928,0.138927,0
+common,Temporal holdout,per-tree,all,hit10,vs where x which,POOLED,0.116493,0.094928,0.138927,1
+common,Temporal holdout,per-tree,all,hit1,vs single-tree model,ncov,-0.007240,-0.013465,-0.000917,0
+common,Temporal holdout,per-tree,all,hit1,vs single-tree model,POOLED,-0.007240,-0.013465,-0.000917,1
+common,Temporal holdout,per-tree,all,hit1,vs where x which,ncov,0.056869,0.040634,0.073139,0
+common,Temporal holdout,per-tree,all,hit1,vs where x which,POOLED,0.056869,0.040634,0.073139,1
+common,Temporal holdout,per-tree,novel,nll,vs single-tree model,ncov,-0.440328,-0.507394,-0.373622,0
+common,Temporal holdout,per-tree,novel,nll,vs single-tree model,POOLED,-0.440328,-0.507394,-0.373622,1
+common,Temporal holdout,per-tree,novel,nll,vs where x which,ncov,1.116877,1.028091,1.203187,0
+common,Temporal holdout,per-tree,novel,nll,vs where x which,POOLED,1.116876,1.028091,1.203187,1
+common,Temporal holdout,per-tree,novel,hit10,vs single-tree model,ncov,0.074414,0.051225,0.097316,0
+common,Temporal holdout,per-tree,novel,hit10,vs single-tree model,POOLED,0.074414,0.051225,0.097316,1
+common,Temporal holdout,per-tree,novel,hit10,vs where x which,ncov,0.010652,-0.019364,0.040692,0
+common,Temporal holdout,per-tree,novel,hit10,vs where x which,POOLED,0.010652,-0.019364,0.040692,1
+common,Temporal holdout,per-tree,novel,hit1,vs single-tree model,ncov,0.007136,0.001873,0.013388,0
+common,Temporal holdout,per-tree,novel,hit1,vs single-tree model,POOLED,0.007136,0.001873,0.013388,1
+common,Temporal holdout,per-tree,novel,hit1,vs where x which,ncov,-0.019368,-0.035294,-0.004320,0
+common,Temporal holdout,per-tree,novel,hit1,vs where x which,POOLED,-0.019368,-0.035294,-0.004320,1
+legacy,Temporal holdout,pooled,all,nll,vs single-tree model,ncov,-0.318787,-0.363853,-0.275069,0
+legacy,Temporal holdout,pooled,all,nll,vs single-tree model,POOLED,-0.318788,-0.363853,-0.275069,1
+legacy,Temporal holdout,pooled,all,nll,vs where x which,ncov,0.210861,0.128949,0.290592,0
+legacy,Temporal holdout,pooled,all,nll,vs where x which,POOLED,0.210860,0.128949,0.290592,1
+legacy,Temporal holdout,pooled,all,hit10,vs single-tree model,ncov,0.005430,-0.012483,0.022796,0
+legacy,Temporal holdout,pooled,all,hit10,vs single-tree model,POOLED,0.005430,-0.012483,0.022796,1
+legacy,Temporal holdout,pooled,all,hit10,vs where x which,ncov,0.085604,0.063915,0.108093,0
+legacy,Temporal holdout,pooled,all,hit10,vs where x which,POOLED,0.085604,0.063915,0.108093,1
+legacy,Temporal holdout,pooled,all,hit1,vs single-tree model,ncov,-0.007692,-0.014017,-0.001344,0
+legacy,Temporal holdout,pooled,all,hit1,vs single-tree model,POOLED,-0.007692,-0.014017,-0.001344,1
+legacy,Temporal holdout,pooled,all,hit1,vs where x which,ncov,0.052610,0.036993,0.068578,0
+legacy,Temporal holdout,pooled,all,hit1,vs where x which,POOLED,0.052610,0.036993,0.068578,1
+legacy,Temporal holdout,pooled,novel,nll,vs single-tree model,ncov,-0.576756,-0.646792,-0.508253,0
+legacy,Temporal holdout,pooled,novel,nll,vs single-tree model,POOLED,-0.576756,-0.646792,-0.508253,1
+legacy,Temporal holdout,pooled,novel,nll,vs where x which,ncov,0.975285,0.886239,1.062281,0
+legacy,Temporal holdout,pooled,novel,nll,vs where x which,POOLED,0.975285,0.886239,1.062281,1
+legacy,Temporal holdout,pooled,novel,hit10,vs single-tree model,ncov,0.083588,0.059454,0.107785,0
+legacy,Temporal holdout,pooled,novel,hit10,vs single-tree model,POOLED,0.083588,0.059454,0.107785,1
+legacy,Temporal holdout,pooled,novel,hit10,vs where x which,ncov,0.008344,-0.020988,0.037563,0
+legacy,Temporal holdout,pooled,novel,hit10,vs where x which,POOLED,0.008344,-0.020988,0.037563,1
+legacy,Temporal holdout,pooled,novel,hit1,vs single-tree model,ncov,0.007136,0.001794,0.013641,0
+legacy,Temporal holdout,pooled,novel,hit1,vs single-tree model,POOLED,0.007136,0.001794,0.013641,1
+legacy,Temporal holdout,pooled,novel,hit1,vs where x which,ncov,-0.023173,-0.039315,-0.007988,0
+legacy,Temporal holdout,pooled,novel,hit1,vs where x which,POOLED,-0.023173,-0.039315,-0.007988,1
+legacy,Temporal holdout,per-tree,all,nll,vs single-tree model,ncov,-0.246479,-0.289061,-0.204331,0
+legacy,Temporal holdout,per-tree,all,nll,vs single-tree model,POOLED,-0.246479,-0.289061,-0.204331,1
+legacy,Temporal holdout,per-tree,all,nll,vs where x which,ncov,0.283169,0.197746,0.366843,0
+legacy,Temporal holdout,per-tree,all,nll,vs where x which,POOLED,0.283169,0.197746,0.366843,1
+legacy,Temporal holdout,per-tree,all,hit10,vs single-tree model,ncov,0.016742,0.000000,0.033762,0
+legacy,Temporal holdout,per-tree,all,hit10,vs single-tree model,POOLED,0.016742,0.000000,0.033762,1
+legacy,Temporal holdout,per-tree,all,hit10,vs where x which,ncov,0.096916,0.075070,0.119601,0
+legacy,Temporal holdout,per-tree,all,hit10,vs where x which,POOLED,0.096916,0.075070,0.119601,1
+legacy,Temporal holdout,per-tree,all,hit1,vs single-tree model,ncov,-0.007240,-0.013465,-0.000917,0
+legacy,Temporal holdout,per-tree,all,hit1,vs single-tree model,POOLED,-0.007240,-0.013465,-0.000917,1
+legacy,Temporal holdout,per-tree,all,hit1,vs where x which,ncov,0.053062,0.036760,0.069395,0
+legacy,Temporal holdout,per-tree,all,hit1,vs where x which,POOLED,0.053062,0.036760,0.069395,1
+legacy,Temporal holdout,per-tree,novel,nll,vs single-tree model,ncov,-0.440328,-0.507394,-0.373622,0
+legacy,Temporal holdout,per-tree,novel,nll,vs single-tree model,POOLED,-0.440328,-0.507394,-0.373622,1
+legacy,Temporal holdout,per-tree,novel,nll,vs where x which,ncov,1.111713,1.022928,1.198024,0
+legacy,Temporal holdout,per-tree,novel,nll,vs where x which,POOLED,1.111713,1.022928,1.198024,1
+legacy,Temporal holdout,per-tree,novel,hit10,vs single-tree model,ncov,0.074414,0.051225,0.097316,0
+legacy,Temporal holdout,per-tree,novel,hit10,vs single-tree model,POOLED,0.074414,0.051225,0.097316,1
+legacy,Temporal holdout,per-tree,novel,hit10,vs where x which,ncov,-0.000830,-0.030196,0.028937,0
+legacy,Temporal holdout,per-tree,novel,hit10,vs where x which,POOLED,-0.000830,-0.030196,0.028937,1
+legacy,Temporal holdout,per-tree,novel,hit1,vs single-tree model,ncov,0.007136,0.001873,0.013388,0
+legacy,Temporal holdout,per-tree,novel,hit1,vs single-tree model,POOLED,0.007136,0.001873,0.013388,1
+legacy,Temporal holdout,per-tree,novel,hit1,vs where x which,ncov,-0.023173,-0.039871,-0.007392,0
+legacy,Temporal holdout,per-tree,novel,hit1,vs where x which,POOLED,-0.023173,-0.039871,-0.007392,1

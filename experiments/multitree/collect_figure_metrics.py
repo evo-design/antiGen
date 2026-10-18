@@ -5,11 +5,19 @@ Writes the tidy CSVs behind Figure 5. Everything is computed here rather than re
 back from the per-run JSONs, so the two regimes go through byte-identical scoring
 code and the same definition of "novel".
 
-Regimes (same trees, same evaluation trees; --panel picks 9 or 11 of them):
+Regimes (same trees, same evaluation trees; --panel picks which trees):
   random    each tree's random held-out split. Not forecast-valid -- a held-out node's
             parent is usually in the training half.
-  temporal  the D = 2025-01-01 holdout: trained on the build as published at D,
-            scored on substitutions that did not exist then.
+  temporal  the D holdout: trained on the build as published at D, scored on
+            substitutions that did not exist then. D is 2025-01-01 for panels
+            9/11/13/15 and 2021-01-01 for the sc2 arm.
+
+`--panel 2021` is the SARS-CoV-2 arm, and differs from the others in three ways
+worth stating here rather than only in PANELS: it SCORES one tree (ncov) while its
+joint arm TRAINS on six, it has no random-holdout regime, and it reads its split
+from data/forecast2021/. Everything else -- the rungs, the universes, the seed
+ensembling, the epoch rules, the bootstrap -- is the same code on the same path,
+which is the point of putting it here instead of in a script of its own.
   What is deliberately NOT matched: the random arm trains on today's full builds and
   the temporal arm on the D snapshot. That difference is the comparison, not a confound.
 
@@ -61,7 +69,7 @@ baseline did not from one that rediscovered the baseline -- and on de novo
 substitutions their recalls are close enough for that to matter.
 
 Usage:
-    python experiments/multitree/collect_figure_metrics.py [--out DIR]
+    python experiments/multitree/collect_figure_metrics.py [--panel P] [--out DIR]
 """
 from __future__ import annotations
 
@@ -107,7 +115,8 @@ SEEDS = [0, 1, 2]               # random regime: one model per split, no ensembl
 # scaling note for the joint arm alone and may not enter the joint-vs-single contrast.
 ENS_SEEDS = [0, 1, 2, 3, 4, 5, 6, 7]
 WXW_SEEDS = [0, 1, 2]           # seeds of fit_substitution_baseline's sampler
-D = '2025-01-01'
+D = '2025-01-01'           # rebound from --panel in main()
+FORECAST_SUB = 'forecast'  # likewise: which data/ subdir holds the split
 DATA = 'experiments/multitree/data'
 MATCHED = '/large_storage/hielab/ispecht/multitree/matched'
 FORECAST = '/large_storage/hielab/ispecht/multitree/forecast'
@@ -119,6 +128,9 @@ FORECAST_PT = '/large_storage/hielab/ispecht/multitree/forecast_pertree'
 FORECAST11 = '/large_storage/hielab/ispecht/multitree/forecast11'
 FORECAST13 = '/large_storage/hielab/ispecht/multitree/forecast13'
 FORECAST15 = '/large_storage/hielab/ispecht/multitree/forecast15'
+# The D = 2021-01-01 SARS-CoV-2 arm. Both of its arms live under one root:
+# joint_2021_s{0..7} and single_ncov_s{0..7}.
+SC2_2021 = '/large_storage/hielab/ispecht/multitree/sc2_2021'
 
 ## Two panels, selected with --panel. `9` is the published Figure 5. `11` adds
 ## seasonal flu H3N2 HA and H1N1pdm HA, whose @2025-01-01 archives NOTES s8 wrongly
@@ -132,14 +144,14 @@ FORECAST15 = '/large_storage/hielab/ispecht/multitree/forecast15'
 ## The nine shared single-tree controls ARE the same runs in both: a single-tree arm
 ## does not depend on the panel it is scored beside.
 PANELS = {
-    9: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
-                   'denv1', 'denv2', 'denv3', 'denv4'],
-            temporal_joint=FORECAST_PT + '/joint_panel',
-            random_joint=MATCHED + '/joint9'),
-    11: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
-                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha'],
-             temporal_joint=FORECAST11 + '/joint_panel11',
-             random_joint=MATCHED + '/joint11'),
+    '9': dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                     'denv1', 'denv2', 'denv3', 'denv4'],
+              temporal_joint=FORECAST_PT + '/joint_panel',
+              random_joint=MATCHED + '/joint9'),
+    '11': dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                      'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha'],
+               temporal_joint=FORECAST11 + '/joint_panel11',
+               random_joint=MATCHED + '/joint11'),
     ## 13 is the eleven plus ONLY the two clean additions, vic_ha and hmpv_b_g. It
     ## exists because panel 15's de novo contrast against `where x which` fell back
     ## across zero (+0.112 -> +0.022) while two of its four new trees carry known
@@ -149,24 +161,48 @@ PANELS = {
     ## ones". hmpv_b_g is kept despite being slightly negative on its own per-tree
     ## contrast at 15 trees: selecting it out on that would be choosing the panel
     ## from the outcome.
-    13: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
-                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
-                    'hmpv_b_g', 'vic_ha'],
-             temporal_joint=FORECAST13 + '/joint_panel13',
-             random_joint=MATCHED + '/joint13'),
+    '13': dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                      'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
+                      'hmpv_b_g', 'vic_ha'],
+               temporal_joint=FORECAST13 + '/joint_panel13',
+               random_joint=MATCHED + '/joint13'),
     ## 15 adds the HA/G members of the four qualifying pairs found by
     ## probe_forecast_panel.py: hMPV A/G, hMPV B/G, avian H9N2 HA, B/Victoria HA.
     ## Two caveats live with these and belong in any per-tree reading: h9n2_ha drops
     ## 46.5% of its branch mutations to ambiguous `X`, so its targets are a biased
     ## subsample; hmpv_a_g is 12.4% gap targets against the panel's ~2%, a column the
     ## ESM-2 arms put no mass on (s16).
-    15: dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
-                    'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
-                    'hmpv_a_g', 'hmpv_b_g', 'h9n2_ha', 'vic_ha'],
-             temporal_joint=FORECAST15 + '/joint_panel15',
-             random_joint=MATCHED + '/joint15'),
+    '15': dict(trees=['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
+                      'denv1', 'denv2', 'denv3', 'denv4', 'h3n2_ha', 'h1n1pdm_ha',
+                      'hmpv_a_g', 'hmpv_b_g', 'h9n2_ha', 'vic_ha'],
+               temporal_joint=FORECAST15 + '/joint_panel15',
+               random_joint=MATCHED + '/joint15'),
+    ## The D = 2021-01-01 SARS-CoV-2 arm (NOTES s27). Not a panel in the sense the
+    ## others are. Six trees TRAIN the joint model -- ncov, h3n2_ha, h1n1pdm_ha,
+    ## yam_ha, evd68_vp1, ebola_gp -- and only ncov is SCORED, because the question
+    ## is whether training on other viruses improves the sc2 forecast, not whether
+    ## a shared model helps everywhere. That is why trees which cannot themselves be
+    ## forecast are good members here: yam_ha is extinct and ebola_gp frozen, but
+    ## both are perfectly good training context for a tree that is neither.
+    ##
+    ## `trees` is therefore the EVALUATION set, exactly as in the other entries --
+    ## the training corpus is fixed by train_sc2_2021_esm2.sh and this script never
+    ## needs to know it. Baselines are fit on ncov's own pre-D training file, the
+    ## same rule the panels use.
+    ##
+    ## No random-holdout arm exists: matched/ has no 2021 runs, and building one
+    ## would mean retraining six trees on today's builds to answer a question this
+    ## arm does not ask. `regimes` names the temporal regime alone, so the random
+    ## half of the script is skipped rather than failing on missing directories.
+    '2021': dict(trees=['ncov'],
+                 temporal_joint=SC2_2021 + '/joint_2021',
+                 temporal_single=SC2_2021,
+                 random_joint=None,
+                 regimes=('Temporal holdout',),
+                 D='2021-01-01',
+                 forecast_sub='forecast2021'),
 }
-PANEL = PANELS[9]['trees']      # rebound from --panel in main()
+PANEL = PANELS['9']['trees']      # rebound from --panel in main()
 RUNGS = ['uniform', 'codon', 'where_only', 'pssm', 'substitution', 'frequency',
          'where_times_which', 'single', 'joint']
 METRICS = ['nll', 'hit10', 'hit1']
@@ -249,10 +285,12 @@ def split_random(tree, seed):
 
 def split_temporal(tree, _seed):
     with contextlib.redirect_stdout(io.StringIO()):
-        tr = load_examples(f'{DATA}/forecast/examples_{tree}@{D}_train.txt', AL,
-                           None, source=tree)
-        te = load_examples(f'{DATA}/forecast/examples_{tree}@{D}_test.txt', AL,
-                           None, source=tree)
+        tr = load_examples(
+            f'{DATA}/{FORECAST_SUB}/examples_{tree}@{D}_train.txt', AL,
+            None, source=tree)
+        te = load_examples(
+            f'{DATA}/{FORECAST_SUB}/examples_{tree}@{D}_test.txt', AL,
+            None, source=tree)
     return tr, te
 
 
@@ -380,11 +418,13 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--out', default='antiGen-figures/data/multitree')
-    p.add_argument('--panel', type=int, default=9, choices=sorted(PANELS),
+    p.add_argument('--panel', default='9', choices=list(PANELS),
                    help='which evaluation panel to score; see PANELS. 9 is the '
                         'published Figure 5, 11 adds the two seasonal-flu HA trees. '
                         'The joint arm comes from a different root per panel, so '
-                        'the two never read each other\'s runs.')
+                        'the two never read each other\'s runs. `2021` is the '
+                        'SARS-CoV-2 arm at D = 2021-01-01, which scores ncov alone '
+                        'and has no random-holdout regime.')
     p.add_argument('--universes', default=','.join(UNIVERSES),
                    help='scoring universes to emit; see UNIVERSES. All three are '
                         'written to the CSVs with a `universe` column and the R '
@@ -399,17 +439,26 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     # PANEL is module-level because a dozen comprehensions below close over it; the
     # panel choice rebinds it once, here, before any of them run.
-    global PANEL
+    global PANEL, D, FORECAST_SUB
     panel = PANELS[args.panel]
     PANEL = panel['trees']
-    temporal_joint, random_joint = panel['temporal_joint'], panel['random_joint']
-    print(f'panel: {len(PANEL)} trees ({", ".join(PANEL)})', flush=True)
+    ## Defaulted rather than required, so the four 2025 panels keep their entries
+    ## verbatim and only an arm that differs has to say so.
+    D = panel.get('D', D)
+    FORECAST_SUB = panel.get('forecast_sub', FORECAST_SUB)
+    temporal_joint = panel['temporal_joint']
+    temporal_single = panel.get('temporal_single', FORECAST)
+    random_joint = panel.get('random_joint')
+    regimes = panel.get('regimes', ('Random holdout', 'Temporal holdout'))
+    print(f'panel {args.panel}: D = {D}, split from {DATA}/{FORECAST_SUB}/, '
+          f'{len(PANEL)} evaluation tree(s) ({", ".join(PANEL)})', flush=True)
+    print(f'regimes: {", ".join(regimes)}', flush=True)
     ens_seeds = [int(x) for x in args.ens_seeds.split(',')]
     universes = [u for u in args.universes.split(',') if u]
     missing = [f'{root}_s{s}' if nm is None else f'{root}/{nm}_s{s}'
                for s in ens_seeds
                for root, nm in [(temporal_joint, None)]
-               + [(FORECAST, f'single_{t}') for t in PANEL]
+               + [(temporal_single, f'single_{t}') for t in PANEL]
                if not glob.glob((f'{root}_s{s}' if nm is None
                                  else f'{root}/{nm}_s{s}') + '/*_best.pt')]
     if missing:
@@ -430,7 +479,9 @@ def main():
     agree, agree_n = {}, {}
     for regime, joint_root, single_root in (
             ('Random holdout', random_joint, MATCHED),
-            ('Temporal holdout', temporal_joint, FORECAST)):
+            ('Temporal holdout', temporal_joint, temporal_single)):
+        if regime not in regimes:
+            continue
         temporal = regime.startswith('Temporal')
         for tree in PANEL:
             # Each job is (seeds averaged into one predictor, the split to score
