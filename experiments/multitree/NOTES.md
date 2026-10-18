@@ -3534,3 +3534,71 @@ exactly chance, on Figure 2's de novo subset where antiGen scores 0.526. A model
 loses to PSSM on a curated list and beats it by 5x on de novo targets is the shape of
 a list that is mostly not de novo, which is the measurement s29 named as missing: the
 list's overlap with Figure 2's own training window. Still unmeasured.
+
+### The torchvision fix, and the reruns (same session)
+
+`3353452` cancelled at 14h01m. It was never going to finish: it had spent ~10h on
+setup and the CSV baselines, had scored **one** checkpoint group (blosum62) of the
+fifteen, and carried the same eight ESM-2 skips as the RBD run. Waiting out its
+remaining 10h would have bought an incomplete table with the same hole in it.
+
+**Fixed in the base conda environment** (`/home/ivan.specht/miniconda`):
+
+```
+pip install --no-deps torchvision==0.22.1 --index-url .../whl/cu126
+   torchvision 0.21.0+cu124  ->  0.22.1+cu126
+```
+
+`--no-deps` deliberately: torchvision 0.22.1 declares `torch==2.7.1`, which is what is
+installed, and the point of the exercise is to leave torch alone. A `--dry-run` first
+confirmed torchvision was the only package that would change.
+
+Verified in three steps rather than one, because the import succeeding does not prove
+a checkpoint builds:
+
+| check | result |
+|---|---|
+| `torch.ops.torchvision.nms` registers | True |
+| `from transformers import EsmForMaskedLM` | OK |
+| `create_model` + `load_state_dict` on the 35M partial-FT checkpoint | **missing=0, unexpected=0** |
+
+### A preflight guard, because exit 0 was the real defect
+
+The environment break cost eight model groups; what made it expensive is that
+`eval.py` caught each failure, printed `[skip]`, and **exited 0 with a
+complete-looking set of CSVs**. Nothing downstream could tell a 19-model table from a
+27-model one. `eval_sc2_mutation_lists.sh` now imports torchvision and
+`EsmForMaskedLM` before calling `eval.py` and aborts with exit 1 if either fails,
+printing the torch/torchvision versions. Tested both ways: it prints `preflight OK`
+on the fixed environment, and aborts with exit 1 under a shimmed torchvision that
+raises the original `torchvision::nms` error.
+
+This does not make `eval.py`'s skip-and-continue wrong -- a single bad checkpoint
+should not kill a 24h array -- but a *backbone* that cannot load is not one bad
+checkpoint, and belongs at the front of the script.
+
+### Two things corrected from earlier in this session
+
+**`eval.py` resumes.** I said in reporting s30 that a resubmit would start over. It
+does not: step 6 preloads the unified CSVs from `--output-dir`, skips any model
+already present (`[resume-skip]`) and reuses the test-set baseline rows. So both
+reruns continue their existing directories rather than recomputing them -- the RBD run
+has only the 8 ESM-2 groups left to do, and the full-Spike run keeps its 13 baseline
+rows. The directories are **not** cleared: nothing in the scoring code changed, only
+the environment, and the 19 RBD rows already reproduce published Figure 2 to 2.2e-4.
+
+**The 24h wall was self-imposed**, not the partition's. `gpu_batch` allows 14 days.
+The script's default is now 2 days, and the full range takes `--time=7-00:00:00` at
+submit, documented in its usage block.
+
+### Resubmitted
+
+| job | range | time limit | output |
+|---|---|---|---|
+| **3360817** | RBD (331-531) | 2 days | `evals_sc2_lists/` |
+| **3360818** | full Spike (1-1273) | 7 days | `evals_sc2_lists_fullseq/` |
+
+Until 3360817 lands, **s30's table and its "antiGen as EVE full FT is best" line stay
+provisional** for the reason s30 gave: in `list_recall` two of the absent ESM-2 arms
+outrank eve_ft, and the two evals correlate at rho = 0.34, so neither "they will
+beat it" nor "they will not" is supportable from what is on disk.
