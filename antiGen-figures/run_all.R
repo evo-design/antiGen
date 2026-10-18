@@ -17,6 +17,7 @@ SCRIPTS <- c(
   "figures/fig3_pseudovirus_assay.R",   # Figure 3
   "figures/fig4_endemic_viruses.R",     # Figure 4 + supplement
   "figures/fig5_multitree.R",           # Figure 5
+  "figures/fig_sc2_2021.R",             # Figure 5's arm at D = 2021-01-01
   "figures/figS_training_loss.R",
   "figures/figS_runtime.R",
   "figures/figS_covfit.R"

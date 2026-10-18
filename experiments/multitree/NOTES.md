@@ -3229,3 +3229,165 @@ look for. Nothing here distinguishes those.
 Still unscored on the corrected window: the capacity sweep. Still unscored at all: the
 sc2 2021 arm (16/16 trained, no scoring path exists -- `collect_figure_metrics.py`
 knows only panels 9/11/13/15, all keyed to the 2026-05-01 corpus).
+
+---
+
+## 29. The 2021 sc2 arm scored, and a contamination check on its tree (2026-10-18)
+
+### The scoring path, built rather than found
+
+s28 closed saying no scoring path existed. There is one now, in the same script
+rather than beside it. `collect_figure_metrics.py` gains a `'2021'` entry in
+`PANELS`, and four things that were module constants became per-panel settings with
+their previous values as defaults: `D`, the `data/` subdirectory the split comes
+from, the root the single-tree arm lives under, and which regimes to run. `--panel`
+takes string keys now, so a non-numeric arm can sit in the same table.
+
+The arm differs from panels 9/11/13/15 in exactly three ways, all declarative:
+it **scores** one tree (ncov) while its joint arm **trains** on six, it reads
+`data/forecast2021/`, and it names only the temporal regime -- `matched/` has no
+2021 runs, and building them would mean retraining six trees on today's builds to
+answer a question this arm does not ask. Everything else -- rungs, universes, seed
+ensembling, epoch rules, bootstrap -- is the same code on the same path.
+
+**Regression checked, the same way s20 checked the panel-11 plumbing:** re-running
+`--panel 13` through the modified script reproduced `ladder.csv`, `deltas.csv` and
+`agreement.csv` **byte-identically**. The four published panels are untouched.
+
+Collection **3360461**, 4m37s, `--panel 2021 --out antiGen-figures/data/sc2_2021`.
+
+### Results
+
+986 examples, **1,999 scored targets, 816 de novo** (`standard`). Recall@10%,
+temporal/pooled/standard, K = 8:
+
+| rung | all | de novo |
+|---|---|---|
+| **joint (6 trees)** | **0.564** | **0.396** |
+| single (ncov alone) | 0.561 | 0.303 |
+| `where x which` | 0.452 | 0.382 |
+| substitution | 0.379 | 0.327 |
+| codon | 0.320 | 0.310 |
+| pssm | 0.527 | 0.091 |
+| frequency | 0.369 | 0.080 |
+| uniform | 0.100 | 0.100 |
+
+| contrast | subset | est |
+|---|---|---|
+| vs single-tree | all | +0.003 [-0.017,+0.021] |
+| vs single-tree | de novo | **+0.093 [+0.063,+0.123]*** |
+| vs `where x which` | all | +0.112 [+0.089,+0.136]* |
+| vs `where x which` | de novo | +0.014 [-0.022,+0.051] |
+
+**The answer to the question the arm was built to ask is split.** Training on five
+other viruses buys SARS-CoV-2 nothing across all substitutions -- an interval
+centred on zero -- and a real, well-determined gain on de novo ones. The split is
+not a knife edge: the de novo contrast holds under the per-tree epoch rule (+0.097),
+the `common` universe (+0.084) and the 1% budget (+0.009 [+0.002,+0.016]), while the
+`all` contrast is null or slightly negative in every one of those cuts (at 1%/common
+it is -0.008 [-0.014,-0.001], i.e. marginally the wrong way).
+
+### Against the 2025 panels, and why this is confirmation rather than news
+
+| contrast | subset | 9 | 11 | 13 | 15 | 2021 sc2 |
+|---|---|---|---|---|---|---|
+| vs single-tree | all | +0.055* | +0.047* | +0.038* | +0.024* | **+0.003** |
+| vs single-tree | de novo | +0.162* | +0.166* | +0.152* | +0.116* | **+0.093*** |
+| vs `where x which` | all | +0.131* | +0.137* | +0.118* | +0.117* | **+0.112*** |
+| vs `where x which` | de novo | +0.071 | +0.085* | +0.043 | +0.020 | **+0.014** |
+
+The pooled rows are not like-for-like -- fifteen trees against one -- so the
+comparison that carries weight is **ncov against itself**, which the panels also
+score:
+
+| | ncov de novo vs single | targets |
+|---|---|---|
+| D = 2025-01-01 (panel 15) | +0.102 [-0.029,+0.213] | 59 |
+| D = 2021-01-01 | +0.093 [+0.063,+0.123]* | **816** |
+
+Nearly the same point estimate on **14x the de novo targets**, and the interval
+moves off zero. Read this as the 2021 arm confirming, on a properly powered sc2 test
+set, the gain ncov alone could only gesture at in 2025 -- not as a new effect. The
+de novo contrast against `where x which` stays null here too (+0.014), which is one
+more independent panel agreeing with s22/s28 that **that** claim is unresolved.
+
+### Two things to carry with these numbers
+
+**The pooled row is one tree.** With a single evaluation tree the bootstrap
+resamples examples within ncov and has no cross-tree component, so these intervals
+are not the same kind of object as the panels' pooled rows. The `POOLED` and `ncov`
+rows in `deltas.csv` are identical by construction.
+
+**De novo here is stricter than the generator's sidecar**, and the difference is
+large enough to trip someone quoting both. The sidecar says 1,537 novel of 2,210;
+the collector gives **981** on the same 2,210 (`common`) and **816** after dropping
+gap targets (`standard`). The 2,210 matches exactly, so the target set is not in
+question -- the whole gap is `seen_cells`, which also counts a cell as seen when any
+training sequence merely *carries* that residue, so a reversion to consensus is not
+de novo. Same rule as the four panels; it is the sidecar that is the outlier.
+
+### A contamination check on the 2020-12-29 build, and a correction
+
+Prompted by a claim in s25 reading as though nearly the whole CoG-UK RBD list was
+already observed before the cutoff. It is not, and the two numbers answer different
+questions:
+
+| what is counted | result |
+|---|---|
+| CoG-UK RBD cells mutated-to anywhere in `output1` (171,248 examples, whole pandemic) | 235 / 247 (95.1%) |
+| CoG-UK RBD cells present in the **pre-2021-01-01 ncov tree** (347 branch examples) | **29 / 247 (11.7%)** |
+
+`cutoff 1` in `eval_sc2_mutation_lists.sh` is a **dataset version** (`output{cutoff}`,
+allowed 1/4/5), not a date, and "observed at some point" ranges over that dataset's
+whole span. The comment is about why a list-restricted *pool* has almost no negatives
+left to rank against. **It says nothing about any training window**, and must not be
+read as one.
+
+The 11.7% is the figure for this arm's tree, and all 29 are genuine pre-D branch
+mutation events -- the `carried` clause adds nothing, its 16 cells being a subset of
+the 29:
+
+```
+354K 367F 406D 408I 408K 417N 439K 440K 440Y 445F 452R 453F 458N 476S 477I
+477N 477R 478R 483F 484A 484K 484Q 486L 490S 494P 499L 501T 501Y 504D
+```
+
+**The composition is the actual check, and it is period-correct for a build dated
+2020-12-28.** The Alpha/Beta/Epsilon/mink-era changes are present -- N501Y, K417N,
+E484K, L452R, N439K, Y453F, S477N -- all genuinely circulating and sequenced before
+2021. The later-emerging ones are absent: K417T (Gamma, Jan 2021), T478K (Delta),
+G339D and G446S (Omicron, Nov 2021). Those are precisely the cells that would appear
+first if future sequences had leaked in, and none did. This is an independent
+confirmation of s27's route A/B guards (`meta.updated` 2020-12-28, 3,848 tips, zero
+tips at or after 2021.0) rather than a restatement of them.
+
+**One earlier explanation is withdrawn.** The reason offered in this log's reporting
+for `pssm_root` (0.735) edging out the main model (0.722) on the CoG-UK fullpool
+eval was that those lists are dominated by already-seen mutations. The 95.1% does
+not support that, being a whole-dataset count, and the Figure 2 de novo masking uses
+`pssm_root > 0`, a third rule again. **Why a plain composition baseline beats the
+model on curated variant-defining lists is unexplained and open.** The number that
+would settle it -- the list's overlap with Figure 2's own training window -- has not
+been measured.
+
+### The figure
+
+`antiGen-figures/figures/fig_sc2_2021.R` -> `figs/sc2_2021_results.png` and
+`figs_vector/sc2_2021_results.pdf`. Same visual language as Figure 5 -- same rung
+set, colours, `standard` universe, pooled epoch rule and 8-seed ensembles -- so
+the ladders read against `multitree_results*.png` row by row. Added to
+`run_all.R` after `fig5_multitree.R`.
+
+Four panels, not six. **The per-tree forests collapse here**: with one evaluation
+tree the `ncov` and `POOLED` rows of `deltas.csv` are identical by construction,
+so Figure 5's panels C and D become one contrast panel carrying both contrasts on
+both subsets. The overlap panels are kept, and for the reason s29 gives -- at
++0.014 de novo the model and `where x which` are close enough on the ladder that
+only the overlap separates "learned something else" from "rediscovered it", and
+it does: 119 model-only against 106 `where x which`-only on 816 de novo targets,
+with 387 (47%) caught by neither.
+
+Both rung labels are renamed for this arm alone: **antiGen (six trees)** and
+**antiGen (ncov alone)**, rather than multi-tree/single-tree. The joint arm trains
+on six trees and scores one, so "multi-tree" would invite the reader to think the
+pooled row spans them.
