@@ -3602,3 +3602,181 @@ Until 3360817 lands, **s30's table and its "antiGen as EVE full FT is best" line
 provisional** for the reason s30 gave: in `list_recall` two of the absent ESM-2 arms
 outrank eve_ft, and the two evals correlate at rho = 0.34, so neither "they will
 beat it" nor "they will not" is supportable from what is on disk.
+
+---
+
+## 31. The CoG-UK list rebuilt as a Figure 2 panel set (2026-10-18)
+
+### What "seen" means, three ways, because two of them were being conflated
+
+The same 247 CoG-UK RBD cells, under three different rules. All three measured here
+rather than quoted:
+
+| rule | result |
+|---|---|
+| carried in `pssm_root` (Figure 2's de novo mask: the **training window**) | 104 seen -> **143 unseen** |
+| arose as a mutation event anywhere in `output1` (the **whole pandemic span**) | 235 -> **12 never** |
+| present in the 2021 arm's ncov tree (a **different dataset** -- 347 branches) | 29 -> 218 |
+
+Cross-tab of the first two, which closes it:
+
+```
+carried in training AND event somewhere : 104
+carried, but no event anywhere          :   0
+NOT carried, but event somewhere        : 131   <- the entire gap
+neither                                 :  12
+```
+
+So **143 de novo = 131 cells that arise only after the cutoff + 12 that never arise**.
+Two independent confirmations the mask means what it claims: the cells carried in
+`root.csv` number exactly 104, and the cells arising as a *training* mutation event
+also number exactly 104 -- the same set. The training window is 3,648 of 171,248
+examples (2.1%), so most of a list of "mutations of interest" is still in the future at
+that point and 58% de novo is the expected result.
+
+s29 warned about exactly this trap ("'observed at some point' ranges over that
+dataset's whole span... must not be read as [a training window]") and it was walked
+into anyway.
+
+### The measurement s29 asked for, and it settles the PSSM question
+
+s29 named the missing number as "the list's overlap with Figure 2's own training
+window". It depends on the weighting, and that **is** the answer:
+
+| | seen | de novo |
+|---|---|---|
+| by **cell** (what `list_recall` scores) | 42% | 58% |
+| by **event** (what the eval.py list metric scores) | **81%** | 19% |
+
+The eval.py metric counts mutation *events*, and a training-window cell like N501Y
+recurs thousands of times across the test set, so four fifths of what that eval scores
+sits on cells the model saw in training. **That is why `pssm_root` reaches 0.735 there
+and exactly chance (0.100) on the de novo subset.** The metric's weighting, not the
+list's composition, hands the composition baseline its result. The framing in this
+log's s30 reporting -- "a list that is mostly not de novo" -- is **wrong by cell count
+and right only by event count**, and is withdrawn as written.
+
+### fullpool is the Figure 2 redo; the restricted pool is the odd one
+
+Worth stating plainly because the naming suggests the opposite. For one query the model
+scores ~4,400 RBD cells (~4,200 after the wild-type mask) and takes its top 10% ~420.
+
+* `list_<L>_fullpool` -- the model still ranks the whole RBD; the list only filters
+  **what you count**. This is Figure 2's question asked of a subset of targets.
+* `list_<L>` -- the model is handed only the 247 list cells, so its top 10% is ~25
+  cells. This changes the model's task from "find these in the protein" to "sort a list
+  you were given", which is a different question and not the one being asked.
+
+`_fullpool` reads as the extra only because `list_<L>` got the plain name. The figure
+is built on `_fullpool` alone; the restricted variants stay computed (free once the
+forward pass is done) but out of the panels.
+
+### Four new variants, and why the de novo pair was needed
+
+Added to `eval.py`: `list_<L>_unseen`, `list_<L>_unseen_fullpool`, and the emergence
+pair `variant_emergence_list_<L>_unseen[_thresh1]`. Masks verified before any GPU time:
+
+| variant | pool | targets |
+|---|---|---|
+| `list_coguk` | 247 | 247 |
+| `list_coguk_fullpool` | 4,422 | 247 |
+| `list_coguk_unseen` | 143 | 143 |
+| `list_coguk_unseen_fullpool` | **3,605** | **143** |
+
+The last line is the many-query analogue of `list_recall.py` -- same 143 targets in the
+same 3,605-cell pool -- so those two evals are directly comparable for the first time.
+**143 is a count of CELLS; the eval.py metric scores EVENTS**, so that variant's
+denominator is 5,070, not 143.
+
+The de novo pair is not a replacement for the plain one: Figure 2 shows all-mutations
+and de novo side by side (panels B and C), so the list version needs both.
+
+### A new output directory is mandatory when a variant is added
+
+Resume marks a model done from its row in the hit-rate `all` CSV. Pointing a run with
+new variants at an existing directory skips every model already there and **those
+models never acquire the new columns**. Hence `evals_sc2_lists_mtb/` rather than
+reusing `evals_sc2_lists/`. `eval_sc2_mutation_lists.sh` takes a second argument `mtb`
+that adds `--multitree-baselines` and switches directory together, so the two cannot
+drift apart.
+
+### The torchvision fix is confirmed end to end
+
+s30 recorded the fix and the preflight but could only show that the build no longer
+skipped. The rows have now landed, and they change s30's conclusion:
+
+| model | CoG-UK fullpool@10% |
+|---|---|
+| antiGen as EVE full FT | 0.837 |
+| **antiGen as ESM 2 (35M) partial FT** | **0.813** |
+| antiGen as ESM 2 (35M) LM head FT | 0.786 |
+| EVE | 0.780 |
+| antiGen as ESM 2 (35M) full FT | 0.736 |
+| PSSM | 0.735 |
+| antiGen | 0.722 |
+| ESM 2 (35M), untrained | 0.146 |
+
+**s30's caveat was right and should be read as vindicated, not retracted.** It said the
+eight absentees were "not predictors one can assume would have placed low"; one of them
+is now second. The margin at the top collapses from +0.057 over the runner-up to
+**+0.024**. The 650M arms have not landed yet, so this is still provisional -- but less
+so, and in the direction s30 predicted.
+
+### The 2021 multi-tree model in the Figure 2 panels
+
+Mechanically compatible: `seq_len=1273`, `ESM2_FITNESS_PREDICTOR`, alphabet
+`ACDEFGHIKLMNPQRSTVWY*-`, loading through `eval.py`'s own `load_checkpoint`.
+
+Two plumbing blocks, neither about the model. `discover_checkpoints` globs
+**non-recursively** for `fitness_*.pt` and its regex is `fitness_(.*)_(\d{8}_\d{6})\.pt$`,
+so the `joint_2021_s*/..._best.pt` layout is invisible on both counts. Resolved with a
+staging directory of symlinks under parseable names (`ckpt_stage_mt2021/`) rather than
+by touching discovery. Three joint and three single seeds, the single arm included
+because it is nearly free and gives the joint-vs-single contrast on the list directly.
+
+**Read the numbers as a floor.** `eval.py` scores one checkpoint per group, while the
+multitree arm's headline numbers are 8-seed ensembles, and s25 measured ensembling as
+the largest single effect on that arm (de novo recall 0.50 -> 0.59). It also trains on
+312 ncov examples against output1's 3,648, plus five other viruses -- that asymmetry is
+the question, not a confound.
+
+**A known, accepted leak.** The ncov tree carries 3 RBD cells that output1's de novo
+mask calls unseen, one of which (**504D**) is among the 143 CoG-UK de novo targets.
+Measured, parked on instruction for the plausibility check, **to be closed before any
+of these numbers are reported.**
+
+### Another silent exit 0, and the class fixed rather than the instance
+
+The first submission (3361182) reported **COMPLETED in 44 seconds with an empty output
+directory**. These checkpoints carry `experiment: 'forecast@2021-01-01'` in train_args,
+which `eval.py` gates behind `--include-experimental`; all six were filtered out and
+the run exited 0. Same shape as the ESM-2 build skips -- discover groups, filter them
+all away, report success.
+
+`eval.py` now **raises SystemExit** when it discovers checkpoint groups and filters
+every one of them out, naming the count and pointing at the `[skip]` lines. The one
+legitimate no-checkpoint case, `--multitree-baselines` supplying its own models, still
+passes through. With `--include-experimental` all six `[keep]` and the sweep runs.
+
+That is the second instance in two days of this failure mode, and the general lesson is
+worth the restatement: **a filter that removes everything is a misconfiguration, not a
+no-op, and must not exit 0.**
+
+### Jobs in flight
+
+| job | arm | output | limit |
+|---|---|---|---|
+| **3361136** | RBD, de novo list variants + factored baselines | `evals_sc2_lists_mtb/` | 3 days |
+| 3362145 | 2021 multi-tree, 3 joint + 3 single seeds | `evals_sc2_lists_mt2021/` | 1 day |
+| 3360817 | RBD, original variants (completes the s30 table) | `evals_sc2_lists/` | 2 days |
+| 3360818 | full Spike, original variants | `evals_sc2_lists_fullseq/` | 7 days |
+
+3360818 is deliberately left on the old variant set -- it is the supplement, and
+restarting a 7-day job to add the de novo cuts was not worth doing unilaterally.
+
+### Still to build
+
+The figure. `fig2_sc2_benchmarks.R` needs `EVAL_DIR` and the two metric vectors
+parameterised, and group/colour assignments for codon, substitution and
+`where_times_which`, which s25 flagged as missing from the R inventory and which will
+otherwise render as ungrouped model rows.

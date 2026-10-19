@@ -471,8 +471,19 @@ def main():
         else:
             print(f"[skip] {prefix}: no checkpoint matches dataset '{args.dataset}'")
     if not candidates:
-        print(f"No checkpoints match --dataset {args.dataset}. Nothing to do.")
-        return
+        # Exit NON-ZERO. Discovering checkpoint groups and then filtering every one of
+        # them away is a misconfiguration -- the wrong --dataset, or an experimental
+        # arm that needs --include-experimental -- not a no-op. Returning quietly here
+        # let a 44-second job report success with an empty output directory, the same
+        # silent-success shape as the ESM-2 build skips that cost two full runs.
+        # `--multitree-baselines` alone is the one legitimate no-checkpoint case.
+        msg = (f"No checkpoints match --dataset {args.dataset} "
+               f"({len(groups)} group(s) discovered, all filtered out). "
+               f"See the [skip] lines above for why.")
+        if args.multitree_baselines:
+            print(msg + " Continuing: --multitree-baselines supplies its own models.")
+        else:
+            raise SystemExit(msg)
 
     # Optionally evaluate some models first (e.g. the from-scratch transformer), so
     # their rows land early even if the heavy models (650M) push the job to the wall.
