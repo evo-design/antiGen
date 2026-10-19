@@ -32,13 +32,37 @@
 ##   E-H  (new)          recall at the top decile, both poolings
 ##   I-J  <- Fig 2 D-E   recall AUC, event-weighted
 ##   K-L  (new)          recall AUC, cell-weighted
+##   M-P  (new)          CoG-UK yield of the BA.2 top decile, over time
 ##
-## Figure 2's PSSM-precision panels (its G-J) are deliberately NOT carried over.
-## They are a single-query metric -- the testing root's top decile against what
-## had emerged by t -- so the pooling question this figure exists to ask does
+## Figure 2's PSSM-precision panels (its G-J) are NOT carried over. They are a
+## single-query metric, so the pooling question this figure exists to ask does
 ## not arise for them, and the two runs they would have to be assembled from
 ## disagree by up to 7.4e-02 on that metric (see fig2_sc2_benchmarks.R). They
 ## stay in Figure 2, on one run, where they are read.
+##
+## THE BOTTOM ROW replaces them with a question that suits a curated list. One
+## forward pass on the BA.2 root fixes a top decile over the RBD -- ~442 of
+## 4,422 cells, the set a forecaster would have flagged. Sweep time and ask what
+## share of that fixed set turns out to be CoG-UK mutations that emerged
+## downstream of BA.2 by t:
+##
+##     value(t) = |top-q(RBD) & list & emerged_t| / (q * N_RBD)
+##
+## The denominator does not move with t, so the curve rises monotonically and
+## its max is the end-of-series value. Two sibling metrics this is NOT:
+## Figure 2's list-restricted PSSM precision ranks within the 247 listed cells,
+## a different pool and so a different numerator; and dividing the same
+## numerator by |list & emerged_t| gives a recall reading, proportional to this
+## at each fixed t but whose max lands on the first step with a single emerged
+## cell, where several models tie at 1.000.
+##
+## Read the bottom row against its two reference curves, not against 1. The
+## metric is capped by how much of the list is available: 234 of the 247 listed
+## RBD cells are mutations BA.2 could make at all (it already carries 13), of
+## which 200 ever emerge at 1+ cases and 79 at 100+. The grey CEILING line is
+## that cap; the dotted CHANCE line is |list & emerged_t| / N_RBD, what a model
+## picking its decile at random would score. Distance above the dotted line is
+## the result.
 ##
 ## THE TOP-DECILE ROW IS NOT REDUNDANT WITH THE AUC ROW. The AUC integrates a
 ## curve that is saturated over most of its range -- every rung is above 0.95
@@ -91,6 +115,7 @@ suppressPackageStartupMessages({
 apply_paper_defaults()
 
 MACRO_DIR <- "data/evals_sc2_lists_macro"
+VARR_DIR  <- "data/evals_sc2_lists_varrecall"
 
 
 ## --- Model inventory -------------------------------------------------------
@@ -242,6 +267,34 @@ recall_long <- rbind(recall_long, anchors)
 
 by_x <- recall_long
 
+
+## --- The BA.2 top-decile series (bottom row) -------------------------------
+## One row per (model, subset, threshold, time step). `n_selected` is that
+## model's top-decile size and is constant in t; `n_targets` is the number of
+## listed cells emerged downstream of BA.2 by then, which drives both reference
+## curves. Time steps are the variant PSSM grid, t = 0.1 ... 6.0 years.
+
+VARR_METRICS <- c("varr_1", "varr_100")
+longform_varr_metrics <- c("emerged 1+ cases", "emerged 100+ cases")
+
+varr_path <- file.path(VARR_DIR, "list_variant_recall.csv")
+have_varr <- file.exists(varr_path)
+if (have_varr) {
+  varr <- read.csv(varr_path)
+  varr <- varr[varr$list == "coguk" & varr$subset == "all", ]
+  varr$metric <- ifelse(varr$threshold == 1, "varr_1", "varr_100")
+  varr$x <- (varr$step + 1) / 10
+  ## Both references are model-independent except through N_RBD, which varies by
+  ## ~10% with the gap/stop columns a model does not emit; the median is used so
+  ## the lines are single curves rather than a band.
+  varr_ref <- varr %>%
+    group_by(metric, x) %>%
+    summarise(ceiling = median(n_targets / n_selected),
+              chance  = median(0.1 * n_targets / n_selected), .groups = "drop") %>%
+    as.data.frame()
+  by_x <- rbind(by_x, varr[, c("model", "metric", "x", "value")])
+}
+
 ## Fail loudly on an unlisted model rather than mis-grouping it.
 unknown <- setdiff(unique(by_x$model), names(MODEL_GROUP))
 if (length(unknown) > 0) {
@@ -249,7 +302,7 @@ if (length(unknown) > 0) {
 }
 
 ## Report the holes rather than hiding them.
-for (metric in RECALL_METRICS) {
+for (metric in c(RECALL_METRICS, if (have_varr) VARR_METRICS)) {
   have <- unique(by_x$model[by_x$metric == metric])
   miss <- setdiff(names(MODEL_GROUP), have)
   if (length(miss) > 0) {
@@ -275,9 +328,14 @@ auc_sorted <- function(x, y) {
   sum(diff(x) * (head(y, -1) + tail(y, -1))) / 2
 }
 
+## The new series is monotone in t, so its max is simply the end-of-series
+## value; taking the max rather than the last row makes that explicit and is
+## robust to a truncated time grid.
 summary_df <- by_x %>%
   group_by(model, metric) %>%
-  summarise(value = auc_sorted(x, value), .groups = "drop") %>%
+  summarise(value = if (metric[1] %in% RECALL_METRICS) auc_sorted(x, value)
+                    else max(value, na.rm = TRUE),
+            .groups = "drop") %>%
   as.data.frame()
 
 ## The top decile on its own, as a summary like the AUC (see the header).
@@ -302,12 +360,23 @@ relabel <- function(df, metrics, labels) {
 recall_x      <- relabel(by_x, RECALL_METRICS, longform_recall_metrics)
 recall_auc_df <- relabel(summary_df, RECALL_METRICS, longform_recall_metrics)
 recall_q10_df <- relabel(decile_df, RECALL_METRICS, longform_recall_metrics)
+if (have_varr) {
+  varr_x      <- relabel(by_x, VARR_METRICS, longform_varr_metrics)
+  varr_max_df <- relabel(summary_df, VARR_METRICS, longform_varr_metrics)
+  varr_ref$metric <- factor(longform_varr_metrics[match(varr_ref$metric, VARR_METRICS)],
+                            levels = longform_varr_metrics)
+}
 
 
 ## --- Panels ----------------------------------------------------------------
 
 #' One curve panel: the best model of each group, plus antiGen itself.
-curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA) {
+#'
+#' `refs` draws the two model-independent reference curves of the bottom row:
+#' the ceiling (every listed emerged cell inside the decile) and chance (a decile
+#' picked at random). Without them the bottom row reads as uniformly low.
+curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA,
+                        refs = NULL) {
   sub  <- df[df$metric == metric, ]
   sumi <- summ[summ$metric == metric, ]
   keep <- vapply(split(sumi, droplevels(sumi$group)), function(g) {
@@ -326,6 +395,14 @@ curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA) {
   if (!is.na(chance)) {
     p <- p + geom_abline(slope = chance, intercept = 0, linewidth = 0.3,
                          linetype = "dotted", color = "grey50")
+  }
+  if (!is.null(refs)) {
+    r <- refs[refs$metric == metric, ]
+    p <- p +
+      geom_line(data = r, aes(x = x, y = ceiling), inherit.aes = FALSE,
+                linewidth = 0.4, color = "grey65") +
+      geom_line(data = r, aes(x = x, y = chance), inherit.aes = FALSE,
+                linewidth = 0.4, linetype = "dotted", color = "grey40")
   }
   p +
     geom_line(linewidth = 0.75) +
@@ -416,6 +493,24 @@ decile_bar_panels <- lapply(seq_along(longform_recall_metrics), function(i) {
                color = "grey30")
 })
 
+varr_curve_panels <- if (!have_varr) NULL else
+  lapply(seq_along(longform_varr_metrics), function(i) {
+    curve_panel(varr_x, varr_max_df, longform_varr_metrics[i],
+                "Date (t, years into pandemic)",
+                if (i == 1) "P(top-decile cell is listed & emerged by t)" else "",
+                paste0("BA.2 top decile, ", longform_varr_metrics[i]),
+                refs = varr_ref)
+  })
+
+varr_bar_panels <- if (!have_varr) NULL else {
+  rng <- c(0, max(varr_max_df$value))
+  lapply(seq_along(longform_varr_metrics), function(i) {
+    bar_panel(varr_max_df, longform_varr_metrics[i], "Max (end of series)",
+              paste0("Max yield, ", longform_varr_metrics[i]),
+              labels_on_y = (i == 1), xrange = rng)
+  })
+}
+
 figure <- plot_grid(
   legend_grob,
   plot_grid(plotlist = recall_curve_panels, nrow = 1, labels = LETTERS[1:4],
@@ -424,9 +519,17 @@ figure <- plot_grid(
             rel_widths = c(1.9, 1, 1, 1)),
   plot_grid(plotlist = recall_bar_panels, nrow = 1, labels = LETTERS[9:12],
             rel_widths = c(1.9, 1, 1, 1)),
+  if (have_varr)
+    plot_grid(plot_grid(plotlist = varr_curve_panels, nrow = 1,
+                        labels = LETTERS[13:14], rel_widths = c(1.06, 1)),
+              plot_grid(plotlist = varr_bar_panels, nrow = 1,
+                        labels = LETTERS[15:16], rel_widths = c(1.9, 1)),
+              nrow = 1)
+  else NULL,
   ncol = 1,
-  rel_heights = c(0.1, 1, 1.5, 1.5)
+  rel_heights = c(0.1, 1, 1.5, 1.5, if (have_varr) 1.5 else 0)
 )
 
-save_figure(figure, "coguk_list_results", width = 17, height = 16)
+save_figure(figure, "coguk_list_results", width = 17,
+            height = if (have_varr) 21 else 16)
 cat("wrote figs/coguk_list_results.png and figs_vector/coguk_list_results.pdf\n")

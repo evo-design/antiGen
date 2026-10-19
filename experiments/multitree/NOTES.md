@@ -3940,6 +3940,61 @@ poolings. `list_macro.py` gained `--multitree-baselines`, so the three factored 
 here are scored by the same script in the same run as everything else -- unlike their
 appearance in Figure 2.
 
+### The bottom row: CoG-UK yield of the BA.2 top decile
+
+The PSSM-precision row was replaced on instruction with a question that suits a curated
+list. One forward pass on the BA.2 root fixes a top decile over the **RBD** -- ~442 of
+4,422 cells, the set a forecaster would have flagged -- and time is swept over the
+variant PSSM grid:
+
+    value(t) = |top-q(RBD) & list & emerged_t| / (q * N_RBD)
+
+`antiGen/list_variant_recall.py`, job **3364139**, 29 models in ~15 min (one forward
+pass each). "Emerged" is the variant PSSM at >= threshold, and those PSSMs are built
+from BA.2-descended sequences, so "emerged by t" already means "arose downstream of the
+variant root by t". Thresholds 100 and 1, as eval.py uses for BA.2.
+
+**Two sibling metrics it is not, both checked rather than assumed:**
+
+* Figure 2's `variant_emergence_list_coguk` NaN-masks everything off-list **before**
+  ranking, so its top decile is ~25 of the 247 listed cells. Different pool, different
+  top-q set, different numerator -- not this metric and not proportional to it.
+* Dividing the same numerator by `|list & emerged_t|` gives a **recall** reading. That
+  one is proportional to this at each fixed t up to N_RBD, so it ranks models almost
+  identically -- but its denominator grows with t, so the curve falls and **its max
+  lands on the first step with a single emerged cell, where pssm_root, EVEscape and
+  MSA_Transformer_XFG all tie at exactly 1.000**. That degeneracy is why the fixed
+  denominator is used. It was caught by printing the step and n_targets at which each
+  max was attained, which is worth doing for any max-over-t summary.
+
+| model | max, 1+ cases | max, 100+ cases |
+|---|---:|---:|
+| antiGen as EVE full FT | **0.246** | **0.147** |
+| EVE | 0.207 | 0.144 |
+| antiGen as Tranception full FT | 0.204 | 0.139 |
+| antiGen as ESM 2 (650M) full FT | 0.209 | 0.105 |
+| EVEscape | 0.195 | 0.103 |
+| PSSM | 0.141 | 0.097 |
+| antiGen | 0.150 | 0.095 |
+| where x which | 0.150 | 0.090 |
+
+**Read against the ceiling, not against 1.** BA.2 already carries 13 of the 247 listed
+RBD cells, so only 234 are mutations it could make; 200 emerge at 1+ cases and 79 at
+100+. Against a ~442-cell decile that caps the metric at ~0.45 and ~0.19. Both the
+ceiling and the chance curve (`|list & emerged_t| / N_RBD`) are drawn on the panels.
+
+**N_RBD is per model and the spread is ~10%**: 422 cells for a model that emits gaps
+(pssm_root, antiGen, where x which), 402 for the ESM-2 arms, 382 for EVE/Tranception,
+which do not emit gap/stop and so are scored against a smaller decile. This is
+`variant_hit_rates`' own convention (`n_selected = q * n_valid`), kept for consistency,
+but it means cross-family comparisons carry that factor: eve_ft's 0.1466 would be 0.1327
+at N = 422, still first. Within a family the ordering is unaffected.
+
+**antiGen places mid-table here** (7th at 100+), against first on the de novo
+cell-weighted panels. Not a contradiction: this row is dominated by what actually swept
+through BA.2 descendants, which is mostly cells already in the training window, and it
+is a single-query metric rather than an average over 17,978 queries.
+
 ### State
 
 * `evals_sc2_lists_macro{,_fast,_head,_mt2021,_mtb}/` hold `list_macro_summary.csv` and
