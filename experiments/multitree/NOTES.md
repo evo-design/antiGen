@@ -3882,9 +3882,67 @@ root's top decile against what had emerged by t -- so it already weights each ce
 It is drawn restricted to the listed cells, from `eval.py`'s own
 `variant_emergence_list_coguk*` outputs.
 
+### The cross-tree factored baselines, finally rendered
+
+s25 computed codon, substitution and `where_times_which` into `evals_sc2_mtb/` and
+noted the R scripts were not updated. They were still unrendered three sessions later.
+Both figures now carry them, grouped by what data each had access to, which is the rule
+fig2's palette already encodes: **codon is pre-pandemic** (ModelType.CODON is built from
+CodonConfig and sees no training data), **substitution and where x which saw the
+training window** (both are fitted on the training examples).
+
+On Figure 2's own metrics they are not minor rungs:
+
+| | recall AUC, all | recall AUC, de novo |
+|---|---:|---:|
+| antiGen | **0.848** | **0.813** |
+| where x which | 0.824 | **0.807** |
+| PSSM | 0.807 | 0.495 |
+| substitution | 0.784 | 0.786 |
+| codon | 0.686 | 0.780 |
+
+**`where x which` lands within 0.006 of antiGen on de novo recall AUC** -- the same
+shape as s14's multi-tree finding (model and `where x which` within 0.014 on de novo
+targets), now on the sc2 panel. The three rungs also displace PSSM and EVEscape as
+best-of-group in fig2's curve panels.
+
+### A cross-run disagreement that constrains the precision panels
+
+`evals_sc2` and `evals_sc2_mtb` are the same pipeline on the same data, so the three new
+rows can only be merged into Figure 2 if the two runs agree. Measured over 83,106 cells:
+
+* **recall metrics agree to 3.8e-04** (worst: evcouplings -- s30's sampler noise). The
+  0.006 margin above is 15x that, so the recall panels are sound.
+* **`variant_emergence_*` disagrees by up to 7.4e-02** (tranception_frozen_both;
+  `simple_d128_n2` by 3.8e-02), and **the gap does not shrink with t**, so it is not a
+  small-denominator effect at early dates. Cause unresolved.
+
+So in fig2's precision panels the three rungs are a row from one run against rows from
+another. `where x which` nominally takes 1st on de novo max precision (0.692 against
+antiGen's 0.681) and **that margin is inside the cross-run spread and must not be
+quoted**. The merge never overwrites a published row: only models absent from
+`evals_sc2` are taken from `evals_sc2_mtb`. Closing this properly needs one run of the
+full roster with `--multitree-baselines`; `evals_sc2_mtb` predates the torchvision fix
+and so has no ESM-2 arms.
+
+### The list figure, after review
+
+Two panels' worth of material was cut on instruction, both for good reasons:
+
+* **the 2021-cutoff multi-tree arm**, which belongs with the multi-tree figures rather
+  than the main-model comparison. Still scored, in `evals_sc2_lists_macro_mt2021/`;
+* **the PSSM-precision row**. It is a single-query metric, so the pooling question this
+  figure exists to ask does not arise for it, and it would have had to be assembled
+  across the two runs above. It stays in Figure 2, on one run.
+
+The figure is now 12 panels: recall curves, top decile, recall AUC, each in both
+poolings. `list_macro.py` gained `--multitree-baselines`, so the three factored rungs
+here are scored by the same script in the same run as everything else -- unlike their
+appearance in Figure 2.
+
 ### State
 
-* `evals_sc2_lists_macro{,_fast,_head,_mt2021}/` hold `list_macro_summary.csv` and
+* `evals_sc2_lists_macro{,_fast,_head,_mt2021,_mtb}/` hold `list_macro_summary.csv` and
   `list_macro_percell.csv` (per-cell rates at q = 0.1, for the slices above).
 * **EVmutation has no recall rows yet**: `evcouplings` rebuilds its couplings with
   `plmc`, which has been running over 1.5h in both jobs. It is in the precision panels.

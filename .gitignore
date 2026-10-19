@@ -27,8 +27,8 @@ evals_*/
 # ...but antiGen-figures ships pooled eval folders that must be tracked: a
 # figure has to be reproducible from the commit that adds it.
 !antiGen-figures/data/evals_sc2/
-!antiGen-figures/data/evals_sc2_lists/
 !antiGen-figures/data/evals_sc2_lists_macro/
+!antiGen-figures/data/evals_sc2_mtb/
 # NOTE: do not blanket-ignore *.csv — data/baselines*/ and data/toy/ ship tracked CSVs.
 # Eval/training outputs are written outside the repo (or to the ignored dirs above).
 

@@ -55,10 +55,14 @@ import torch
 from torch.utils.data import DataLoader
 
 from antiGen import datasets
+from antiGen.config import (AlphabetConfig, CodonConfig, ModelConfig, ModelType)
 from antiGen.eval import (MutationDataset, config_label, dataset_of_train_args,
                           discover_checkpoints, peek_checkpoint_meta)
 from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
-                                compute_hit_rate, load_baselines, load_checkpoint)
+                                compute_hit_rate, fit_substitution_baseline,
+                                load_baselines, load_checkpoint,
+                                positional_marginal_counts,
+                                WhereTimesWhichPredictor)
 from antiGen.load import load_examples, load_pssms
 from antiGen.models.factory import create_model
 from antiGen.mutation_lists import describe as describe_list, load_mutation_list
@@ -123,6 +127,14 @@ def cell_pass(score_fn, loader, variants, device, eval_range, qtiles):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     return {k: (v[0].cpu(), v[1].cpu()) for k, v in acc.items()}
+
+
+def _masked_scores(model, aa_batch, model_gap_stop_mask):
+    """One forward pass, with the cells a model does not legitimately emit NaN-ed."""
+    with torch.no_grad():
+        scores = model(aa_batch).float()
+    scores[:, model_gap_stop_mask] = float('nan')
+    return scores
 
 
 def summarize(acc):
@@ -210,6 +222,14 @@ def main():
     ap.add_argument('--qtiles', default='0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9')
     ap.add_argument('--percell-qtile', type=float, default=0.1)
     ap.add_argument('--baselines-only', action='store_true')
+    ap.add_argument('--multitree-baselines', action='store_true',
+                    help='Also score the cross-tree factored baselines (codon, '
+                         'substitution, where x which). They read the residue at each '
+                         'position of the query, so they cannot be expressed as the '
+                         'fixed (L, E) maps data/baselines/ holds and go through the '
+                         'model path instead -- which also means they inherit the '
+                         'gap/stop masking. Fitted on the TRAINING examples only.')
+    ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--skip-baselines', action='store_true',
                     help='Score only the checkpoints. The CSV baselines are fixed maps '
                          'and cost ~2 min each; skipping them lets a second job get at '
@@ -315,8 +335,44 @@ def main():
                 print(f"[keep] {label}: {os.path.basename(chosen[label])}")
                 candidates.append((label, chosen[label]))
         if not candidates:
-            raise SystemExit(f"No checkpoints match --dataset {args.dataset} "
-                             f"({len(groups)} group(s) discovered, all filtered out).")
+            # Discovering groups and filtering every one away is a misconfiguration,
+            # not a no-op (NOTES s31). --multitree-baselines is the one legitimate
+            # no-checkpoint case: it supplies its own models.
+            msg = (f"No checkpoints match --dataset {args.dataset} "
+                   f"({len(groups)} group(s) discovered, all filtered out).")
+            if args.multitree_baselines:
+                print(msg + " Continuing: --multitree-baselines supplies its own models.")
+            else:
+                raise SystemExit(msg)
+
+    # ── The cross-tree factored baselines, built the same way eval.py builds them
+    builtin_models = {}
+    if args.multitree_baselines:
+        print("\n=== Building cross-tree factored baselines ===", flush=True)
+        _fit_cache = {}
+
+        def _fit():
+            if "fit" not in _fit_cache:
+                print(f"  fitting substitution matrix on {len(training_examples)} "
+                      f"training examples (seed={args.substitution_seed})...", flush=True)
+                _fit_cache["fit"] = fit_substitution_baseline(
+                    training_examples, device, allowed_aas, seed=args.substitution_seed)
+            return _fit_cache["fit"]
+
+        builtin_models = {
+            "codon": lambda: create_model(ModelConfig(
+                model_type=ModelType.CODON, seq_len=seq_len,
+                alphabet=AlphabetConfig(amino_acids=allowed_aas),
+                codon=CodonConfig()), device),
+            "substitution": _fit,
+            "where_times_which": lambda: WhereTimesWhichPredictor(
+                _fit().config,
+                positional_marginal_counts(training_examples, seq_len, E),
+                _fit()).to(device),
+        }
+        for name in builtin_models:
+            candidates.append((name, None))
+        print(f"  added {len(builtin_models)}: {', '.join(builtin_models)}")
 
     by_model = read_done(args.output_dir)
     skipped = []
@@ -353,6 +409,18 @@ def main():
             print(f"[resume-skip] {prefix}")
             continue
         print(f"\n=== Model: {prefix} ===", flush=True)
+        if prefix in builtin_models:
+            model = builtin_models[prefix]()
+            model.eval()
+            model_mask = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
+            record(prefix, cell_pass(
+                (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
+                loader, variants, device, eval_range, qtiles))
+            del model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            continue
         # A model that cannot be built is skipped so one bad checkpoint does not cost
         # the rows already scored -- but the skips are collected and the run exits
         # NON-ZERO at the end (NOTES s30: a silent [skip] plus exit 0 is how eight
@@ -385,13 +453,9 @@ def main():
         model.eval()
         model_mask = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
 
-        def score_fn(aa, model=model, model_mask=model_mask):
-            with torch.no_grad():
-                s = model(aa).float()
-            s[:, model_mask] = float('nan')
-            return s
-
-        record(prefix, cell_pass(score_fn, loader, variants, device, eval_range, qtiles))
+        record(prefix, cell_pass(
+            (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
+            loader, variants, device, eval_range, qtiles))
         del model, ckpt
         gc.collect()
         if torch.cuda.is_available():

@@ -32,8 +32,13 @@
 ##   E-H  (new)          recall at the top decile, both poolings
 ##   I-J  <- Fig 2 D-E   recall AUC, event-weighted
 ##   K-L  (new)          recall AUC, cell-weighted
-##   M-N  <- Fig 2 G-H   PSSM precision on the list (1+ / 100+ cases)
-##   O-P  <- Fig 2 I-J   max PSSM precision
+##
+## Figure 2's PSSM-precision panels (its G-J) are deliberately NOT carried over.
+## They are a single-query metric -- the testing root's top decile against what
+## had emerged by t -- so the pooling question this figure exists to ask does
+## not arise for them, and the two runs they would have to be assembled from
+## disagree by up to 7.4e-02 on that metric (see fig2_sc2_benchmarks.R). They
+## stay in Figure 2, on one run, where they are read.
 ##
 ## THE TOP-DECILE ROW IS NOT REDUNDANT WITH THE AUC ROW. The AUC integrates a
 ## curve that is saturated over most of its range -- every rung is above 0.95
@@ -44,11 +49,6 @@
 ## decile is the operating point the numbers are usually quoted at, so it is
 ## drawn rather than left to be read off the foot of the curve.
 ##
-## PSSM precision needs no pooling column. It is a single-query metric -- the
-## testing root's top decile, scored against what had emerged by time t -- so
-## it already weights each cell once and the micro/macro distinction does not
-## arise. It is shown restricted to the listed cells.
-##
 ## WHICH SUBSET IS WHICH. "All list cells" is `list_coguk_fullpool`: the listed
 ## cells are the targets, every RBD cell is still a candidate, which is Figure
 ## 2's question asked of a subset. "De novo" is `list_coguk_unseen_fullpool`:
@@ -57,25 +57,25 @@
 ## (the model is handed only the 247 listed cells) are computed but not drawn:
 ## they ask "sort this list", not "find these in the protein".
 ##
-## PROVENANCE. Recall comes from antiGen/list_macro.py, split across four SLURM
-## jobs so the headline checkpoints were not queued behind the 650M passes and
-## evcouplings' plmc rebuild; the rows are merged here and models scored by more
-## than one job are checked against each other. Its event-weighted column
-## reproduces the published `quantile_hit_rates_list_coguk*` CSVs over all 396
-## (model, variant, quantile) cells to 1.5e-07, which is the check the pooling
-## comparison rests on. Precision comes from `eval.py`'s own
-## `variant_emergence_list_coguk*` outputs (job 3360817).
+## PROVENANCE. Everything here comes from antiGen/list_macro.py, split across
+## several SLURM jobs so the headline checkpoints were not queued behind the 650M
+## passes and evcouplings' plmc rebuild; the rows are merged here and models
+## scored by more than one job are checked against each other. The event-weighted
+## column reproduces the published `quantile_hit_rates_list_coguk*` CSVs over all
+## 396 (model, variant, quantile) cells to 1.5e-07, which is the check the
+## pooling comparison rests on.
 ##
-## INCOMPLETE BY DESIGN. Rows still being computed are simply absent: EVmutation
-## has no recall rows yet (plmc), and the four ESM-2 650M arms plus the 2021
-## multi-tree arm have no precision rows. The script reports what is missing
+## The three cross-tree factored baselines (codon, substitution, where x which)
+## are scored by the same script under --multitree-baselines, so unlike their
+## appearance in Figure 2 they are NOT assembled across runs here.
+##
+## INCOMPLETE BY DESIGN. Rows still being computed are simply absent (EVmutation,
+## whose evcouplings rebuild runs plmc). The script reports what is missing
 ## rather than dropping models silently.
 ##
-## THE 2021 MULTI-TREE ARM is drawn as two rows, each the mean of three seeds.
-## Read them as a floor: single checkpoints where that arm's headline numbers
-## are 8-seed ensembles, trained on 312 ncov examples against output1's 3,648.
-## A known leak (504D, one of the 143 de novo cells) is still open and touches
-## the de novo panels specifically.
+## THE 2021-CUTOFF MULTI-TREE ARM is scored by the same script and lives in
+## evals_sc2_lists_macro_mt2021/, but is not drawn here: this figure is the
+## main-model comparison, and that arm belongs with the multi-tree figures.
 ##
 ## Output: figs/coguk_list_results.png   figs_vector/coguk_list_results.pdf
 ## ---------------------------------------------------------------------------
@@ -91,7 +91,6 @@ suppressPackageStartupMessages({
 apply_paper_defaults()
 
 MACRO_DIR <- "data/evals_sc2_lists_macro"
-LIST_DIR  <- "data/evals_sc2_lists"
 
 
 ## --- Model inventory -------------------------------------------------------
@@ -134,9 +133,13 @@ MODEL_GROUP <- c(
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "Pre-Pandemic Data Only",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "Pre-Pandemic Data Only",
   blosum62                                   = "Pre-Pandemic Data Only",
+  ## The genetic code and nothing else -- no training data (ModelType.CODON).
+  codon                                      = "Pre-Pandemic Data Only",
 
-  `multi-tree 2021 joint`                    = "Multi-tree (2021 cutoff)",
-  `multi-tree 2021 single`                   = "Multi-tree (2021 cutoff)"
+  ## Fitted on the TRAINING examples only, so they sit with the rungs that saw
+  ## the training window. Same assignment as fig2_sc2_benchmarks.R.
+  substitution                               = "Pandemic Data in Training Window",
+  where_times_which                          = "Pandemic Data in Training Window"
 )
 
 MODEL_LABEL <- c(
@@ -167,17 +170,15 @@ MODEL_LABEL <- c(
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), untrained",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), untrained",
   blosum62                                   = "BLOSUM62",
-  `multi-tree 2021 joint`                    = "multi-tree 2021, joint (3 seeds)",
-  `multi-tree 2021 single`                   = "multi-tree 2021, single (3 seeds)"
+  codon                                      = "Codon table",
+  substitution                               = "Substitution matrix",
+  where_times_which                          = "Where × which"
 )
 
-GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Multi-tree (2021 cutoff)",
-                  "Deep Mutational Scans", "Pandemic Data in Training Window",
-                  "Pre-Pandemic Data Only")
-## MODEL_TYPE_COLORS_SUPP's five, with one added for the multi-tree arm.
+GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
+                  "Pandemic Data in Training Window", "Pre-Pandemic Data Only")
 GROUP_COLORS <- c("antiGen"                          = "#023e8a",
                   "antiGen Finetunes"                = "#443333",
-                  "Multi-tree (2021 cutoff)"         = "#0077b6",
                   "Deep Mutational Scans"            = "#c6bbbb",
                   "Pandemic Data in Training Window" = "#888f88",
                   "Pre-Pandemic Data Only"           = "#555560")
@@ -207,19 +208,9 @@ if (nrow(overlap) > 0) {
 }
 macro <- macro[!duplicated(key), ]
 
-## The 2021 multi-tree seeds collapse to one row per arm.
-mt <- macro[grepl("^mt2021", macro$model), ]
-if (nrow(mt) > 0) {
-  mt$model <- ifelse(grepl("joint", mt$model),
-                     "multi-tree 2021 joint", "multi-tree 2021 single")
-  mt <- mt %>%
-    group_by(model, variant, qtile) %>%
-    summarise(macro = mean(macro), micro = mean(micro), n_cells = mean(n_cells),
-              n_events = mean(n_events), .groups = "drop") %>%
-    as.data.frame()
-  mt$job <- "mt2021"
-  macro <- rbind(macro[!grepl("^mt2021", macro$model), ], mt[, colnames(macro)])
-}
+## The 2021-cutoff arm is scored by the same script into its own directory; if a
+## copy of it is ever dropped in here, it is not part of this comparison.
+macro <- macro[!grepl("^mt2021", macro$model), ]
 
 ## One "metric" per (subset, pooling). `melt` would mix the two poolings, so
 ## the long frame is built directly.
@@ -249,22 +240,7 @@ anchors <- do.call(rbind, lapply(RECALL_METRICS, function(metric) {
 recall_long <- rbind(recall_long, anchors)
 
 
-## --- Precision: eval.py's emergence outputs, restricted to the list --------
-
-PRECISION_METRICS <- c("variant_emergence_list_coguk_thresh1",
-                       "variant_emergence_list_coguk")
-longform_precision_metrics <- c("list cells, 1+ cases", "list cells, 100+ cases")
-
-precision_long <- do.call(rbind, lapply(PRECISION_METRICS, function(metric) {
-  df <- read.csv(file.path(LIST_DIR, paste0(metric, "_all-models.csv")))
-  df <- df[df$top_quantile == 0.1, -2]          # the top decile only
-  df <- melt(df, id.vars = "model")
-  df$x <- as.numeric(gsub("t_", "", as.character(df$variable)))
-  data.frame(model = df$model, metric = metric, x = df$x, value = df$value,
-             stringsAsFactors = FALSE)
-}))
-
-by_x <- rbind(recall_long, precision_long)
+by_x <- recall_long
 
 ## Fail loudly on an unlisted model rather than mis-grouping it.
 unknown <- setdiff(unique(by_x$model), names(MODEL_GROUP))
@@ -273,7 +249,7 @@ if (length(unknown) > 0) {
 }
 
 ## Report the holes rather than hiding them.
-for (metric in c(RECALL_METRICS, PRECISION_METRICS)) {
+for (metric in RECALL_METRICS) {
   have <- unique(by_x$model[by_x$metric == metric])
   miss <- setdiff(names(MODEL_GROUP), have)
   if (length(miss) > 0) {
@@ -301,8 +277,7 @@ auc_sorted <- function(x, y) {
 
 summary_df <- by_x %>%
   group_by(model, metric) %>%
-  summarise(value = if (metric[1] %in% RECALL_METRICS) auc_sorted(x, value) else max(value),
-            .groups = "drop") %>%
+  summarise(value = auc_sorted(x, value), .groups = "drop") %>%
   as.data.frame()
 
 ## The top decile on its own, as a summary like the AUC (see the header).
@@ -324,11 +299,9 @@ relabel <- function(df, metrics, labels) {
   df$metric <- factor(labels[match(df$metric, metrics)], levels = labels)
   df
 }
-recall_x        <- relabel(by_x, RECALL_METRICS, longform_recall_metrics)
-recall_auc_df   <- relabel(summary_df, RECALL_METRICS, longform_recall_metrics)
-recall_q10_df   <- relabel(decile_df, RECALL_METRICS, longform_recall_metrics)
-prec_x        <- relabel(by_x, PRECISION_METRICS, longform_precision_metrics)
-prec_max_df   <- relabel(summary_df, PRECISION_METRICS, longform_precision_metrics)
+recall_x      <- relabel(by_x, RECALL_METRICS, longform_recall_metrics)
+recall_auc_df <- relabel(summary_df, RECALL_METRICS, longform_recall_metrics)
+recall_q10_df <- relabel(decile_df, RECALL_METRICS, longform_recall_metrics)
 
 
 ## --- Panels ----------------------------------------------------------------
@@ -443,21 +416,6 @@ decile_bar_panels <- lapply(seq_along(longform_recall_metrics), function(i) {
                color = "grey30")
 })
 
-prec_curve_panels <- lapply(seq_along(longform_precision_metrics), function(i) {
-  curve_panel(prec_x, prec_max_df, longform_precision_metrics[i],
-              "Date (t, years into pandemic)",
-              if (i == 1) "P(mut. in top decile obs. by t)" else "",
-              paste0("PSSM precision, ", longform_precision_metrics[i]))
-})
-
-prec_max_range <- c(0, max(prec_max_df$value))
-prec_bar_panels <- lapply(seq_along(longform_precision_metrics), function(i) {
-  bar_panel(prec_max_df, longform_precision_metrics[i], "Max precision",
-            paste0("Max precision, ", sub("list cells, ", "",
-                                          longform_precision_metrics[i])),
-            labels_on_y = (i == 1), xrange = prec_max_range)
-})
-
 figure <- plot_grid(
   legend_grob,
   plot_grid(plotlist = recall_curve_panels, nrow = 1, labels = LETTERS[1:4],
@@ -466,14 +424,9 @@ figure <- plot_grid(
             rel_widths = c(1.9, 1, 1, 1)),
   plot_grid(plotlist = recall_bar_panels, nrow = 1, labels = LETTERS[9:12],
             rel_widths = c(1.9, 1, 1, 1)),
-  plot_grid(plot_grid(plotlist = prec_curve_panels, nrow = 1,
-                      labels = LETTERS[13:14], rel_widths = c(1.06, 1)),
-            plot_grid(plotlist = prec_bar_panels, nrow = 1,
-                      labels = LETTERS[15:16], rel_widths = c(1.9, 1)),
-            nrow = 1),
   ncol = 1,
-  rel_heights = c(0.1, 1, 1.5, 1.5, 1.5)
+  rel_heights = c(0.1, 1, 1.5, 1.5)
 )
 
-save_figure(figure, "coguk_list_results", width = 17, height = 21)
+save_figure(figure, "coguk_list_results", width = 17, height = 16)
 cat("wrote figs/coguk_list_results.png and figs_vector/coguk_list_results.pdf\n")

@@ -40,6 +40,15 @@ EVAL_DIR   <- "data/evals_sc2"
 MODEL_DIR  <- "data/sc2"
 GATING_DIR <- "data/gating"
 
+## The three query-dependent baselines from the cross-tree experiment (codon,
+## substitution, where x which) were scored by a later run of the same pipeline
+## -- they cannot be expressed as the fixed (L, E) maps data/baselines/ holds,
+## so they go through the model path and need `eval.py --multitree-baselines`.
+## Only their rows are taken from here; every model present in both directories
+## keeps its published row (see MTB_MODELS below).
+MTB_DIR    <- "data/evals_sc2_mtb"
+MTB_MODELS <- c("codon", "substitution", "where_times_which")
+
 
 ## --- Model inventory -------------------------------------------------------
 
@@ -50,7 +59,10 @@ subsets <- list(
     "EVEscape",
     "esm2_noft",
     "esm2_650m_noft",
-    "blosum62"
+    "blosum62",
+    ## The genetic code and nothing else: ModelType.CODON is constructed from
+    ## CodonConfig and sees no training data at all.
+    "codon"
   ),
   pandemic_training_data = c(
     "pssm_root",
@@ -59,7 +71,12 @@ subsets <- list(
     "MSA_Transformer_BA2",
     "eve_frozen",
     "tranception_frozen",
-    "evcouplings"
+    "evcouplings",
+    ## Both are fitted on the TRAINING examples only (eval.py's _fit / 
+    ## positional_marginal_counts), so they belong with the rungs that saw the
+    ## training window -- not with the pre-pandemic ones.
+    "substitution",
+    "where_times_which"
   ),
   dms_models = c(
     "Omicron_BA1_bind",
@@ -96,6 +113,7 @@ longform_names <- c(
   "ESM 2 (35M)",
   "ESM 2 (650M)",
   "BLOSUM62",
+  "Codon table",
   "PSSM",
   "PSSM Conservation",
   "MSA Transfomer",
@@ -103,6 +121,8 @@ longform_names <- c(
   "EVE",
   "Tranception",
   "EVmutation",
+  "Substitution matrix",
+  "Where × which",
   "BA.1 DMS (bind)",
   "BA.1 DMS (expression)",
   "BA.2 DMS (bind)",
@@ -157,10 +177,39 @@ longform_variant_emergence_metrics <- c(
 
 ## --- Load the pooled evaluation curves -------------------------------------
 
+#' One metric's CSV, with the three cross-tree rungs appended from MTB_DIR.
+#'
+#' The published rows are never overwritten: only models absent from EVAL_DIR
+#' are taken from MTB_DIR. The two runs are the same pipeline on the same data,
+#' and they agree on the recall metrics over the 22 models they share to
+#' 3.8e-04 (worst: evcouplings), which is the sampler noise NOTES s30 measured.
+#'
+#' THE PRECISION METRICS ARE A DIFFERENT MATTER. On variant_emergence_* the two
+#' runs differ by up to 7.4e-02 (tranception_frozen_both; simple_d128_n2 by
+#' 3.8e-02), and the gap does NOT shrink with t, so it is not a boundary effect
+#' at small denominators. Cause unresolved. Until it is, the three cross-tree
+#' rungs in the precision panels are a row from one run read against rows from
+#' another, and differences between them of that order mean nothing. The recall
+#' panels carry no such caveat.
+read_metric <- function(dir, metric) {
+  read.csv(file.path(dir, paste0(metric, "_all-models.csv")))
+}
+
+with_mtb <- function(metric) {
+  df <- read_metric(EVAL_DIR, metric)
+  path <- file.path(MTB_DIR, paste0(metric, "_all-models.csv"))
+  if (!file.exists(path)) return(df)
+  extra <- read_metric(MTB_DIR, metric)
+  extra <- extra[extra$model %in% setdiff(MTB_MODELS, df$model), , drop = FALSE]
+  if (nrow(extra) == 0) return(df)
+  stopifnot(identical(colnames(df), colnames(extra)))
+  rbind(df, extra)
+}
+
 ## Recall: one row per model, one column per interior quantile. Anchor the
 ## curve at (0, 0) and (1, 1).
 recall_curves <- lapply(HIT_RATE_METRICS, function(metric) {
-  df <- read.csv(file.path(EVAL_DIR, paste0(metric, "_all-models.csv")))
+  df <- with_mtb(metric)
   df$top_0.0.   <- 0
   df$top_100.0. <- 1
   df <- melt(df, id.vars = "model")
@@ -173,7 +222,7 @@ recall_curves <- lapply(HIT_RATE_METRICS, function(metric) {
 ## Precision: one row per (model, top_quantile), one column per time point.
 ## Only the top decile is shown.
 precision_curves <- lapply(VARIANT_EMERGENCE_METRICS, function(metric) {
-  df <- read.csv(file.path(EVAL_DIR, paste0(metric, "_all-models.csv")))
+  df <- with_mtb(metric)
   df <- df[df$top_quantile == 0.1, -2]
   df <- melt(df, id.vars = "model")
   df$variable <- as.numeric(gsub("t_", "", df$variable))
