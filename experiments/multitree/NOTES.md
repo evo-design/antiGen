@@ -4242,6 +4242,7 @@ reason; a bar length alone would overstate what 19 cells settle.
 
 ### Open
 
+**RESOLVED in s36 -- job 3364881 scored all 30 models.** (Original note:)
 **The full-roster table is not in yet.** The ESM-2 arms have landed and one of them --
 the 35M partial-FT arm, +6.0 pp on the listed cells -- is in antiGen's range, so "antiGen
 is the most query-adapted model" is **not** supportable from the pilot alone and must
@@ -4440,3 +4441,99 @@ rescaling the rows above it. Comparing the top 4,404 px against the previously c
 PNG leaves only 1-pixel edge ghosting (band RMSE 0.01-0.05, difference image is outlines
 only, interiors blank): a sub-pixel vertical offset from the taller canvas, no content
 change.
+
+---
+
+## 36. The background row on the full roster: panels K-L are in (2026-10-19)
+
+s33 built the host-vs-control contrast and closed with the one thing it could not
+settle: the table was a pilot, the ESM-2 arms were absent, and the 35M partial-FT arm
+was already inside antiGen's range, so **"antiGen is the most query-adapted model" was
+not supportable**. Job **3364881** (23:17 Oct 18 -> 02:58 Oct 19, 3h42m, exit 0:0) scored
+the complete roster in one pass. This section reports it and draws it.
+
+### The roster is complete, and the pilot's numbers survive it
+
+All **30 models** are present in all four cell sets -- `coguk_{all,unseen}`,
+`rbd_{all,unseen}` -- with no absentees, which is the first time any table in this
+figure's lineage has been complete. `evals_sc2_background_head/` (job 3364950, the
+subset queued around evcouplings' plmc rebuild) is now **redundant**: the full job got
+through plmc on its own, so every model in the figure comes off one pass with one
+checkpoint set, which also retires the third caveat of s34.
+
+The pilot and the full run overlap on 120 model x cellset pairs. Worst disagreement
+**0.65 pp** (antiGen, `coguk_unseen`: 11.72 pilot vs 12.37 full), and the only models
+that move at all are the two the pilot ran on CPU and the job ran on GPU. One cell out
+of 19 is 5.3 pp, so this is sub-cell float drift in the fractional tie weight, not a
+changed call. **Every number s33 quotes holds to one decimal.**
+
+### The claim narrows: antiGen leads on de novo, Tranception frozen leads overall
+
+Top-decile lift, host - control, with the 95% bootstrap over cells:
+
+| | **CoG-UK all** (53) | **CoG-UK de novo** (19) | **all RBD** (145) | **de novo RBD** (50) |
+|---|---|---|---|---|
+| **antiGen** | +4.4 **[-2.3, +11.7]** _3rd_ | **+12.4** [-2.3, +29.0] _1st_ | +4.3 [+0.8, +8.0] _2nd_ | **+12.3 [+4.3, +21.3]** _1st_ |
+| Tranception (frozen) | **+8.2** [-0.7, +17.0] _1st_ | +4.7 [-5.5, +15.9] _9th_ | **+5.2** [+1.0, +9.4] _1st_ | +6.5 [-0.1, +13.5] _5th_ |
+| antiGen as ESM 2 (35M) partial FT | +6.0 [-1.4, +13.6] _2nd_ | +11.2 [-3.0, +27.5] _2nd_ | +3.3 [-0.2, +7.0] _4th_ | +6.1 [-0.6, +14.0] _6th_ |
+| Where x which | +3.2 _5th_ | +9.9 [-0.1, +24.6] _4th_ | +3.4 [+0.3, +6.9] _3rd_ | +9.3 [+3.0, +16.8] _2nd_ |
+| Substitution matrix | +2.9 _6th_ | +9.9 [-0.1, +24.6] _3rd_ | +2.2 _6th_ | +5.0 _9th_ |
+| antiGen as EVE full FT | +0.7 _11th_ | +6.8 [0.0, +18.1] _6th_ | -0.1 _30th_ | +3.6 _12th_ |
+| EVE | -0.4 _25th_ | +0.4 _11th_ | -0.0 _29th_ | +2.3 _15th_ |
+| every query-blind rung (13 of 30) | 0.0 | 0.0 | 0.0 | 0.0 |
+
+**What the full roster settles.** On the **de novo** cuts -- the cells no model saw in
+its training window, which is the cut every other de novo panel in this figure is read
+on -- antiGen is **1st on both cell sets**, and the 50-cell RBD version is the one
+denominator big enough to clear zero with room ([+4.3, +21.3]). That is the claim s33
+set out to test, and it holds on the cut that matters.
+
+**What it takes away.** On the **all-cells** cuts antiGen is no longer the leader:
+**Tranception frozen** is, on both (+8.2 and +5.2), and on `rbd_all` its interval clears
+zero where it is the only model besides antiGen and `where x which` to do so. Tranception
+frozen is a "Pandemic Data in Training Window" rung, so this is not a finetune beating
+its base -- it is a general protein LM that responds to the sequence it is handed. The
+supportable statement is therefore **"antiGen is the most background-adaptive model on
+mutations it has not seen"**, not "the most query-adapted model", and the figure is
+drawn so a reader can see both halves of that.
+
+**A pattern worth recording**: the ordering on the de novo cuts is close to the ordering
+on the de novo *recall* panels (D, F) -- antiGen, then `where x which` and the 35M
+partial arm -- while the all-cells cuts reshuffle it. Two independent transposes of the
+same data agreeing on the de novo cut is the strongest form the headline claim takes
+anywhere in this figure.
+
+**The 650M arms go the wrong way.** `esm2 650M frozen` is at **-16.4 pp** on CoG-UK de
+novo and three of the four 650M arms are negative on at least one cut -- they rank a
+listed mutation *higher* in backgrounds that did not host it. The 35M arms do not do
+this. Not chased here, but it is a real sign flip and not a zero.
+
+### The figure
+
+`data/evals_sc2_background/` did not exist, so `have_bg` was FALSE and the script was
+silently dropping the row it already had code for. Copying `background_summary.csv` (plus
+`background_cellsets.csv` and `backbone_manifest.json`, for provenance) into it turns on
+**panels K-L** in both figures, exactly as `fig_coguk_list.R` was written in s33 to do:
+the CoG-UK all/de novo pair in `coguk_list_results.png` and the all-RBD pair in
+`coguk_list_supp.png`. No script change was needed beyond that -- s35's row-unit
+`fig_height` absorbed the extra row on its own.
+
+**A-J are unchanged, checked the way s35 checked its row.** Against the previously
+committed PNGs the canvas grows 7,595 -> 9,191 px at the same width, px-per-row-unit is
+identical to within 0.1 (1063.7 vs 1063.8), and the difference over the shared 7,595 rows
+is 0.85% of pixels, all of it on text and line edges, growing monotonically down the
+image. Shifting the comparison by +-1 px makes it **worse** (band RMSE 8.1 at shift 0,
+13.9 at +1, 23.1 at -1), so it is a fractional offset from the taller canvas, not a
+content change -- the same signature, and the same magnitude, as s35's.
+
+The backbone control (s34) **does not get this row** and did not need re-rendering: its
+wrapper points `coguk.bg_dir` at a path that does not exist, because these panels are
+already computed on the guide tree alone and would be identical. Its header said
+"Panels I-J", which s35's new yield row made stale; corrected to K-L.
+
+### State
+
+* Full roster in `/large_storage/.../evals_sc2_background/` (30 models, 37 files).
+  `evals_sc2_background_head/` is superseded and can be deleted.
+* `antiGen-figures/data/evals_sc2_background/` is the copy the figure reads.
+* Rendered under `/home/ivan.specht/miniconda/envs/antigen-figs/bin/Rscript`, per s34.

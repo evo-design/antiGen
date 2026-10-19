@@ -38,7 +38,7 @@
 ## tip, against 200 at 1+ cases in the published version) and the two bottom rows
 ## are NOT on the same scale. Read that row within this figure, not across.
 ##
-## THE BACKGROUND ROW IS OMITTED. Panels I-J of the main figure are already
+## THE BACKGROUND ROW IS OMITTED. Panels K-L of the main figure are already
 ## computed on the backbone alone, so they would be identical here and the two
 ## figures are easier to compare panel-for-panel without them.
 ##
