@@ -3995,6 +3995,24 @@ cell-weighted panels. Not a contradiction: this row is dominated by what actuall
 through BA.2 descendants, which is mostly cells already in the training window, and it
 is a single-query metric rather than an average over 17,978 queries.
 
+### Split into a main figure and a supplement
+
+On instruction, and the line is a defensible one: **every cell of the CoG-UK list is
+curated as important by somebody**, so a case threshold on top of it adds nothing to the
+question the main figure asks, and the event weighting answers a question about branches
+rather than mutations.
+
+| figure | carries |
+|---|---|
+| `coguk_list_results` | the cell-weighted reading throughout + the 1+ case yield |
+| `coguk_list_supp` | the event-weighted reading throughout + the 100+ case yield |
+
+Eight panels each, same grammar (recall curves, top decile, recall AUC, BA.2 yield), so
+the two read against each other row by row. The event-weighted half is kept rather than
+dropped because the published CSVs report it and every claim in the main figure is
+stated against it. Nothing is computed twice: the panels are built per metric and each
+figure is one list of metric names.
+
 ### State
 
 * `evals_sc2_lists_macro{,_fast,_head,_mt2021,_mtb}/` hold `list_macro_summary.csv` and

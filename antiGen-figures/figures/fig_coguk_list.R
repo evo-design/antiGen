@@ -27,12 +27,25 @@
 ##
 ## PANEL MAP, against Figure 2 (`fig2_sc2_benchmarks.R`):
 ##
-##   A-B  <- Fig 2 B-C   recall by quantile, EVENT-weighted (all / de novo)
-##   C-D  (new)          recall by quantile, CELL-weighted  (all / de novo)
-##   E-H  (new)          recall at the top decile, both poolings
-##   I-J  <- Fig 2 D-E   recall AUC, event-weighted
-##   K-L  (new)          recall AUC, cell-weighted
-##   M-P  (new)          CoG-UK yield of the BA.2 top decile, over time
+## TWO FIGURES, same panel grammar, built from one list of metrics each:
+##
+##   coguk_list_results   the CELL-weighted reading throughout, plus the 1+ case
+##                        yield -- one vote per listed mutation everywhere
+##   coguk_list_supp      the EVENT-weighted reading throughout, plus the 100+
+##                        case yield
+##
+## Why the split falls there. Every cell of the CoG-UK list is curated as
+## important by somebody, so a case threshold on top of it adds nothing to the
+## question the main figure asks -- 1+ is the reading that matches the list.
+## And the event weighting answers a question about branches, not mutations.
+## Both are kept in the supplement because the published CSVs report the event
+## weighting and the main figure's claims are stated against it, and because
+## 100+ is the stricter reading of "emerged".
+##
+##   A-B  <- Fig 2 B-C   recall by quantile (all / de novo)
+##   C-D  (new)          recall at the top decile
+##   E-F  <- Fig 2 D-E   recall AUC
+##   G-H  (new)          CoG-UK yield of the BA.2 top decile, over time
 ##
 ## Figure 2's PSSM-precision panels (its G-J) are NOT carried over. They are a
 ## single-query metric, so the pooling question this figure exists to ask does
@@ -64,7 +77,7 @@
 ## picking its decile at random would score. Distance above the dotted line is
 ## the result.
 ##
-## THE TOP-DECILE ROW IS NOT REDUNDANT WITH THE AUC ROW. The AUC integrates a
+## THE TOP-DECILE ROW (C-D) IS NOT REDUNDANT WITH THE AUC ROW (E-F). The AUC integrates a
 ## curve that is saturated over most of its range -- every rung is above 0.95
 ## by q = 0.5 -- so it compresses the differences and reorders the top: by
 ## cell-weighted AUC the 35M LM-head arm leads (0.824) with antiGen second
@@ -102,6 +115,7 @@
 ## main-model comparison, and that arm belongs with the multi-tree figures.
 ##
 ## Output: figs/coguk_list_results.png   figs_vector/coguk_list_results.pdf
+##         figs/coguk_list_supp.png      figs_vector/coguk_list_supp.pdf
 ## ---------------------------------------------------------------------------
 
 source("R/common.R")
@@ -467,69 +481,88 @@ legend_grob <- extract_legend(
     theme(legend.position = "top", legend.key.size = unit(0.8, "lines"))
 )
 
-recall_curve_panels <- lapply(seq_along(longform_recall_metrics), function(i) {
-  curve_panel(recall_x, recall_auc_df, longform_recall_metrics[i],
-              "Quantile (q)",
-              if (i == 1) "P(listed mutation in top q)" else "",
-              paste0("Recall, ", longform_recall_metrics[i]),
-              chance = 1)
-})
+## Panels are built per metric and assembled into two figures, so which metric
+## goes where is a single list each and nothing is duplicated:
+##
+##   MAIN  cell-weighted recall + the 1+ case yield -- one vote per listed
+##         mutation throughout, which is the figure's whole argument
+##   SUPP  everything event-weighted, plus the 100+ case yield. The event
+##         weighting is kept because it is what the published CSVs report and
+##         the main figure's claims are stated against it; the 100+ threshold is
+##         kept because it is a stricter reading of "emerged". Neither belongs
+##         in the main figure: every cell of the CoG-UK list is curated as
+##         important, so a case threshold adds nothing to the question, and the
+##         event weighting answers a question about branches rather than
+##         mutations.
+
+RECALL_MAIN <- c("all list cells, cell-weighted", "de novo, cell-weighted")
+RECALL_SUPP <- c("all list cells, event-weighted", "de novo, event-weighted")
+VARR_MAIN   <- "emerged 1+ cases"
+VARR_SUPP   <- "emerged 100+ cases"
+stopifnot(all(c(RECALL_MAIN, RECALL_SUPP) %in% longform_recall_metrics))
 
 recall_auc_range <- c(0.35, max(recall_auc_df$value))
-recall_bar_panels <- lapply(seq_along(longform_recall_metrics), function(i) {
-  bar_panel(recall_auc_df, longform_recall_metrics[i], "Recall AUC",
-            paste0("AUC, ", longform_recall_metrics[i]),
-            labels_on_y = (i == 1), xrange = recall_auc_range)
-})
+decile_range     <- c(0, max(recall_q10_df$value))
+varr_range       <- if (have_varr) c(0, max(varr_max_df$value)) else NULL
 
-## Zero-based, unlike the AUC row: chance is 0.1 here and the spread is wide
-## enough to read without truncating the axis.
-decile_range <- c(0, max(recall_q10_df$value))
-decile_bar_panels <- lapply(seq_along(longform_recall_metrics), function(i) {
-  bar_panel(recall_q10_df, longform_recall_metrics[i], "Recall at q = 0.1",
-            paste0("Top decile, ", longform_recall_metrics[i]),
-            labels_on_y = (i == 1), xrange = decile_range) +
-    geom_vline(xintercept = 0.1, linetype = "dotted", linewidth = 0.3,
-               color = "grey30")
-})
-
-varr_curve_panels <- if (!have_varr) NULL else
-  lapply(seq_along(longform_varr_metrics), function(i) {
-    curve_panel(varr_x, varr_max_df, longform_varr_metrics[i],
-                "Date (t, years into pandemic)",
-                if (i == 1) "P(top-decile cell is listed & emerged by t)" else "",
-                paste0("BA.2 top decile, ", longform_varr_metrics[i]),
-                refs = varr_ref)
-  })
-
-varr_bar_panels <- if (!have_varr) NULL else {
-  rng <- c(0, max(varr_max_df$value))
-  lapply(seq_along(longform_varr_metrics), function(i) {
-    bar_panel(varr_max_df, longform_varr_metrics[i], "Max (end of series)",
-              paste0("Max yield, ", longform_varr_metrics[i]),
-              labels_on_y = (i == 1), xrange = rng)
-  })
+recall_curve_panel <- function(metric, first) {
+  curve_panel(recall_x, recall_auc_df, metric, "Quantile (q)",
+              if (first) "P(listed mutation in top q)" else "",
+              paste0("Recall, ", metric), chance = 1)
 }
 
-figure <- plot_grid(
-  legend_grob,
-  plot_grid(plotlist = recall_curve_panels, nrow = 1, labels = LETTERS[1:4],
-            rel_widths = c(1.06, 1, 1, 1)),
-  plot_grid(plotlist = decile_bar_panels, nrow = 1, labels = LETTERS[5:8],
-            rel_widths = c(1.9, 1, 1, 1)),
-  plot_grid(plotlist = recall_bar_panels, nrow = 1, labels = LETTERS[9:12],
-            rel_widths = c(1.9, 1, 1, 1)),
-  if (have_varr)
-    plot_grid(plot_grid(plotlist = varr_curve_panels, nrow = 1,
-                        labels = LETTERS[13:14], rel_widths = c(1.06, 1)),
-              plot_grid(plotlist = varr_bar_panels, nrow = 1,
-                        labels = LETTERS[15:16], rel_widths = c(1.9, 1)),
-              nrow = 1)
-  else NULL,
-  ncol = 1,
-  rel_heights = c(0.1, 1, 1.5, 1.5, if (have_varr) 1.5 else 0)
-)
+decile_bar <- function(metric, first) {
+  bar_panel(recall_q10_df, metric, "Recall at q = 0.1",
+            paste0("Top decile, ", metric),
+            labels_on_y = first, xrange = decile_range) +
+    ## Chance, for a metric whose scale is otherwise easy to misread.
+    geom_vline(xintercept = 0.1, linetype = "dotted", linewidth = 0.3,
+               color = "grey30")
+}
 
-save_figure(figure, "coguk_list_results", width = 17,
-            height = if (have_varr) 21 else 16)
-cat("wrote figs/coguk_list_results.png and figs_vector/coguk_list_results.pdf\n")
+auc_bar <- function(metric, first) {
+  ## Axis starts above zero, unlike the decile row: every rung clears chance by
+  ## a wide margin and a zero-based axis compresses the differences to nothing.
+  bar_panel(recall_auc_df, metric, "Recall AUC", paste0("AUC, ", metric),
+            labels_on_y = first, xrange = recall_auc_range)
+}
+
+varr_curve <- function(metric) {
+  curve_panel(varr_x, varr_max_df, metric, "Date (t, years into pandemic)",
+              "P(top-decile cell is listed & emerged by t)",
+              paste0("BA.2 top decile, ", metric), refs = varr_ref)
+}
+
+varr_bar <- function(metric) {
+  bar_panel(varr_max_df, metric, "Max (end of series)",
+            paste0("Max yield, ", metric), labels_on_y = TRUE,
+            xrange = varr_range)
+}
+
+#' Assemble one of the two figures: three two-panel rows of recall, then the
+#' BA.2 yield row (a curve beside its summary bars).
+assemble <- function(recall_metrics, varr_metric) {
+  rows <- list(
+    legend_grob,
+    plot_grid(plotlist = Map(recall_curve_panel, recall_metrics, c(TRUE, FALSE)),
+              nrow = 1, labels = LETTERS[1:2], rel_widths = c(1.06, 1)),
+    plot_grid(plotlist = Map(decile_bar, recall_metrics, c(TRUE, FALSE)),
+              nrow = 1, labels = LETTERS[3:4], rel_widths = c(1.9, 1)),
+    plot_grid(plotlist = Map(auc_bar, recall_metrics, c(TRUE, FALSE)),
+              nrow = 1, labels = LETTERS[5:6], rel_widths = c(1.9, 1))
+  )
+  heights <- c(0.14, 1, 1.5, 1.5)
+  if (have_varr) {
+    rows <- c(rows, list(plot_grid(varr_curve(varr_metric), varr_bar(varr_metric),
+                                   nrow = 1, labels = LETTERS[7:8],
+                                   rel_widths = c(1.06, 1.5))))
+    heights <- c(heights, 1.5)
+  }
+  plot_grid(plotlist = rows, ncol = 1, rel_heights = heights)
+}
+
+save_figure(assemble(RECALL_MAIN, VARR_MAIN), "coguk_list_results",
+            width = 11, height = if (have_varr) 20 else 15)
+save_figure(assemble(RECALL_SUPP, VARR_SUPP), "coguk_list_supp",
+            width = 11, height = if (have_varr) 20 else 15)
+cat("wrote figs/coguk_list_results.png and figs/coguk_list_supp.png (+ .pdf)\n")
