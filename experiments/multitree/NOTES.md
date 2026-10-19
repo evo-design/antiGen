@@ -4855,7 +4855,10 @@ are in the session scratchpad only -- rerunnable in ~3 min with
 
 ---
 
-## 40. The q-sweep figures: the whole list figure at 5% and 20% (2026-10-19, RUNNING)
+## 40. The q-sweep figures: the whole list figure at 5% and 20% (2026-10-19, CANCELLED)
+
+> **CANCELLED before completion -- see the State section at the end of this entry.**
+> The code landed and is committed; the compute was stopped in favour of other work.
 
 s39 established that the background row's ordering is a q = 0.1 effect and recorded it as
 a caveat. The caveat is not good enough: **every** "top decile" in this figure is a
@@ -4935,11 +4938,34 @@ wrapper headers say to compare E-F between the two new figures and never against
 `coguk_list_results`. The alternative -- re-rendering the published figure on the fine
 grid -- was not taken, because the request was explicitly to leave it as is.
 
-### State
+### State: cancelled, and what that leaves behind
 
-Three jobs pending at the time of writing (`macro_qsweep` on Resources, the two
-varrecalls on Priority), behind two unrelated `eval_sc2_lists` jobs that have been
-running ~24h. Figures render as soon as `macro_qsweep` lands; everything else is staged.
+The three jobs were **cancelled 2026-10-19** after 28 / 27 / 16 minutes, in favour of
+higher-priority work. `coguk_list_q05` and `coguk_list_q20` were never rendered.
+
+**The code is committed and complete**, so this is a decision to stop spending GPU, not
+an abandoned branch. Everything needed to finish it is in place:
+
+* `coguk.qtile` in `fig_coguk_list.R`, with the hard stop on an absent quantile.
+* `figures/fig_coguk_list_q05.R` and `fig_coguk_list_q20.R`, unrun.
+* `examples/slurm/eval_sc2_list_macro.sh` (`QTILES` / `PERCELL_Q` / `OUTDIR`) and
+  `examples/slurm/eval_sc2_varrecall.sh` (`QTILE` / `OUTDIR`).
+* The background halves are **already done** and committed:
+  `data/evals_sc2_background_q0.0{5}/` and `_q0.20/`. Only the macro and varrecall
+  passes would need re-running -- the commands are in the Jobs section above.
+
+**The partial outputs are quarantined, not deleted.** All three jobs had written
+incomplete CSVs with valid headers -- 17 of 30 models for the macro sweep, 21 of 30 for
+each varrecall, and **every one of them missing `simple_d128_n2_lr0.0001`** -- which is
+exactly the shape of file that gets mistaken for a finished one later. They are renamed
+to `PARTIAL_CANCELLED_*` under `/large_storage/.../fitness-inference/`, each with a
+`README_PARTIAL.txt` saying what it is. Safe to delete whenever.
+
+**What s39 already settled without them**, so that the open question is not lost: the
+q = 0.1 dependence of the background row is *measured* -- antiGen is 1st on the de novo
+cuts at q = 0.1 and 10th-27th at q = 0.05, and `delta_pct` ranks it 6th-10th on either
+ruler. The q-sweep figures would have shown that across every row rather than only K-L.
+The caveat stands on s39's numbers in the meantime.
 
 ---
 
