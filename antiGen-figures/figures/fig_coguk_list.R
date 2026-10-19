@@ -45,8 +45,10 @@
 ##   A-B  <- Fig 2 B-C   recall by quantile (all / de novo)
 ##   C-D  (new)          recall at the top decile
 ##   E-F  <- Fig 2 D-E   recall AUC
-##   G-H  (new)          CoG-UK yield of the BA.2 top decile, over time
-##   I-J  (new)          background lift: the transpose of every panel above it --
+##   G-H  (new)          CoG-UK yield of the BA.2 top decile over time, all
+##                       list cells: the curve, then its end-of-series summary
+##   I-J  (new)          the same, de novo only
+##   K-L  (new)          background lift: the transpose of every panel above it --
 ##                       fix the MUTATION, vary the background, and ask whether
 ##                       the model's top decile moves the right way. See the
 ##                       block above BG_METRICS for the construction and for why
@@ -239,6 +241,11 @@ MODEL_LABEL <- c(
   codon                                      = "Codon table"
 )
 
+## The bottom row's two reference curves. Named here because they are both a
+## legend entry and a scale key, and the two must not drift apart.
+REF_CEILING <- "Ceiling: every listed cell emerged by t"
+REF_CHANCE  <- "Chance: a top decile picked at random"
+
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
                   "Pandemic Data in Training Window", "Pre-Pandemic Data Only")
 GROUP_COLORS <- c("antiGen"                          = "#023e8a",
@@ -313,15 +320,24 @@ by_x <- recall_long
 ## listed cells emerged downstream of BA.2 by then, which drives both reference
 ## curves. Time steps are the variant PSSM grid, t = 0.1 ... 6.0 years.
 
-VARR_METRICS <- c("varr_1", "varr_100")
-longform_varr_metrics <- c("emerged 1+ cases", "emerged 100+ cases")
+## Four series, not two: the yield row is cut by subset as well as by threshold,
+## so the bottom of the figure keeps the all/de novo grammar the recall rows
+## above it use. The de novo cut matters most here -- it is the one that asks
+## what a forecaster would have flagged among mutations BA.2's descendants had
+## not already made, and 115 of the 143 de novo listed cells ever emerge at 1+.
+VARR_METRICS <- c("varr_1_all", "varr_1_unseen", "varr_100_all", "varr_100_unseen")
+longform_varr_metrics <- c("emerged 1+ cases, all list cells",
+                           "emerged 1+ cases, de novo",
+                           "emerged 100+ cases, all list cells",
+                           "emerged 100+ cases, de novo")
 
 varr_path <- file.path(VARR_DIR, "list_variant_recall.csv")
 have_varr <- file.exists(varr_path)
 if (have_varr) {
   varr <- read.csv(varr_path)
-  varr <- varr[varr$list == "coguk" & varr$subset == "all", ]
-  varr$metric <- ifelse(varr$threshold == 1, "varr_1", "varr_100")
+  varr <- varr[varr$list == "coguk", ]
+  varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
+                        ifelse(varr$subset == "unseen", "unseen", "all"))
   varr$x <- (varr$step + 1) / 10
   ## Both references are model-independent except through N_RBD, which varies by
   ## ~10% with the gap/stop columns a model does not emit; the median is used so
@@ -527,26 +543,46 @@ curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA,
     mutate(model = as.character(model)) %>%
     deframe()
 
-  p <- ggplot(sub, aes(x = x, y = value, color = group,
-                       linetype = (group != "antiGen")))
+  p <- ggplot(sub, aes(x = x, y = value, color = group))
   if (!is.na(chance)) {
     p <- p + geom_abline(slope = chance, intercept = 0, linewidth = 0.3,
                          linetype = "dotted", color = "grey50")
   }
-  if (!is.null(refs)) {
+  if (is.null(refs)) {
+    ## The recall panels keep their original construction, so they stay
+    ## pixel-identical to the published figure.
+    p <- p +
+      geom_line(aes(linetype = (group != "antiGen")), linewidth = 0.75) +
+      scale_linetype_manual(values = c(`FALSE` = "solid", `TRUE` = "21"),
+                            guide = "none")
+  } else {
+    ## The yield panels draw their model lines as two layers instead, which
+    ## frees `linetype` for the two reference curves. Without that they are
+    ## unexplained grey lines, and they carry the only scale this row can be
+    ## read against: the ceiling is every listed cell that had emerged by t,
+    ## the dotted line is what a decile drawn at random would collect.
     r <- refs[refs$metric == metric, ]
     p <- p +
-      geom_line(data = r, aes(x = x, y = ceiling), inherit.aes = FALSE,
-                linewidth = 0.4, color = "grey65") +
-      geom_line(data = r, aes(x = x, y = chance), inherit.aes = FALSE,
-                linewidth = 0.4, linetype = "dotted", color = "grey40")
+      geom_line(data = r, aes(x = x, y = ceiling, linetype = REF_CEILING),
+                inherit.aes = FALSE, linewidth = 0.4, color = "grey55") +
+      geom_line(data = r, aes(x = x, y = chance, linetype = REF_CHANCE),
+                inherit.aes = FALSE, linewidth = 0.4, color = "grey35") +
+      geom_line(data = sub[sub$group == "antiGen", ], linewidth = 0.75,
+                linetype = "solid") +
+      geom_line(data = sub[sub$group != "antiGen", ], linewidth = 0.75,
+                linetype = "21") +
+      ## Titled, because an untitled second legend stacks straight under
+      ## "Model" and the two reference curves then read as two more models.
+      scale_linetype_manual(name = "Reference",
+                            values = setNames(c("solid", "dotted"),
+                                              c(REF_CEILING, REF_CHANCE))) +
+      guides(color = guide_legend(order = 1),
+             linetype = guide_legend(order = 2,
+                                     override.aes = list(color = c("grey55", "grey35"))))
   }
-  p +
-    geom_line(linewidth = 0.75) +
+  p <- p +
     scale_color_manual(values = GROUP_COLORS, labels = group_to_model,
                        drop = TRUE) +
-    scale_linetype_manual(values = c(`FALSE` = "solid", `TRUE` = "21"),
-                          guide = "none") +
     theme_paper() +
     labs(color = "Model", x = xlab, y = ylab) +
     ggtitle(title) + title_theme +
@@ -558,6 +594,20 @@ curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA,
           legend.text = element_text(hjust = 1),
           legend.title = element_text(hjust = 1),
           legend.text.align = 1)
+  if (!is.null(refs)) {
+    ## These curves plateau in the lower half and the ceiling runs along the
+    ## top, so the legend goes in the empty band between them rather than in
+    ## the bottom-right corner, where it covered antiGen's own curve. Opaque,
+    ## because the ceiling's rise still passes behind it. Set after
+    ## theme_paper(), which is a complete theme and would otherwise drop it.
+    p <- p + theme(legend.position = c(0.98, 0.52),
+                   legend.justification = c(1, 0),
+                   legend.box = "vertical",
+                   legend.box.just = "right",
+                   legend.margin = margin(0, 0, 0, 0),
+                   legend.background = element_rect(fill = "white", colour = NA))
+  }
+  p
 }
 
 #' One bar panel: every model that has a value for this metric.
@@ -620,8 +670,10 @@ legend_grob <- extract_legend(
 
 RECALL_MAIN <- c("all list cells, cell-weighted", "de novo, cell-weighted")
 RECALL_SUPP <- c("all list cells, event-weighted", "de novo, event-weighted")
-VARR_MAIN   <- "emerged 1+ cases"
-VARR_SUPP   <- "emerged 100+ cases"
+## Two panels each, all list cells then de novo, so the yield row reads down
+## the figure the way the recall rows read across it.
+VARR_MAIN   <- c("emerged 1+ cases, all list cells", "emerged 1+ cases, de novo")
+VARR_SUPP   <- c("emerged 100+ cases, all list cells", "emerged 100+ cases, de novo")
 ## The main figure asks the background question of the curated list, to the same
 ## all/de novo grammar as the rows above it; the supplement asks it of every RBD
 ## cell with a backbone host, which roughly triples the denominator (146 and 51
@@ -629,6 +681,7 @@ VARR_SUPP   <- "emerged 100+ cases"
 BG_MAIN <- c("background lift, all list cells", "background lift, de novo")
 BG_SUPP <- c("background lift, all RBD cells", "background lift, de novo RBD")
 stopifnot(all(c(RECALL_MAIN, RECALL_SUPP) %in% longform_recall_metrics))
+stopifnot(!have_varr || all(c(VARR_MAIN, VARR_SUPP) %in% longform_varr_metrics))
 
 recall_auc_range <- c(0.35, max(recall_auc_df$value))
 decile_range     <- c(0, max(recall_q10_df$value))
@@ -717,11 +770,14 @@ assemble <- function(recall_metrics, varr_metric, bg_metrics) {
   heights <- c(0.14, 1, 1.5, 1.5)
   next_label <- 7
   if (have_varr) {
-    rows <- c(rows, list(plot_grid(varr_curve(varr_metric), varr_bar(varr_metric),
-                                   nrow = 1, labels = LETTERS[7:8],
-                                   rel_widths = c(1.06, 1.5))))
-    heights <- c(heights, 1.5)
-    next_label <- 9
+    for (vm in varr_metric) {
+      rows <- c(rows, list(plot_grid(
+        varr_curve(vm), varr_bar(vm), nrow = 1,
+        labels = LETTERS[next_label:(next_label + 1)],
+        rel_widths = c(1.06, 1.5))))
+      heights <- c(heights, 1.5)
+      next_label <- next_label + 2
+    }
   }
   if (have_bg) {
     rows <- c(rows, list(plot_grid(
@@ -733,7 +789,14 @@ assemble <- function(recall_metrics, varr_metric, bg_metrics) {
   plot_grid(plotlist = rows, ncol = 1, rel_heights = heights)
 }
 
-fig_height <- 15 + if (have_varr) 5 else 0 + if (have_bg) 5 else 0
+## Height is set from the row units rather than picked per figure, so adding a
+## row stretches the figure instead of rescaling the rows above it. The constant
+## is the published figure's own inches-per-unit (20in over its 5.64 units),
+## which keeps panels A-F pixel-identical to the version already in figs/.
+ROW_INCH   <- 20 / 5.64
+fig_units  <- 0.14 + 1 + 1.5 + 1.5 +
+              (if (have_varr) 2 * 1.5 else 0) + (if (have_bg) 1.5 else 0)
+fig_height <- ROW_INCH * fig_units
 save_figure(assemble(RECALL_MAIN, VARR_MAIN, BG_MAIN), FIG_MAIN,
             width = 11, height = fig_height)
 save_figure(assemble(RECALL_SUPP, VARR_SUPP, BG_SUPP), FIG_SUPP,

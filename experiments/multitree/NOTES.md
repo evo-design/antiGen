@@ -4379,3 +4379,64 @@ so the two figures are typographically identical.)
 `antiGen-figures/data/evals_sc2_lists_macro_backbone/`. `fig_coguk_list.R` now takes its
 input directories, output names and title suffix as options so both figures come off one
 script.
+
+---
+
+## 35. The yield row, cut by subset, and its reference lines named (2026-10-19)
+
+Two changes to `coguk_list_results` and its supplement, plus the backbone control
+(s34), which inherits both.
+
+### The de novo half of the yield row, which was computed but never drawn
+
+`list_variant_recall.py` has always written `subset = all` and `subset = unseen`; the
+figure filtered to `all` and threw the other half away. The row is now two rows -- G-H
+all listed cells, I-J de novo -- so the bottom of the figure keeps the all/de novo
+grammar every row above it uses. Nothing was recomputed; the panels read 1,740 rows that
+were already in the CSV.
+
+**The de novo panel is the harsher one and antiGen does badly in it.** Max yield at 1+
+cases:
+
+| | all list cells | de novo |
+|---|---|---|
+| 1st | antiGen as EVE full FT 0.246 | **EVEscape 0.116** |
+| 2nd | antiGen as ESM 2 (650M) full FT 0.209 | BA.1 DMS (expression) 0.094 |
+| 3rd | EVE 0.207 | antiGen as EVE full FT 0.081 |
+| **antiGen** | 0.152 (12th of 29) | **0.026 (26th of 29)** |
+
+The de novo chance line ends at `0.1 * 115 / 422 = 0.027`, so **antiGen is sitting on
+chance there**, and `pssm_root` is at 0 by construction. This is the same effect s32
+diagnosed and should not be read as new: for a single query, antiGen's decile is filled
+with cells it saw in training, so restricting the targets to cells it did not see leaves
+almost nothing in it. What the new panel adds is that the effect is total rather than
+partial -- on the de novo cut the single-query yield is indistinguishable from random
+selection, where on the many-query de novo recall panels (D, F) antiGen is 1st.
+**Those two facts sit side by side in the same figure now, which is the honest
+presentation of them.**
+
+The attainable ceiling moves too: 200 of the 234 listed cells BA.2 could make ever
+emerge at 1+ cases, but only 115 of them are de novo, so the de novo panel's ceiling is
+0.285 against 0.5.
+
+### The reference curves are in a legend instead of being unexplained grey lines
+
+Panels G and I carry two model-independent curves -- the attainable ceiling and what a
+decile drawn at random would collect -- and until now neither was labelled anywhere on
+the figure. They are now a titled `Reference` legend block beneath the model legend.
+
+Mechanically this needed `linetype` freed: the model lines had it mapped to
+"is this antiGen", so the yield panels draw their model lines as two explicit layers
+instead and give `linetype` to the two reference curves. **Only the yield panels** --
+the recall panels keep their original construction so they stay pixel-identical to the
+published figure. The legend also moved from the bottom-right corner into the empty band
+above the plateaus, because in the de novo panel it sat on top of antiGen's own curve.
+
+### A-F are unchanged, and that is checked rather than asserted
+
+`fig_height` is now derived from the row units with the published figure's own
+inches-per-unit (20in / 5.64 units), so adding a row stretches the canvas instead of
+rescaling the rows above it. Comparing the top 4,404 px against the previously committed
+PNG leaves only 1-pixel edge ghosting (band RMSE 0.01-0.05, difference image is outlines
+only, interiors blank): a sub-pixel vertical offset from the taller canvas, no content
+change.
