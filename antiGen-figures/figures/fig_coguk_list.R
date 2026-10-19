@@ -145,10 +145,13 @@ FIG_SUPP  <- getOption("coguk.fig_supp",  "coguk_list_supp")
 ## up once they are out of the directory they were rendered into.
 TITLE_SUFFIX <- getOption("coguk.title_suffix", "")
 titled <- function(x) paste0(x, TITLE_SUFFIX)
-## A suffix pushes the longest titles past the right-hand panel's width, and a
-## clipped title on a figure whose whole purpose is being compared with another
-## one is worse than a small title.
-title_theme <- if (nzchar(TITLE_SUFFIX)) theme(plot.title = element_text(size = 9)) else NULL
+## Shrink titles only if asked. A suffix can push the longest title past the
+## right-hand panel's width, and a clipped title on a figure whose whole purpose
+## is being compared with another one is worse than a small title -- but the
+## default must stay at theme_paper()'s 11, or the two figures differ
+## typographically for no reason.
+TITLE_SIZE <- getOption("coguk.title_size", NA_real_)
+title_theme <- if (!is.na(TITLE_SIZE)) theme(plot.title = element_text(size = TITLE_SIZE)) else NULL
 
 
 ## --- Model inventory -------------------------------------------------------

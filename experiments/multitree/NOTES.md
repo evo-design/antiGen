@@ -4352,6 +4352,26 @@ depend on `antiGen-data`'s RNG seed.
 * The antiGen and EVE score matrices in this rendering came from the CPU pilot and the
   rest from the GPU job; same checkpoints, different runs. To be re-scored in one pass.
 
+### Render it in the right environment, or the font changes
+
+The first render of this figure came out in a different typeface from every other
+figure in the repo. The cause is not the script -- it is which R is used.
+`/home/ivan.specht/miniconda/envs/r-figs` (R 4.4.3) has **ragg** installed, so
+`ggsave` dispatches PNG output to `ragg::agg_png`, which resolves fonts through
+`systemfonts` and picks a different default face. `.../envs/antigen-figs` (R 4.5.3, the
+version the README names) has no ragg, so `ggsave` falls back to the cairo `png` device,
+which is what every committed figure was drawn with.
+
+Checked rather than assumed: re-rendering `coguk_list_results` under `antigen-figs`
+reproduces the committed PNG at **RMSE = 0**, pixel for pixel -- which also confirms
+that parameterising the script changed nothing in the published figure. Use
+`antigen-figs` for anything that lands in `figs/`.
+
+(The size-9 title override that the first render needed was a ragg artefact too: under
+the cairo font the longest title, "Top decile, de novo, cell-weighted [backbone]", fits
+at `theme_paper()`'s 11. `coguk.title_size` is still available but is unset by default,
+so the two figures are typographically identical.)
+
 ### Files
 
 `antiGen/backbone_list_eval.py` (test set + recall + the BA.2 yield series),
