@@ -4013,6 +4013,45 @@ dropped because the published CSVs report it and every claim in the main figure 
 stated against it. Nothing is computed twice: the panels are built per metric and each
 figure is one list of metric names.
 
+### Why base antiGen drops in the BA.2 yield panel: the pool, not a glitch
+
+Asked why `simple_d128_n2` trails its own finetunes in that panel when the recall panels
+rank it at or near the top. It is not a glitch, and the cause is **whether the candidate
+pool contains training-window cells**. Three measurements agree:
+
+| eval | pool | antiGen | eve_ft |
+|---|---|---:|---:|
+| `list_recall` (s25), BA.2 query, q = 0.1 | **de novo only** (3,408 cells) | 0.331 (3rd/28) | 0.373 (1st) |
+| BA.2 yield, de novo targets | **full RBD** (4,221 cells) | 11/115 = 0.096 | 31/115 = 0.270 |
+| BA.2 yield, all listed targets | full RBD | 64/200 = 0.320 | 94/200 = 0.470 |
+
+The first and second rows are the same query, the same q, and nearly the same target set.
+The only thing that changes is whether the ~422 decile slots are drawn from de novo cells
+alone or from the whole RBD -- and antiGen's result moves by a factor of three.
+
+**The reading.** antiGen is trained from scratch on the first year, so for any query its
+very highest-scoring cells are heavily the ones it saw; with those cells in the pool they
+occupy its decile and little room is left for anything else. `pssm_root` is the degenerate
+form of the same thing (0 de novo hits by construction). The finetunes carry pre-trained
+structure and spread their decile more widely. **The main figure's de novo panels restrict
+the pool to unseen cells** -- Figure 2's own de novo convention, `score_mask = seen` -- so
+they are measuring antiGen on the de novo pool, which is why it leads there and trails in
+the yield panel. The two panels are asking different questions and the model most
+sensitive to the difference is the one trained only on the training window.
+
+**What this does NOT yet explain**, and is left open rather than papered over: over many
+queries with the full pool (the cell-weighted all-list panel) antiGen is 0.446 against
+eve_ft's 0.474 -- close. The deficit is far sharper on the single BA.2 query than averaged
+over 17,978 queries, so there is a single-query-vs-average effect on top of the pool
+effect, and it is unmeasured.
+
+**The diagnostic that would settle the mechanism has not run.** It prints each model's
+decile composition (share on gap/stop columns, share on listed cells, share on
+training-window cells, positions covered); the prediction is that antiGen's decile is
+markedly more "seen" than its finetunes'. Job 3364275 failed at once -- the script sat in
+the session scratchpad, which was cleared before the job started. Rerun from a durable
+path before this reading is treated as confirmed.
+
 ### State
 
 * `evals_sc2_lists_macro{,_fast,_head,_mt2021,_mtb}/` hold `list_macro_summary.csv` and
