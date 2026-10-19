@@ -118,9 +118,13 @@
 ## whose evcouplings rebuild runs plmc). The script reports what is missing
 ## rather than dropping models silently.
 ##
-## THE 2021-CUTOFF MULTI-TREE ARM is scored by the same script and lives in
-## evals_sc2_lists_macro_mt2021/, but is not drawn here: this figure is the
-## main-model comparison, and that arm belongs with the multi-tree figures.
+## THE 2021-CUTOFF MULTI-TREE ARM is scored by the same scripts and its rows sit
+## in the same CSVs, but `coguk.mt2021` is empty by default and so it is NOT drawn
+## in the published figure: this figure is the main-model comparison, and an arm
+## trained to a different cutoff on a different set of trees is not another rung
+## of that roster. The backbone control (figures/fig_coguk_list_backbone.R) opts
+## in and draws two of its checkpoints; see that file's header for why there, what
+## the de novo leak measures at, and how to read the two rows.
 ##
 ## Output: figs/coguk_list_results.png   figs_vector/coguk_list_results.pdf
 ##         figs/coguk_list_supp.png      figs_vector/coguk_list_supp.pdf
@@ -155,6 +159,37 @@ titled <- function(x) paste0(x, TITLE_SUFFIX)
 ## typographically for no reason.
 TITLE_SIZE <- getOption("coguk.title_size", NA_real_)
 title_theme <- if (!is.na(TITLE_SIZE)) theme(plot.title = element_text(size = TITLE_SIZE)) else NULL
+
+## --- The D = 2021-01-01 multi-tree arm (opt-in) -----------------------------
+## Which checkpoints of that arm to draw, by their name in the CSVs. EMPTY BY
+## DEFAULT, so the main figure is exactly the main-model comparison it has always
+## been: an arm trained to a different cutoff, on a different set of trees, is not
+## another rung of the published roster and must not silently become one.
+##
+## The backbone control opts in (figures/fig_coguk_list_backbone.R) because that
+## figure is already a control rather than the published comparison, and because
+## the cutoffs very nearly coincide there: the backbone's train/test split is at
+## 2020.953 (2020-12-14) and this arm's is at 2021-01-01, eighteen days later.
+##
+## The arm is drawn as ITS OWN GROUP rather than folded into "antiGen Finetunes".
+## It is the same ESM-2 (35M) partial fine-tune as that group's 35M partial rung,
+## but trained on six phylogenies to a different cutoff; giving it the finetunes'
+## colour would invite reading the difference between them as an effect of the
+## fine-tuning recipe, which is the one thing it is not.
+MT2021_KNOWN <- c(
+  mt2021joint_s0_partial4  = "antiGen as ESM 2 (35M), 6 trees @ 2021-01-01",
+  mt2021joint_s1_partial4  = "antiGen as ESM 2 (35M), 6 trees @ 2021-01-01 (s1)",
+  mt2021joint_s2_partial4  = "antiGen as ESM 2 (35M), 6 trees @ 2021-01-01 (s2)",
+  mt2021single_s0_partial4 = "antiGen as ESM 2 (35M), ncov only @ 2021-01-01",
+  mt2021single_s1_partial4 = "antiGen as ESM 2 (35M), ncov only @ 2021-01-01 (s1)",
+  mt2021single_s2_partial4 = "antiGen as ESM 2 (35M), ncov only @ 2021-01-01 (s2)"
+)
+MT2021_GROUP <- "Multi-tree, D = 2021-01-01"
+MT2021 <- getOption("coguk.mt2021", character(0))
+if (length(setdiff(MT2021, names(MT2021_KNOWN))) > 0) {
+  stop("coguk.mt2021 names checkpoints that are not in this arm: ",
+       paste(setdiff(MT2021, names(MT2021_KNOWN)), collapse = ", "))
+}
 
 ## --- The selection quantile -------------------------------------------------
 ## Every "top decile" in this figure -- panels C-D, the BA.2 yield row's selection
@@ -282,6 +317,27 @@ GROUP_COLORS <- c("antiGen"                          = "#023e8a",
                   "Pandemic Data in Training Window" = "#888f88",
                   "Pre-Pandemic Data Only"           = "#555560")
 
+## Appended rather than inserted, so the two rows sit at the foot of the bar
+## panels and the five published blocks keep their order and their colours. A
+## lighter cast of antiGen's own blue: these ARE antiGen models, and the colour
+## should say so while still being one glance apart from the base rung.
+## Conditional, because `scale_fill_manual(drop = FALSE)` draws every level in
+## the legend whether or not any row carries it -- an unconditional sixth level
+## would put an empty entry in the published figure's legend.
+if (length(MT2021) > 0) {
+  MODEL_GROUP <- c(MODEL_GROUP, setNames(rep(MT2021_GROUP, length(MT2021)), MT2021))
+  MODEL_LABEL <- c(MODEL_LABEL, MT2021_KNOWN[MT2021])
+  GROUP_LEVELS <- c(GROUP_LEVELS, MT2021_GROUP)
+  GROUP_COLORS <- c(GROUP_COLORS, setNames("#0077b6", MT2021_GROUP))
+}
+
+## Rows of the arm that were not asked for. Its CSVs carry every seed scored, and
+## a seed that is in the data but not in the inventory would otherwise stop the
+## run at the "models with no group assignment" check below.
+drop_unrequested_mt2021 <- function(df) {
+  df[!grepl("^mt2021", df$model) | df$model %in% MT2021, , drop = FALSE]
+}
+
 
 ## --- Recall: merge the four macro jobs -------------------------------------
 
@@ -307,9 +363,9 @@ if (nrow(overlap) > 0) {
 }
 macro <- macro[!duplicated(key), ]
 
-## The 2021-cutoff arm is scored by the same script into its own directory; if a
-## copy of it is ever dropped in here, it is not part of this comparison.
-macro <- macro[!grepl("^mt2021", macro$model), ]
+## The 2021-cutoff arm is drawn only where it was asked for (see MT2021 above).
+## Unasked-for seeds are dropped here rather than left to trip the grouping check.
+macro <- drop_unrequested_mt2021(macro)
 
 ## One "metric" per (subset, pooling). `melt` would mix the two poolings, so
 ## the long frame is built directly.
@@ -364,6 +420,7 @@ have_varr <- file.exists(varr_path)
 if (have_varr) {
   varr <- read.csv(varr_path)
   varr <- varr[varr$list == "coguk", ]
+  varr <- drop_unrequested_mt2021(varr)
   varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
                         ifelse(varr$subset == "unseen", "unseen", "all"))
   varr$x <- (varr$step + 1) / 10
@@ -461,6 +518,7 @@ bg_path <- file.path(BG_DIR, "background_summary.csv")
 have_bg <- file.exists(bg_path)
 if (have_bg) {
   bg <- read.csv(bg_path)
+  bg <- drop_unrequested_mt2021(bg)
   ## Select the ruler, then rename back to the bare cell-set names so nothing
   ## downstream has to know which one was picked.
   wanted <- bg_cellset(BG_METRICS)

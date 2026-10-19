@@ -5051,3 +5051,110 @@ panel's ceiling climbs earlier than this one's.
 right half (panels H and J, the summary bars) is untouched at **0 differing pixels**, so
 only the two curve panels moved. The backbone control re-renders to the same pattern
 (A-F and K-L at RMSE = 0). The q-sweep wrappers inherit it automatically when they render.
+
+---
+
+## 43. The D = 2021-01-01 arm, drawn on the backbone control (2026-10-19)
+
+`coguk_list_backbone` now carries two rows the published figure does not: the
+six-tree joint arm at D = 2021-01-01 and the ncov-only single-tree control it was
+trained against, seed 0 of each. s32 cut this arm from the list figure on the
+argument that it "belongs with the multi-tree figures rather than the main-model
+comparison"; that argument still holds for `coguk_list_results`, which is
+**unchanged, RMSE = 0 on both PNGs**, and the two main PDFs were restored from git
+because their only diff was the `CreationDate` stamp.
+
+### Why the backbone figure and not the published one
+
+The cutoffs very nearly coincide. `backbone_manifest.json` puts the published
+roster's split at **2020.953 (2020-12-14)** and this arm's is **2021-01-01** --
+eighteen days later -- and this figure's test set is the guide tree after that
+split. That is what makes the arm commensurable with the roster at all. It is
+still trained on a different set of trees from a different, Wayback-recovered
+build of the ncov tree, so it is not another rung of the main-model comparison and
+is drawn as **its own group in its own colour**, appended at the foot of every bar
+panel. Folding it into "antiGen Finetunes" would have invited reading the gap
+between it and that group's 35M partial rung -- the same architecture and the same
+recipe -- as an effect of fine-tuning, which is the one thing it is not.
+
+### The de novo leak is closed, at zero, for this figure
+
+s31 recorded that the arm's 2020-12-29 ncov training tree carries RBD cells
+`output1`'s de novo mask calls unseen, and that this had to be closed **before any
+of these numbers were reported**. Closed here by intersecting the 29 CoG-UK RBD
+cells that tree carries (s29's list) against every de novo cell set this figure
+draws:
+
+| panel | de novo cell set | from the 29 |
+|---|---:|---:|
+| recall B/D/F | 20 observed cells | **0** |
+| yield I/J | 19 targets at 1+ | **0** |
+| background K-L | 19 `coguk_unseen` | **0** |
+| background K-L (supp) | 50 `rbd_unseen` | **0** |
+
+Exactly one of the 29 (**504D**) is unseen by `output1`, confirming s31's count,
+and it is in none of those sets: it never emerges among BA.2's 3,762 backbone
+descendants, so it is not a yield target either. On the all-cells cut 10 of the 56
+observed cells are in that training tree and **all ten are in `output1`'s training
+window too**, so the eighteen-day difference buys this arm no cell the published
+roster did not also see. There is no window asymmetry to correct in either cut.
+
+### The seed spread is wider than the joint-vs-single gap
+
+All three seeds of each arm were scored, because 402 forward passes of a 35M model
+is nothing. Cell-weighted recall at q = 0.1, `list_coguk_fullpool`:
+
+| arm | s0 | s1 | s2 | mean |
+|---|---:|---:|---:|---:|
+| joint, 6 trees | 0.505 | 0.511 | 0.414 | **0.477** |
+| single, ncov only | 0.362 | 0.396 | 0.427 | **0.395** |
+
+De novo: joint 0.400 / 0.275 / 0.258 (mean 0.311), single 0.325 / 0.275 / 0.275
+(mean 0.292). Background lift on `coguk_all`: joint mean +4.32 pp, single +3.46.
+
+**The joint arm is ahead on the seed mean in every cut, and the ranges overlap in
+every cut.** The figure draws one checkpoint per row, as every other row in it
+does, so the two drawn bars are one draw each and **the pair must not be read as
+the joint-vs-single contrast** -- that contrast lives in s29's 8-seed estimate
+(ncov de novo, joint vs single, +0.093 [+0.063,+0.123] on 816 targets), not here. Said in those words in the wrapper header.
+
+Where seed 0 lands among the 32: 13th of 32 on all cells cell-weighted (joint) and
+21st (single); 13th and 16th on de novo. Both sit in the middle of the roster,
+below the EVE and 35M-partial rungs and above the fixed maps.
+
+### How it was built, and what it cost
+
+| step | where | cost |
+|---|---|---|
+| 6 score matrices | `examples/slurm/background_discrimination_mt2021.sh`, job **3373943** | ~6 min, 1 GPU |
+| backbone recall + yield | `backbone_list_eval.py` on the merged dir | 65 s, CPU |
+| background contrast | `background_contrast.py` on the merged dir | 33 s, CPU |
+
+The new slurm script is separate from `background_discrimination_sc2.sh` for three
+reasons, all in its header: the staging directory of symlinks (s31), the
+`--include-experimental` these checkpoints need because they carry
+`experiment: 'forecast@2021-01-01'`, and **not** `--multitree-baselines`, which
+alone would cost a ~19 GB load of the examples file to refit a substitution matrix
+that is already in `evals_sc2_background/`.
+
+`evals_sc2_background_mt2021_merged/` is job 3364881's 30 matrices by symlink plus
+the 6 new ones; nothing already computed was rewritten. **The re-runs reproduce the
+published numbers exactly**, which is the check that adding models changed nothing
+else: 1,080 / 1,080 macro rows, 7,200 / 7,200 varrecall rows and 240 / 240
+background rows byte-identical, zero rows only in the old files.
+
+### The figure script
+
+`fig_coguk_list.R` gained `coguk.mt2021`, a character vector of this arm's
+checkpoint names, **empty by default**. When it is empty the script is what it was:
+the arm's rows are filtered out of the macro, varrecall and background frames
+alike, the sixth group is never added to `GROUP_LEVELS`, and no empty legend entry
+appears -- `scale_fill_manual(drop = FALSE)` would otherwise draw one. The old
+hardcoded `macro[!grepl("^mt2021", ...)]` drop is replaced by that filter, which
+also keeps the unasked-for seeds from tripping the "models with no group
+assignment" check. An unknown checkpoint name is a hard stop.
+
+**K-L is no longer pixel-identical to the main figure's K-L**, as s41 recorded it
+was: the panel has 32 bar slots instead of 30, so every bar shifts. The 240 numbers
+behind it did not move, and the wrapper header now says it that way rather than
+repeating s41's claim.
