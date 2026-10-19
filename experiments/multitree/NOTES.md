@@ -4065,3 +4065,297 @@ path before this reading is treated as confirmed.
 * The macro roster takes `eval.py`'s `--exclude` default, so it scores the same models
   the published CSVs do; a model that fails to build is skipped but the run then exits
   NON-ZERO naming it, per the lesson in s30/s31.
+
+---
+
+## 33. The transpose: fix the mutation, vary the background (2026-10-18)
+
+s32 closed with an open question -- antiGen trails its finetunes on the BA.2 yield
+panel (its decile fills with training-window cells) while leading the de novo recall
+panels, and "the deficit is far sharper on the single BA.2 query than averaged over
+17,978 queries, so there is a single-query-vs-average effect on top of the pool effect,
+and it is unmeasured". This section measures it, as two new panels (I-J) of the CoG-UK
+figure.
+
+**Every panel of Figures 2 and of the list figure fixes a query and ranks the mutations
+in it.** That cannot separate "this model knows 346T matters" from "this model knows
+which background 346T can arise from": a model that scores the cell high everywhere
+scores well. Fixing the *mutation* and varying the *background* cancels the
+per-mutation bias exactly -- including the pool effect of s32 -- and leaves only how
+much a prediction moves with the sequence it is given.
+
+### The substrate: the guide tree, before attachment
+
+`antiGen/background_tree.py`. `antiGen-data/tree.json` is the guide phylogeny `output1`
+is built from; the attachment phase then lands ~170k tips on it. For this question the
+attached tree is the wrong object: the same mutation is recorded against hundreds of
+near-identical backgrounds, so "backgrounds that host this mutation" would mostly count
+sampling depth.
+
+| | |
+|---|---|
+| guide tree | 8,859 nodes, 4,549 leaves, 2,839 spike mutation events |
+| root / cutoff | 2019.953 / 2020.953 (root + 1, as `output1` was generated) |
+| post-cutoff internal nodes | 4,034 |
+| **distinct spike genotypes among them** | **402** |
+
+The collapse from 4,034 to 402 is not an approximation: most guide-tree branches carry
+no spike mutation at all, a model sees only the sequence, and `antiGen-data`'s own
+`prune_branches_without_mutations` collapses exactly those branches.
+
+**Two checks on the reconstruction, both run by the scorer, both passing.** Every one of
+the 2,839 branch mutations' wild-type letters agrees with the residue the reconstruction
+already has at that position (0 mismatches), and the root genotype is byte-identical to
+example 0 of `examples_cutoff_1.txt`. The scorer aborts rather than continuing if either
+fails.
+
+**A third check, run separately: do these genotypes actually appear in the attached
+tree?** Streaming all 171,248 examples, **336 of the 402 appear as TESTING example
+sequences**, and the other 66 do not. The 66 are late (mean date 2025.83 against 2024.75)
+with few child branches, and are merged away by the pruning and cleanup the attachment
+path applies. **None of them is a host** -- all 143 host genotypes are present as testing
+examples -- so the absentees only ever serve as controls.
+
+### Hosts, controls, and the matching rule
+
+For a cell `c = (position, residue)`: a **host** is a genotype with a post-cutoff child
+branch carrying `c`; a **control** is a genotype that does not already carry the residue,
+has a node within 6 months of a host node, and is neither an ancestor nor a descendant of
+any host node of that cell (anywhere in the tree, not merely at the time-matched node).
+
+The time match is there because the guide tree is recency-heavy -- a quarter of its
+post-cutoff nodes are dated after 2025.68 -- and it works: mean host date 2024.09 against
+mean control date 2024.19, a within-cell gap of 0.095 years, where the unmatched pool
+mean is 2024.93. The ancestry exclusion is there because a node two branches above where
+346T arose is not a negative in any useful sense.
+
+Realised counts, CoG-UK RBD (247 listed cells, 104 seen / 143 de novo):
+
+| cell set | cells with >=1 host and >=10 controls |
+|---|---:|
+| CoG-UK listed | **53** (19 de novo) |
+| all RBD cells | **145** (50 de novo) |
+
+Median 37 controls per cell.
+
+### The confound that nearly went into the figure
+
+The first run used the published ruler -- a cell's percentile among that query's
+candidates, which is what `compute_hit_rate` thresholds. **Under it, predictors with no
+access to the query at all do not land at chance**:
+
+| fixed (L, E) map | AUC, host vs control |
+|---|---:|
+| pyr0 | 0.614 |
+| CoVFit | 0.609 |
+| Omicron BA.1 bind | 0.600 |
+| EVEscape | 0.563 |
+| pssm_root | **0.418** |
+
+Every one of these is a single map with no sequence input; their only query-dependence is
+that `compute_hit_rate` masks each query's own residues out of the pool. A host genotype
+is more derived than its controls, so more of its high-scoring cells are masked away and
+everything left is lifted. At ~0.1 of AUC that swamps the effect being measured, and
+`pssm_root` moves the other way, so it is not even a constant offset one could subtract.
+
+**Fixed by ranking in a pool held fixed across queries**: the eval-range cells no backbone
+genotype carries (4,134 of 4,422) that the model scores finitely in every query, plus the
+target cell. Identical for every query by construction, so a fixed map scores every query
+identically and lands at **exactly 0.500**. The published convention is still computed
+and written as `*_perquery` rows, where it is the diagnostic it turned out to be, and
+`antiGen/background_discrimination.py` therefore stores raw scores rather than ranks so
+both rulers come off one forward pass.
+
+The general lesson, which is not specific to this eval: **a per-query normalisation is
+invisible while the query is fixed and becomes a confound the moment it is not.**
+
+### Lift, not AUC, and why the choice is not cosmetic
+
+Three readings of the same contrast are written per cell: `lift` (the share of hosts
+whose top decile contains the cell, minus the share of controls), `auc` (rank only) and
+`delta` (percentile points). The panels draw lift. The reason is in the data:
+
+| | mean AUC | Δ percentile | **top-decile lift** | median sd of the cell's percentile across queries |
+|---|---:|---:|---:|---:|
+| antiGen | 0.538 | +1.2 pp | **+4.4 pp** | **0.054** |
+| antiGen as EVE full FT | **0.606** | +0.2 pp | +0.7 pp | 0.0066 |
+| EVE | 0.574 | +0.1 pp | -0.4 pp | 0.0071 |
+| every query-blind rung | 0.500 | 0.0 | 0.0 | 0.0000 |
+
+The AUC is scale-free, so it scores the sign of a 0.7-percentile-point nudge exactly as
+it scores a 28-point swing -- and both regimes are present here. **A model that shifts a
+cell's rank by less than a percentile point produces the same top decile for every
+background in the tree**: its direction can be right while the forecast is, operationally,
+background-blind. Lift combines sign and size, is in the units the decile row above is
+read in, and is identically zero for a model whose decile does not move.
+
+**On the AUC alone the claim this was built to test does not hold** -- antiGen is third,
+and its interval spans chance. That reading is kept in the CSV and is not hidden.
+
+### Robustness, all on the pilot roster
+
+Every variant below leaves the ordering intact.
+
+| variant | antiGen, CoG-UK | antiGen, all RBD |
+|---|---:|---:|
+| headline (±6 months) | +4.4 pp | +4.3 pp |
+| window ±3 months | +3.7 | +3.8 |
+| window ±1 year | +4.5 | +4.3 |
+| controls with >=8 child branches | +2.5 | +4.2 |
+| controls with >=20 child branches | +7.7 | +4.7 |
+
+The last two matter most. Hosts are "bigger" nodes than controls by construction (median
+28 post-cutoff child branches against 4), since a genotype with more branches has more
+chances to host anything. A uniform "this background is productive" response cancels in a
+within-query rank, which is the argument for using a percentile rather than a raw score;
+the fecundity-matched rows are the direct check, and antiGen's lift **rises** under them
+while eve_ft's goes to zero or below.
+
+### What the denominators can and cannot settle
+
+95% bootstrap over cells, antiGen:
+
+| cell set | n | lift | 95% CI |
+|---|---:|---:|---|
+| CoG-UK listed | 53 | +4.4 pp | **[-2.3, +11.7]** |
+| CoG-UK de novo | 19 | +12.4 pp | **[-2.3, +29.0]** |
+| all RBD | 145 | +4.3 pp | [+0.8, +8.0] |
+| all RBD de novo | 50 | +12.3 pp | [+4.3, +21.3] |
+
+**The main figure's panels are the two that do not clear zero**, and the supplement's RBD
+panels are the ones that do. The panels carry the bootstrap whiskers for exactly this
+reason; a bar length alone would overstate what 19 cells settle.
+
+### Code and jobs
+
+* `antiGen/background_tree.py` -- the backbone, with its two self-checks.
+* `antiGen/background_discrimination.py` -- 402 forward passes per model, raw scores out
+  (~7 MB each); `rank_fractions` / `top_q_weight` rebuild `compute_hit_rate`'s fractional
+  top-q weight from a pool, which `antiGen/tests/test_background_ranks.py` pins across 10
+  quantiles, with ties, NaN and `-inf` sentinels (3 tests, passing).
+* `antiGen/background_contrast.py` -- the contrast, both rulers, three statistics.
+* `examples/slurm/background_discrimination_sc2.sh` -- jobs **3364881** (full roster,
+  `evals_sc2_background/`) and **3364950** (the models queued behind evcouplings' plmc
+  rebuild, `evals_sc2_background_head/`, merged in afterwards).
+* `antiGen-figures/figures/fig_coguk_list.R` -- panels I-J, the listed all/de novo pair
+  in the main figure and the all-RBD pair in the supplement.
+
+### Open
+
+**The full-roster table is not in yet.** The ESM-2 arms have landed and one of them --
+the 35M partial-FT arm, +6.0 pp on the listed cells -- is in antiGen's range, so "antiGen
+is the most query-adapted model" is **not** supportable from the pilot alone and must
+wait for the complete roster, exactly as s30's absent-ESM-2 caveat did.
+
+---
+
+## 34. The attachment control: the same list, scored on the guide tree alone (2026-10-18)
+
+An alternative rendering of the CoG-UK figure, scored on the Nextstrain backbone before
+`antiGen-data`'s attachment phase. **It is a control, not a replacement**:
+`coguk_list_backbone{,_supp}.png` beside `coguk_list_results{,_supp}.png`, built from the
+same script through options (`figures/fig_coguk_list_backbone.R`) rather than a fork that
+would drift.
+
+Two things it rules out. **The attachment**, which places ~170k tips by parsimony and so
+decides both the ancestral genotypes queried and the targets attributed to them. And
+**the recurrence weighting**: s31/s32 had to split the figure into event-weighted and
+cell-weighted columns because CoG-UK's cells recur at wildly different rates in the
+attached test set, and almost all of that multiplicity is attachment.
+
+### The test set shrinks by two orders of magnitude and stops recurring
+
+| | attached (published) | backbone only |
+|---|---:|---:|
+| examples carrying a listed target | 17,978 | 143 |
+| listed cells observed | 235 | 56 |
+| listed target events | 26,491 | 211 |
+| **events per observed cell** | ~113 (median 46, max 972) | **3.8** |
+
+### The result: the published ordering is not an artefact of either
+
+Over the 24 models scored in both, at q = 0.1 on `list_coguk_fullpool`:
+
+| | Spearman |
+|---|---:|
+| **published cell-weighted vs backbone cell-weighted** | **0.943** |
+| published event-weighted vs backbone event-weighted | 0.941 |
+
+And the weighting question largely dissolves, which is the second thing the control was
+for:
+
+| | mean abs(macro - micro) | Spearman(macro, micro) |
+|---|---:|---:|
+| attached (published) | **0.171** | 0.934 |
+| backbone only | **0.061** | 0.960 |
+
+So the two columns the main figure is built to contrast are nearly the same column once
+attachment is removed -- which is the direct confirmation of s32's diagnosis that the
+gap between them *is* recurrence, not composition.
+
+### Absolute values rise, and the local order does move
+
+Every rung scores higher on the backbone (antiGen 0.446 -> 0.560 cell-weighted,
+`eve_ft` 0.474 -> 0.730): 56 cells concentrated on well-sampled RBD positions is an
+easier target set than 235. Ranks shift locally even at rho = 0.94 -- `eve_ft` goes 3rd
+-> 1st, antiGen 4th -> 7th, the 35M partial arm 1st -> 3rd -- and with 56 cells and 211
+events those margins are not separable. **The claim this figure supports is about the
+ordering as a whole, not about any pair of adjacent rungs.**
+
+Top decile, cell-weighted, `list_coguk_fullpool`, backbone only:
+
+| model | backbone macro | backbone micro | published macro |
+|---|---:|---:|---:|
+| antiGen as EVE full FT | **0.730** | 0.791 | 0.474 |
+| EVE | 0.715 | 0.725 | 0.415 |
+| antiGen as ESM 2 (35M) partial FT | 0.715 | 0.744 | 0.512 |
+| antiGen as ESM 2 (35M) LM head FT | 0.661 | 0.678 | 0.487 |
+| antiGen as ESM 2 (650M) LM head FT | 0.635 | 0.692 | 0.441 |
+| antiGen as ESM 2 (35M) full FT | 0.580 | 0.626 | 0.419 |
+| **antiGen** | 0.560 | 0.621 | 0.446 |
+| PSSM | 0.550 | 0.664 | 0.362 |
+| EVEscape | 0.500 | 0.659 | 0.353 |
+
+**PSSM is the rung to watch**, because it is the one s32 showed was living on
+recurrence: 0.362 macro against 0.735 micro in the published run, and 0.550 against
+0.664 here. Its event-weighted advantage is 0.373 in the attached test set and 0.114 on
+the backbone -- two thirds of it was the weighting.
+
+### What is identical and what is not
+
+Identical: models, checkpoints, candidate pool, wild-type and gap/stop masking, the
+fractional tie rule, the de novo mask, and the BA.2 query -- the backbone's BA.2 root
+genotype is byte-identical to the `IS_VARIANT_ROOT` example the published run scores,
+checked rather than assumed. Scoring reuses the matrices
+`background_discrimination.py` already wrote, so the control needed no GPU time.
+
+**The bottom row is NOT on the same scale as the published one.** "Emerged by t" there
+counts attached sequences through the variant PSSMs; here it counts guide-tree tips
+descended from the BA.2 root carrying the residue by t. There are 3,762 such tips, so 59
+listed cells ever reach one (against 200 at 1+ cases published) and the ceiling falls
+from ~0.45 to ~0.14. Read that row within its own figure.
+
+One deliberate difference in the test-set construction: a multi-mutation branch is **not**
+decomposed into intermediate genotypes in a random order, as `write_training_examples`
+does. All of a branch's mutations are targets of the parent genotype, which does not
+depend on `antiGen-data`'s RNG seed.
+
+### Caveats
+
+* **56 cells and 211 events**, 20 cells and 62 events on the de novo cut. Every number
+  here is noisier than its published counterpart by roughly the square root of that
+  ratio.
+* **Six models are missing** -- Tranception (frozen and FT), EVmutation, codon,
+  substitution and where x which -- because job 3364881 is still inside evcouplings'
+  plmc rebuild. The figure prints the absentees rather than dropping them silently, and
+  rho = 0.943 is over the 24 that are present.
+* The antiGen and EVE score matrices in this rendering came from the CPU pilot and the
+  rest from the GPU job; same checkpoints, different runs. To be re-scored in one pass.
+
+### Files
+
+`antiGen/backbone_list_eval.py` (test set + recall + the BA.2 yield series),
+`antiGen-figures/figures/fig_coguk_list_backbone.R` (the wrapper), and
+`antiGen-figures/data/evals_sc2_lists_macro_backbone/`. `fig_coguk_list.R` now takes its
+input directories, output names and title suffix as options so both figures come off one
+script.

@@ -46,6 +46,11 @@
 ##   C-D  (new)          recall at the top decile
 ##   E-F  <- Fig 2 D-E   recall AUC
 ##   G-H  (new)          CoG-UK yield of the BA.2 top decile, over time
+##   I-J  (new)          background lift: the transpose of every panel above it --
+##                       fix the MUTATION, vary the background, and ask whether
+##                       the model's top decile moves the right way. See the
+##                       block above BG_METRICS for the construction and for why
+##                       half the roster sits at exactly zero.
 ##
 ## Figure 2's PSSM-precision panels (its G-J) are NOT carried over. They are a
 ## single-query metric, so the pooling question this figure exists to ask does
@@ -128,8 +133,22 @@ suppressPackageStartupMessages({
 
 apply_paper_defaults()
 
-MACRO_DIR <- "data/evals_sc2_lists_macro"
-VARR_DIR  <- "data/evals_sc2_lists_varrecall"
+## Every input and output name is an option so the backbone-only control figure
+## (figures/fig_coguk_list_backbone.R) can be rendered from this same script
+## rather than a fork of it that would drift.
+MACRO_DIR <- getOption("coguk.macro_dir", "data/evals_sc2_lists_macro")
+VARR_DIR  <- getOption("coguk.varr_dir",  "data/evals_sc2_lists_varrecall")
+BG_DIR    <- getOption("coguk.bg_dir",    "data/evals_sc2_background")
+FIG_MAIN  <- getOption("coguk.fig_main",  "coguk_list_results")
+FIG_SUPP  <- getOption("coguk.fig_supp",  "coguk_list_supp")
+## Appended to every panel title. Two figures of the same shape are easy to mix
+## up once they are out of the directory they were rendered into.
+TITLE_SUFFIX <- getOption("coguk.title_suffix", "")
+titled <- function(x) paste0(x, TITLE_SUFFIX)
+## A suffix pushes the longest titles past the right-hand panel's width, and a
+## clipped title on a figure whose whole purpose is being compared with another
+## one is worse than a small title.
+title_theme <- if (nzchar(TITLE_SUFFIX)) theme(plot.title = element_text(size = 9)) else NULL
 
 
 ## --- Model inventory -------------------------------------------------------
@@ -312,8 +331,74 @@ if (have_varr) {
   by_x <- rbind(by_x, varr[, c("model", "metric", "x", "value")])
 }
 
+## --- The background contrast (bottom row) ----------------------------------
+## The transpose of every other panel here. A-H fix a query and rank the
+## mutations in it, which cannot tell "this model knows 346T matters" from "this
+## model knows WHICH BACKGROUND 346T can arise from" -- a model that scores the
+## cell high everywhere scores well. These panels fix the MUTATION and vary the
+## background, so each model's per-mutation bias cancels, including the pool
+## effect behind antiGen's drop in the row above (NOTES s32).
+##
+## Backgrounds are the guide tree's post-cutoff genotypes, taken BEFORE
+## antiGen-data's attachment phase: 4,034 post-cutoff internal nodes collapsing
+## to 402 distinct spike sequences. The attached tree is the wrong substrate --
+## it lands ~170k tips on that same backbone, so "backgrounds that host this
+## mutation" would mostly count sampling depth. For a cell, a HOST is a genotype
+## with a post-cutoff child branch carrying it; a CONTROL is a genotype that does
+## not already carry the residue, has a node within six months of a host, and is
+## neither an ancestor nor a descendant of any host (a node two branches above
+## where 346T arose is not a negative in any useful sense).
+##
+##     lift = P(cell in the query's top decile | host)
+##          - P(cell in the query's top decile | matched control)
+##
+## averaged over cells, one vote each, in percentage points. Chance is 0.
+##
+## WHY LIFT AND NOT AN AUC. The rank-only reading (reported in the CSV as `auc`,
+## and in NOTES) is scale-free, so it scores the sign of a 0.7-percentile-point
+## nudge exactly as it scores a 28-point swing -- and both regimes are present
+## here: base antiGen's percentile for a cell moves with the background about
+## eight times as much as the EVE rungs'. A model that shifts a cell's rank by
+## less than a percentile point produces the same top decile for every
+## background in the tree; its direction can be right while the forecast is, in
+## practice, background-blind. Lift combines sign and size and is in the units
+## the decile row above is already read in.
+##
+## THE RUNGS AT EXACTLY ZERO ARE THE POINT, NOT A HOLE. Every data/baselines/
+## rung -- PSSM, the DMS panels, EVEscape, PyR0, CoVFit, the MSA Transformers --
+## is a fixed (position x residue) map with no access to the query, so its decile
+## is the same list whatever it is asked about and its lift is identically zero.
+## They are the measured null band. That is only exact because the percentile is
+## taken in a pool held fixed across queries: under the published per-query
+## masking, which drops each query's own residues, those same rungs drift to
+## 0.609 / 0.614 / 0.418 of AUC purely because a derived genotype has had more of
+## its high-scoring cells masked away. Those rows are kept in the CSV as
+## `*_perquery` and are not drawn.
+
+BG_METRICS <- c("coguk_all", "coguk_unseen", "rbd_all", "rbd_unseen")
+longform_bg_metrics <- c("background lift, all list cells",
+                         "background lift, de novo",
+                         "background lift, all RBD cells",
+                         "background lift, de novo RBD")
+
+bg_path <- file.path(BG_DIR, "background_summary.csv")
+have_bg <- file.exists(bg_path)
+if (have_bg) {
+  bg <- read.csv(bg_path)
+  bg <- bg[bg$cellset %in% BG_METRICS, ]
+  bg_df <- data.frame(model = bg$model, metric = bg$cellset,
+                      value = 100 * bg$lift,
+                      lo = 100 * bg$lift_lo, hi = 100 * bg$lift_hi,
+                      n_cells = bg$n_cells, stringsAsFactors = FALSE)
+  cat(sprintf("background: %d models, %s\n", length(unique(bg_df$model)),
+              paste(sprintf("%s n=%d", BG_METRICS,
+                            vapply(BG_METRICS, function(m)
+                              max(c(0, bg_df$n_cells[bg_df$metric == m])), numeric(1))),
+                    collapse = ", ")))
+}
+
 ## Fail loudly on an unlisted model rather than mis-grouping it.
-unknown <- setdiff(unique(by_x$model), names(MODEL_GROUP))
+unknown <- setdiff(unique(c(by_x$model, if (have_bg) bg_df$model)), names(MODEL_GROUP))
 if (length(unknown) > 0) {
   stop("models with no group assignment: ", paste(unknown, collapse = ", "))
 }
@@ -385,6 +470,20 @@ local({
 by_x       <- add_group_and_label(by_x)
 summary_df <- add_group_and_label(summary_df)
 decile_df  <- add_group_and_label(decile_df)
+if (have_bg) {
+  for (metric in BG_METRICS) {
+    miss <- setdiff(names(MODEL_GROUP), unique(bg_df$model[bg_df$metric == metric]))
+    if (length(miss) > 0) {
+      cat(sprintf("%-38s %2d models, missing: %s\n", metric,
+                  length(unique(bg_df$model[bg_df$metric == metric])),
+                  paste(MODEL_LABEL[miss], collapse = ", ")))
+    } else {
+      cat(sprintf("%-38s %2d models, complete\n", metric,
+                  length(unique(bg_df$model[bg_df$metric == metric]))))
+    }
+  }
+  bg_df <- add_group_and_label(bg_df)
+}
 
 relabel <- function(df, metrics, labels) {
   df <- df[df$metric %in% metrics, ]
@@ -394,6 +493,7 @@ relabel <- function(df, metrics, labels) {
 recall_x      <- relabel(by_x, RECALL_METRICS, longform_recall_metrics)
 recall_auc_df <- relabel(summary_df, RECALL_METRICS, longform_recall_metrics)
 recall_q10_df <- relabel(decile_df, RECALL_METRICS, longform_recall_metrics)
+if (have_bg) bg_df <- relabel(bg_df, BG_METRICS, longform_bg_metrics)
 if (have_varr) {
   varr_x      <- relabel(by_x, VARR_METRICS, longform_varr_metrics)
   varr_max_df <- relabel(summary_df, VARR_METRICS, longform_varr_metrics)
@@ -446,7 +546,7 @@ curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA,
                           guide = "none") +
     theme_paper() +
     labs(color = "Model", x = xlab, y = ylab) +
-    ggtitle(title) +
+    ggtitle(title) + title_theme +
     theme(legend.position = c(0.98, 0.02),
           legend.justification = c(1, 0),
           legend.key.height = unit(0.5, "lines"),
@@ -486,7 +586,7 @@ bar_panel <- function(df, metric, xlab, title, labels_on_y = TRUE,
     scale_fill_manual(values = GROUP_COLORS, drop = FALSE) +
     scale_x_continuous(expand = expansion(mult = c(0, 0.05))) +
     xlab(xlab) +
-    ggtitle(title)
+    ggtitle(title) + title_theme
   if (!is.null(xrange)) p <- p + coord_cartesian(xlim = xrange)
   if (!labels_on_y) p <- p + theme(axis.text.y = element_blank())
   p
@@ -519,21 +619,38 @@ RECALL_MAIN <- c("all list cells, cell-weighted", "de novo, cell-weighted")
 RECALL_SUPP <- c("all list cells, event-weighted", "de novo, event-weighted")
 VARR_MAIN   <- "emerged 1+ cases"
 VARR_SUPP   <- "emerged 100+ cases"
+## The main figure asks the background question of the curated list, to the same
+## all/de novo grammar as the rows above it; the supplement asks it of every RBD
+## cell with a backbone host, which roughly triples the denominator (146 and 51
+## cells against 54 and 20) at the cost of leaving the list behind.
+BG_MAIN <- c("background lift, all list cells", "background lift, de novo")
+BG_SUPP <- c("background lift, all RBD cells", "background lift, de novo RBD")
 stopifnot(all(c(RECALL_MAIN, RECALL_SUPP) %in% longform_recall_metrics))
 
 recall_auc_range <- c(0.35, max(recall_auc_df$value))
 decile_range     <- c(0, max(recall_q10_df$value))
 varr_range       <- if (have_varr) c(0, max(varr_max_df$value)) else NULL
+## Per figure, not across all four cell sets: the supplement's RBD panels and the
+## main figure's list panels have different spreads, and sharing one axis across
+## them lets a single outlier compress everything in the other figure.
+bg_range_for <- function(metrics) {
+  keep <- bg_df$metric %in% metrics
+  ## The whiskers, not just the bars: a bootstrap interval that runs off the
+  ## panel is worse than no interval, and on the 19-cell de novo panel the
+  ## interval is several times the point estimate.
+  r <- range(c(0, bg_df$value[keep], bg_df$lo[keep], bg_df$hi[keep]))
+  r + c(-1, 1) * 0.05 * diff(r)
+}
 
 recall_curve_panel <- function(metric, first) {
   curve_panel(recall_x, recall_auc_df, metric, "Quantile (q)",
               if (first) "P(listed mutation in top q)" else "",
-              paste0("Recall, ", metric), chance = 1)
+              titled(paste0("Recall, ", metric)), chance = 1)
 }
 
 decile_bar <- function(metric, first) {
   bar_panel(recall_q10_df, metric, "Recall at q = 0.1",
-            paste0("Top decile, ", metric),
+            titled(paste0("Top decile, ", metric)),
             labels_on_y = first, xrange = decile_range) +
     ## Chance, for a metric whose scale is otherwise easy to misread.
     geom_vline(xintercept = 0.1, linetype = "dotted", linewidth = 0.3,
@@ -543,25 +660,48 @@ decile_bar <- function(metric, first) {
 auc_bar <- function(metric, first) {
   ## Axis starts above zero, unlike the decile row: every rung clears chance by
   ## a wide margin and a zero-based axis compresses the differences to nothing.
-  bar_panel(recall_auc_df, metric, "Recall AUC", paste0("AUC, ", metric),
+  bar_panel(recall_auc_df, metric, "Recall AUC", titled(paste0("AUC, ", metric)),
             labels_on_y = first, xrange = recall_auc_range)
 }
 
 varr_curve <- function(metric) {
   curve_panel(varr_x, varr_max_df, metric, "Date (t, years into pandemic)",
               "P(top-decile cell is listed & emerged by t)",
-              paste0("BA.2 top decile, ", metric), refs = varr_ref)
+              titled(paste0("BA.2 top decile, ", metric)), refs = varr_ref)
+}
+
+#' One background-lift panel.
+#'
+#' Zero is chance here, not the left edge, so it is drawn: the rungs sitting on
+#' it are the query-blind baselines, which cannot move their decile at all, and
+#' a model below it ranks a mutation HIGHER in backgrounds that did not host it.
+bg_bar <- function(metric, first, metrics) {
+  bar_panel(bg_df, metric, "Top-decile lift, host - control (pp)",
+            titled(paste0("Background, ", sub("^background lift, ", "", metric))),
+            labels_on_y = first, xrange = bg_range_for(metrics)) +
+    geom_vline(xintercept = 0, linewidth = 0.3, color = "grey30") +
+    ## A zero-length bar is invisible, and most of the roster sits at EXACTLY
+    ## zero here, which must not read as a missing row: the dot says the model
+    ## was scored and could not move its decile at all.
+    geom_point(size = 0.7, color = "grey20") +
+    ## 95% bootstrap over CELLS, drawn because these denominators are small --
+    ## 53 listed cells and 19 de novo ones, against 145 and 50 for the RBD
+    ## version in the supplement. On the list panels the intervals of the
+    ## leading models span zero; on the RBD panels they do not. Hiding that
+    ## behind a bar length would overstate what 19 cells can settle.
+    geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.35, linewidth = 0.25,
+                   color = "grey25")
 }
 
 varr_bar <- function(metric) {
   bar_panel(varr_max_df, metric, "Max (end of series)",
-            paste0("Max yield, ", metric), labels_on_y = TRUE,
+            titled(paste0("Max yield, ", metric)), labels_on_y = TRUE,
             xrange = varr_range)
 }
 
 #' Assemble one of the two figures: three two-panel rows of recall, then the
 #' BA.2 yield row (a curve beside its summary bars).
-assemble <- function(recall_metrics, varr_metric) {
+assemble <- function(recall_metrics, varr_metric, bg_metrics) {
   rows <- list(
     legend_grob,
     plot_grid(plotlist = Map(recall_curve_panel, recall_metrics, c(TRUE, FALSE)),
@@ -572,17 +712,27 @@ assemble <- function(recall_metrics, varr_metric) {
               nrow = 1, labels = LETTERS[5:6], rel_widths = c(1.9, 1))
   )
   heights <- c(0.14, 1, 1.5, 1.5)
+  next_label <- 7
   if (have_varr) {
     rows <- c(rows, list(plot_grid(varr_curve(varr_metric), varr_bar(varr_metric),
                                    nrow = 1, labels = LETTERS[7:8],
                                    rel_widths = c(1.06, 1.5))))
     heights <- c(heights, 1.5)
+    next_label <- 9
+  }
+  if (have_bg) {
+    rows <- c(rows, list(plot_grid(
+      plotlist = Map(function(m, f) bg_bar(m, f, bg_metrics), bg_metrics, c(TRUE, FALSE)),
+      nrow = 1, labels = LETTERS[next_label:(next_label + 1)],
+      rel_widths = c(1.9, 1))))
+    heights <- c(heights, 1.5)
   }
   plot_grid(plotlist = rows, ncol = 1, rel_heights = heights)
 }
 
-save_figure(assemble(RECALL_MAIN, VARR_MAIN), "coguk_list_results",
-            width = 11, height = if (have_varr) 20 else 15)
-save_figure(assemble(RECALL_SUPP, VARR_SUPP), "coguk_list_supp",
-            width = 11, height = if (have_varr) 20 else 15)
-cat("wrote figs/coguk_list_results.png and figs/coguk_list_supp.png (+ .pdf)\n")
+fig_height <- 15 + if (have_varr) 5 else 0 + if (have_bg) 5 else 0
+save_figure(assemble(RECALL_MAIN, VARR_MAIN, BG_MAIN), FIG_MAIN,
+            width = 11, height = fig_height)
+save_figure(assemble(RECALL_SUPP, VARR_SUPP, BG_SUPP), FIG_SUPP,
+            width = 11, height = fig_height)
+cat(sprintf("wrote figs/%s.png and figs/%s.png (+ .pdf)\n", FIG_MAIN, FIG_SUPP))
