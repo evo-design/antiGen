@@ -4998,3 +4998,30 @@ q-sweep figures get 30/30 and only the published q = 0.1 figure keeps the gap.
 `evals_sc2_lists_macro_backbone_full/`), `figures/fig_coguk_list_backbone.R`
 (`coguk.bg_dir` now points at the real directory; header rewritten).
 `coguk_list_results.png` and its supplement are **unchanged, RMSE = 0**.
+
+---
+
+## 42. The yield-row legend moved to the top left (2026-10-19)
+
+Third position for this legend, and the first one that sits on nothing.
+
+* **Bottom-right corner** (pre-s35): covered antiGen's own plateau in the de novo panel.
+* **x = 0.98, y = 0.52** (s35): moved it out of the plateaus and into the band above
+  them -- but the *ceiling* curve's near-vertical rise at t ~ 2.3 passes straight
+  through it, which s35 noted as "the ceiling's rise still passes behind it" and papered
+  over with an opaque background.
+* **Top left, x = 0.02, y = 0.98** (here): empty **by construction, not by luck**. Every
+  curve in these panels -- models, chance line and ceiling alike -- is flat at zero until
+  the BA.2 descendants start accumulating at t ~ 2.1, so the upper-left quadrant has no
+  data in it in any rendering of this panel.
+
+The keys flip to the left of their labels and the labels left-align, because the block is
+now anchored by its left edge and the right-anchored settings inherited from the base
+`curve_panel` theme would ragged-edge it. The opaque background is kept, in case a future
+panel's ceiling climbs earlier than this one's.
+
+**Confined to G and I, checked band by band.** Against the previous commit, every band of
+`coguk_list_results.png` is RMSE = 0 except G-H and I-J -- and within those two rows the
+right half (panels H and J, the summary bars) is untouched at **0 differing pixels**, so
+only the two curve panels moved. The backbone control re-renders to the same pattern
+(A-F and K-L at RMSE = 0). The q-sweep wrappers inherit it automatically when they render.

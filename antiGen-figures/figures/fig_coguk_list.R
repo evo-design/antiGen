@@ -668,15 +668,26 @@ curve_panel <- function(df, summ, metric, xlab, ylab, title, chance = NA,
           legend.title = element_text(hjust = 1),
           legend.text.align = 1)
   if (!is.null(refs)) {
-    ## These curves plateau in the lower half and the ceiling runs along the
-    ## top, so the legend goes in the empty band between them rather than in
-    ## the bottom-right corner, where it covered antiGen's own curve. Opaque,
-    ## because the ceiling's rise still passes behind it. Set after
+    ## TOP LEFT. Nothing is drawn there: every curve in these panels -- the
+    ## models, the chance line and the ceiling alike -- is flat at zero until
+    ## the variant's descendants start accumulating around t = 2.1, so the
+    ## upper-left quadrant is empty by construction rather than by luck.
+    ## The two positions tried before both sat on data: the bottom-right corner
+    ## covered antiGen's own plateau, and the band at x = 0.98, y = 0.52 had
+    ## the ceiling's rise passing straight through it.
+    ##
+    ## Keys flip to the left of the labels here, and the labels left-align,
+    ## because the block is now anchored by its left edge; the right-anchored
+    ## settings in the base theme above would ragged-edge it. Opaque background
+    ## is kept in case a future panel's ceiling climbs earlier. Set after
     ## theme_paper(), which is a complete theme and would otherwise drop it.
-    p <- p + theme(legend.position = c(0.98, 0.52),
-                   legend.justification = c(1, 0),
+    p <- p + theme(legend.position = c(0.02, 0.98),
+                   legend.justification = c(0, 1),
                    legend.box = "vertical",
-                   legend.box.just = "right",
+                   legend.box.just = "left",
+                   legend.text.position = "right",
+                   legend.text = element_text(hjust = 0),
+                   legend.title = element_text(hjust = 0),
                    legend.margin = margin(0, 0, 0, 0),
                    legend.background = element_rect(fill = "white", colour = NA))
   }
