@@ -58,7 +58,8 @@ def compute_loss_full(probs, target_batch):
 RBD_RANGE = list(range(330, 531))  # 0-indexed, inclusive
 
 
-def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None):
+def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
+                     per_cell=False):
     target_batch = target_batch.to(scores.device)
     aa_batch = aa_batch.to(scores.device)
 
@@ -109,6 +110,18 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None)
     hits_at = (at * target_batch).reshape(B, -1).sum(dim=1)
     n_hits = (hits_above + frac * hits_at).sum().item()
     n_mutations = target_batch.sum().item()
+
+    if per_cell:
+        # The same hit mass, kept per (position, residue) instead of summed over the
+        # batch, so a caller can average over CELLS rather than over mutation EVENTS.
+        # The two differ sharply on a curated list, whose cells recur at wildly
+        # different rates across the test set (CoG-UK RBD: k from 1 to 972 events per
+        # cell), so the event-weighted mean is dominated by a handful of cells.
+        # Summing these two tensors reproduces (n_hits, n_mutations) exactly.
+        cell_hits = ((above * target_batch).float()
+                     + frac.view(B, 1, 1) * (at * target_batch).float()).sum(dim=0)
+        cell_events = target_batch.float().sum(dim=0)
+        return n_hits, n_mutations, cell_hits, cell_events
 
     return n_hits, n_mutations
 

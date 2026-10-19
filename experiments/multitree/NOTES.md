@@ -3780,3 +3780,118 @@ The figure. `fig2_sc2_benchmarks.R` needs `EVAL_DIR` and the two metric vectors
 parameterised, and group/colour assignments for codon, substitution and
 `where_times_which`, which s25 flagged as missing from the R inventory and which will
 otherwise render as ungrouped model rows.
+
+---
+
+## 32. The CoG-UK list, averaged over mutations instead of events (2026-10-18)
+
+s31 measured the problem and this section fixes it. The list metric in `eval.py`
+averages over mutation **events**, and CoG-UK's cells recur at wildly different rates,
+so the published list numbers are mostly a report on a handful of recurrent cells --
+81% of the list's test events sit on the 104 cells already in the training window.
+
+### The metric
+
+For a listed cell observed relative to k base sequences, its score is the fraction of
+those k queries whose own top-q contains it; the reported number is the unweighted mean
+over listed cells. One vote per mutation rather than one per event.
+
+The inner question is **not** changed: the per-query candidate pool, the wild-type and
+gap/stop masking and the fractional tie rule are the same `compute_hit_rate` call, which
+now takes `per_cell=True` and returns the hit mass and the event count per (position,
+residue) alongside the scalars it always returned. Summing the two tensors reproduces
+those scalars exactly, which `antiGen/tests/test_per_cell_hit_rate.py` pins down along
+with four other properties (hit mass lands on the right cell; events count per cell and
+include duplicates; a flat score map pays out exactly q per cell).
+
+Chance is 0.1 under both weightings, so the two columns are on the same scale and the
+gap between them reads as how much of a score rides on recurrence.
+
+### Only 10.7% of the test set is scored, and that is exact
+
+`antiGen/list_macro.py` scores the **17,978 of 167,600** test examples that carry a
+CoG-UK RBD target. An example with no listed target contributes zero to the numerator
+and zero to the denominator of every list variant, so dropping it changes no number.
+That is what makes this a ~2.5 min/model job instead of the ~3h/model `eval.py` spends.
+
+**The check this rests on**: the event-weighted column is computed in the same pass and
+reproduces `evals_sc2_lists/quantile_hit_rates_list_coguk*_all-models.csv` over all
+**396 (model, variant, quantile) cells to 1.5e-07**. Split across four SLURM jobs
+(3362535 full roster, 3362776 the cheap half, 3363245 the five headline checkpoints,
+3363261 the 2021 arm); the **432 cells scored by more than one job agree to 0.00e+00**.
+
+### The numbers, top decile, `list_coguk_fullpool`
+
+| model | macro | micro (published) | de novo macro | de novo micro |
+|---|---:|---:|---:|---:|
+| antiGen as ESM 2 (35M) partial FT | **0.512** | 0.813 | 0.410 | 0.569 |
+| antiGen as ESM 2 (35M) LM head FT | 0.487 | 0.786 | 0.398 | 0.469 |
+| antiGen as EVE full FT | 0.474 | **0.837** | 0.393 | 0.691 |
+| antiGen | 0.446 | 0.722 | **0.509** | 0.536 |
+| antiGen as ESM 2 (650M) LM head FT | 0.441 | 0.762 | 0.354 | 0.510 |
+| multi-tree 2021, joint (3 seeds) | 0.388 | 0.549 | 0.347 | 0.363 |
+| PSSM | 0.362 | 0.735 | 0.100 | 0.100 |
+| EVEscape | 0.353 | 0.504 | 0.383 | 0.515 |
+| multi-tree 2021, single (3 seeds) | 0.273 | 0.388 | 0.257 | 0.284 |
+
+**s31's headline does not survive the re-weighting.** `antiGen as EVE full FT` leads the
+event-weighted table by +0.024 and is **third** cell-weighted, -0.038 behind the 35M
+partial arm. No model changed; the lead was in the weighting.
+
+**The PSSM puzzle is closed.** s30 asked why a composition baseline beats
+`simple_d128_n2` on this list. It does not: 0.735 against 0.722 event-weighted becomes
+0.362 against 0.446 cell-weighted. Sliced by cell, PSSM scores **0.819 on the 104
+training-window cells and exactly 0.000 on the 131 de novo ones** -- its whole result is
+borrowed from recurrence, and the event weighting was paying for it.
+
+**EVEscape is the only rung flat across the split** (0.356 seen / 0.351 de novo), which
+is what a predictor with no access to the training window should look like.
+
+Distribution behind all of this: 235 of the 247 in-RBD cells are observed in the test
+set, carrying 26,491 events, median 46 per cell, min 1, max 972; the ten most recurrent
+cells are 4.3% of the list and 24% of its events; 30 cells have k < 5.
+
+### The 2021 multi-tree arm, scored here because it was 18h away otherwise
+
+Job 3362145 (`eval.py`) was 2h in and still on checkpoint 1 of 6 with an empty output
+directory. The same six staged checkpoints through `list_macro.py` took 15 minutes.
+
+**joint 0.388 (0.383/0.389/0.392) against single 0.273 (0.262/0.275/0.281)**, +0.115,
+with no overlap between the arms' seeds -- the worst joint seed beats the best single
+seed by 0.10. It holds on the de novo cut (+0.090). The joint seeds place 12th-14th
+overall, above PSSM and EVEscape, below every main-model finetune.
+
+Both s31 caveats still apply and are repeated in the job script: single checkpoints
+against that arm's 8-seed ensembles, so a floor; and the **504D leak is still open**,
+which touches the de novo column specifically.
+
+### Two things the figure settles that the table does not
+
+`antiGen-figures/figures/fig_coguk_list.R` -> `figs/coguk_list_results.png`, 16 panels
+on Figure 2's B-J (curves, top decile, AUC, PSSM precision, max precision), both
+poolings side by side.
+
+**The AUC row and the decile row disagree, and the decile is the one to quote.** The
+recall curve is saturated above q = 0.5, so the AUC compresses the differences and
+reorders the top: cell-weighted AUC puts the 35M LM-head arm first (0.824), antiGen
+second (0.821), the 35M partial arm third (0.809), where at q = 0.1 the order is 0.512 /
+0.487 / 0.446. Hence the extra row, which Figure 2 does not have.
+
+**PSSM precision needs no pooling column.** It is a single-query metric -- the testing
+root's top decile against what had emerged by t -- so it already weights each cell once.
+It is drawn restricted to the listed cells, from `eval.py`'s own
+`variant_emergence_list_coguk*` outputs.
+
+### State
+
+* `evals_sc2_lists_macro{,_fast,_head,_mt2021}/` hold `list_macro_summary.csv` and
+  `list_macro_percell.csv` (per-cell rates at q = 0.1, for the slices above).
+* **EVmutation has no recall rows yet**: `evcouplings` rebuilds its couplings with
+  `plmc`, which has been running over 1.5h in both jobs. It is in the precision panels.
+  The 650M arms and the 2021 arm have no precision rows. The figure script prints what
+  is missing rather than dropping models silently, and re-renders when they land.
+* `--skip-baselines` was added so a second job can get at the checkpoints without
+  re-deriving 12 baseline rows another run already has.
+* The macro roster takes `eval.py`'s `--exclude` default, so it scores the same models
+  the published CSVs do; a model that fails to build is skipped but the run then exits
+  NON-ZERO naming it, per the lesson in s30/s31.
