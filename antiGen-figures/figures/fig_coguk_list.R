@@ -162,6 +162,14 @@ MODEL_GROUP <- c(
   evcouplings                                = "Pandemic Data in Training Window",
   pyr0                                       = "Pandemic Data in Training Window",
   CoVFit                                     = "Pandemic Data in Training Window",
+  ## Fitted on the TRAINING examples only (eval.py's _fit /
+  ## positional_marginal_counts), so they sit with the rungs that saw the
+  ## training window -- and, because this vector's order IS the bar-panel order,
+  ## they have to sit here rather than at the end of the list, or their bars are
+  ## drawn away from the rest of their colour. Same assignment as
+  ## fig2_sc2_benchmarks.R.
+  substitution                               = "Pandemic Data in Training Window",
+  where_times_which                          = "Pandemic Data in Training Window",
 
   Omicron_BA1_bind                           = "Deep Mutational Scans",
   Omicron_BA1_expr                           = "Deep Mutational Scans",
@@ -173,12 +181,7 @@ MODEL_GROUP <- c(
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "Pre-Pandemic Data Only",
   blosum62                                   = "Pre-Pandemic Data Only",
   ## The genetic code and nothing else -- no training data (ModelType.CODON).
-  codon                                      = "Pre-Pandemic Data Only",
-
-  ## Fitted on the TRAINING examples only, so they sit with the rungs that saw
-  ## the training window. Same assignment as fig2_sc2_benchmarks.R.
-  substitution                               = "Pandemic Data in Training Window",
-  where_times_which                          = "Pandemic Data in Training Window"
+  codon                                      = "Pre-Pandemic Data Only"
 )
 
 MODEL_LABEL <- c(
@@ -201,6 +204,8 @@ MODEL_LABEL <- c(
   evcouplings                                = "EVmutation",
   pyr0                                       = "PyR0",
   CoVFit                                     = "CoVFit",
+  substitution                               = "Substitution matrix",
+  where_times_which                          = "Where × which",
   Omicron_BA1_bind                           = "BA.1 DMS (bind)",
   Omicron_BA1_expr                           = "BA.1 DMS (expression)",
   Omicron_BA2_bind                           = "BA.2 DMS (bind)",
@@ -209,9 +214,7 @@ MODEL_LABEL <- c(
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), untrained",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), untrained",
   blosum62                                   = "BLOSUM62",
-  codon                                      = "Codon table",
-  substitution                               = "Substitution matrix",
-  where_times_which                          = "Where × which"
+  codon                                      = "Codon table"
 )
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
@@ -356,12 +359,29 @@ summary_df <- by_x %>%
 decile_df <- by_x[by_x$metric %in% RECALL_METRICS & abs(by_x$x - 0.1) < 1e-9,
                   c("model", "metric", "value")]
 
+#' Attach each model's group and display name.
+#'
+#' The factor levels are MODEL_GROUP's order, which is therefore the order the
+#' bar panels draw rows in: keep each group's members contiguous there and the
+#' colours stay in blocks. The check below enforces that rather than trusting it.
 add_group_and_label <- function(df) {
   df$group <- factor(unname(MODEL_GROUP[df$model]), levels = GROUP_LEVELS)
   df$model <- factor(unname(MODEL_LABEL[df$model]),
                      levels = unname(MODEL_LABEL[names(MODEL_GROUP)]))
   df
 }
+
+## A group split across the inventory draws its bars in two blocks of the same
+## colour with other colours between them, which reads as two different things.
+stopifnot(identical(names(MODEL_GROUP), names(MODEL_LABEL)))
+local({
+  runs <- rle(unname(MODEL_GROUP))$values
+  if (anyDuplicated(runs)) {
+    stop("MODEL_GROUP is not contiguous by group; these are split across the ",
+         "inventory and would draw as separate colour blocks: ",
+         paste(unique(runs[duplicated(runs)]), collapse = ", "))
+  }
+})
 by_x       <- add_group_and_label(by_x)
 summary_df <- add_group_and_label(summary_df)
 decile_df  <- add_group_and_label(decile_df)
