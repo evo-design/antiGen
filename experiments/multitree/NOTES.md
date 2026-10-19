@@ -5158,3 +5158,180 @@ assignment" check. An unknown checkpoint name is a hard stop.
 was: the panel has 32 bar slots instead of 30, so every bar shifts. The 240 numbers
 behind it did not move, and the wrapper header now says it that way rather than
 repeating s41's claim.
+
+---
+
+## 44. A second backbone control, on a newer guide tree (2026-10-19)
+
+**Both backbone figures are kept, deliberately.** `coguk_list_backbone{,_supp}` is
+unchanged on `antiGen-data/tree.json` -- re-rendered and checked at RMSE = 0
+against the s43 commit -- and `coguk_list_backbone_update{,_supp}` is the same
+script through different options on `sc2_update.json`. The published
+`coguk_list_results{,_supp}` is untouched, RMSE = 0 on both PNGs.
+
+The point of keeping both is that the ordering reproduces across two
+independently built guide trees. Read them as one result measured twice.
+
+### The old tree's 56 cells were a ceiling, not a sample
+
+Raised on review of s43: *56 of CoG-UK's 247 listed RBD cells seems low.* It is,
+and the cause is the tree rather than the cutoff rule. Counting listed RBD cells
+among branch mutations of `antiGen-data/tree.json` under three inclusion rules:
+
+| rule | RBD events | RBD cells | listed events | listed cells |
+|---|---:|---:|---:|---:|
+| every branch in the tree | 549 | 170 | 258 | **69** |
+| child node post-cutoff | 522 | 166 | 237 | 66 |
+| **both endpoints post-cutoff** (the backbone rule) | 491 | 156 | 211 | **56** |
+
+So **the whole tree, over its entire history, only ever produces 69 of the 247**.
+It is a subsampled Nextstrain build: 8,859 nodes carrying 2,839 spike mutation
+events in total, 549 of them in the RBD. The published figure reaches 235 cells
+only because attachment lands ~170k real sequences on that same backbone.
+
+**The 69 -> 56 gap is a structural property of the control.** A cell is a target
+only if BOTH endpoints of its branch are post-cutoff, because the parent node *is*
+the background being queried and querying a background the model trained on would
+be a leak. Branches that **span** the cutoff therefore cannot be scored -- and on a
+subsampled tree those are exactly the variant-defining saltations:
+
+```
+node  878  clade 21M (Omicron)   parent t=2020.470 -> child t=2021.110
+           22 muts on the branch, 11 listed RBD cells
+           339D 371F 373P 375F 417N 440K 477N 484A 498R 501Y 505H
+```
+
+Against a 2020.953 cutoff the whole Omicron saltation is unscorable; 339D, 373P,
+375F, 417N, 440K, 477N, 484A and 498R survive nowhere else on that tree. Iota, Mu,
+Kappa and Lambda lose their crown branches the same way (484K, 346K, 484Q, 490S,
+450K). **All ten lost cells are `seen` by `output1`'s mask, so the de novo cut of
+20 was unaffected** -- the loss fell entirely on the all-cells panels.
+
+The rule is not changed here. A newer tree simply resolves more of that history
+into post-cutoff branches.
+
+### What the new tree is, and what it buys
+
+`sc2_update.json`, ncov global, `meta.updated` 2026-10-18. **Fewer** nodes (5,880
+vs 8,859) and tips (3,018 vs 4,549) but **more** spike mutation events (3,369 vs
+2,839), running to 2026.75 rather than 2026.21: denser branches over a longer span.
+Its `root_sequence.S` is byte-identical to `antiGen-data/ref.json`, and
+`build_backbone` reports 0 wild-type mismatches and 0 unparsable branches -- the
+same two self-checks the old tree passes.
+
+| | old tree | sc2_update.json |
+|---|---:|---:|
+| listed cells observed | 56 | **79** |
+| listed target events | 211 | 263 |
+| events per observed cell | 3.8 | 3.3 |
+| **de novo listed cells** | 20 | **30** |
+| all-RBD cells observed | 156 | 191 |
+| background `coguk_all` / `coguk_unseen` | 53 / 19 | **79 / 30** |
+| background `rbd_all` / `rbd_unseen` | 145 / 50 | 175 / 65 |
+| query genotypes | 402 | 318 |
+| BA.2 descendant tips | 3,762 | 1,342 |
+
+79 is **above the old tree's ceiling of 69**, so this is more of the list and not
+merely the cutoff-spanning branches coming back. 50 listed cells are shared, 29 are
+new, 6 drop out (345S 455A 476S 499H 499S 501Y).
+
+**The cutoff is matched by date, not by the 1.0-year convention.** The roots differ
+(2019.953 vs 2019.964), so `--cutoff 1.0` would put the boundary at 2020.964, four
+days after the one every checkpoint was trained to. `--cutoff 0.989` puts it back
+on 2020.953. The listed-cell counts are identical either way (79/263), so this is
+correctness rather than a result; it turns 316 query genotypes into 318.
+EVE/Tranception/MSA-Transformer/evcouplings are unaffected regardless: they filter
+their MSAs by `date_cutoff` from the **checkpoint's** serialized config, not from
+`--cutoff`.
+
+### The ordering survives the tree swap, which is the real check
+
+Over the 35 models scored on both, top decile, `list_coguk_fullpool`:
+
+| | Spearman |
+|---|---:|
+| cell-weighted, all list cells | **0.978** |
+| event-weighted, all list cells | 0.978 |
+| cell-weighted, de novo | **0.952** |
+| event-weighted, de novo | 0.966 |
+
+And the control's central argument is preserved: mean `abs(macro - micro)` is
+**0.048** here against 0.055 on the old tree and 0.171 on the attached test set, so
+the two weightings still very nearly coincide once attachment is removed.
+
+**Base antiGen moves up and it is the largest single move.** All cells: 0.560 ->
+0.640, 8th -> 4th. De novo: 0.492 -> 0.558, 8th -> 5th. The top is otherwise
+unchanged -- `eve_frozen` / `eve_ft` / the 35M partial arm lead both cuts on both
+trees. With 79 and 30 cells those margins are still not separable rung by rung;
+**the claim remains about the ordering as a whole.**
+
+### What changed in the figure besides the numbers
+
+* **K-L is now this tree's own background contrast.** It used to read the main
+  figure's directory, on s41's argument that the contrast is computed pre-attachment
+  in both figures and so had no distinction to make. That held only while both used
+  the same guide tree. They no longer do, so K-L is recomputed here and is a
+  genuinely independent measurement -- 79 cells against 53, 30 de novo against 19.
+* **EVmutation is absent from every panel, on instruction.** Its plmc fit is not
+  cached and cost 12,993 s of the 13,330 s job 3364881 spent -- essentially the
+  whole job -- and it was never a top competitor here (7th of 30, 0.308). Reported
+  as missing rather than dropped silently. **31 of 32 roster entries are drawn.**
+* **The yield row's targets go UP even though its tips go down.** 1,342 BA.2
+  descendants against 3,762, but 75 listed cells reach 1+ tips and 32 reach 100+,
+  because the denominator is the RBD and does not move with the tip count.
+* **The mt2021 de novo leak was re-measured, not inherited**, because the de novo
+  sets are different here (30 cells, not 20). Still exactly zero: of the 29 CoG-UK
+  RBD cells that arm's training tree carries, 0 appear in the 30 recall de novo
+  cells, the 28 yield targets at 1+, the 9 at 100+, the 30 `coguk_unseen` or the 65
+  `rbd_unseen` background cells.
+
+### Jobs and files
+
+Two jobs, both on `gpu_batch`, **3 m 27 s and 45 s** -- the roster is cheap once
+evcouplings is out of it:
+
+| job | arm | output |
+|---|---|---|
+| **3374461** | 29 models, `--multitree-baselines --exclude ...,evcouplings` | `evals_sc2_background_update/` |
+| **3374462** | the 6 mt2021 seeds, `--include-experimental --skip-baselines` | `evals_sc2_background_update_mt2021/` |
+
+Both wrote byte-identical `backbone_{hosts,nodes,queries}.csv` and manifests, checked
+before merging. `examples/slurm/background_discrimination_sc2_update.sh` is the new
+wrapper (tree, cutoff, checkpoint dir and extra args all parameterised);
+`evals_sc2_background_update_merged/` is the 35 matrices by symlink;
+`antiGen-figures/data/evals_sc2_lists_macro_backbone_update/` and
+`data/evals_sc2_background_update/` are what the new figure reads;
+`figures/fig_coguk_list_backbone_update.R` is its wrapper. **The old tree's
+directories and wrapper are untouched**, so s34/s41/s43's numbers remain
+reproducible and that figure still renders byte-identically.
+
+`sc2_update.json` lives at the repo root and the new figure depends on it, so it
+is committed rather than left untracked -- the same treatment
+`tree_pulled_2026-09-28.json` already gets.
+
+### The title suffix has a two-character budget, measured
+
+s34 noted that a title suffix "can push the longest title past the right-hand
+panel's width" and left `coguk.title_size` available for it. This is what that
+warning is worth in numbers, because the first two attempts here both clipped.
+
+Titles are centred and the type is **20.1 px/char**, so each added character
+costs ~10 px on the right. Slack to the canvas edge at the tightest right-hand
+title: **92 px in the main figure, 42 px in the supplement** -- the supplement
+binds, because its titles are longer ("event-weighted" for "cell-weighted",
+"100+ cases" for "1+ cases"). That is a budget of about **two characters**.
+
+| suffix | delta | result |
+|---|---:|---|
+| `" [backbone, 2026-10 tree]"` | +14 | clipped 4 of 6 title rows |
+| `" [backbone, 2026]"` | +6 | clipped 1 row (main), 3 rows (supp) |
+| **`" [2026 tree]"`** | **+1** | **clean in both** |
+
+So the suffix **swaps a word rather than adding one**: "backbone" is carried by
+the filename and the wrapper header, and the titles carry the one thing that
+differs between the matched pair, which is the tree. `coguk.title_size` was
+deliberately not used -- shrinking type on one figure of a matched pair makes
+them typographically different for no reason, which is the trade s34 declined.
+
+Checked by a detector rather than by eye (any ink in the last 6 columns of a
+title band), run over all four PNGs.
