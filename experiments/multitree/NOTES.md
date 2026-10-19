@@ -4537,3 +4537,464 @@ already computed on the guide tree alone and would be identical. Its header said
   `evals_sc2_background_head/` is superseded and can be deleted.
 * `antiGen-figures/data/evals_sc2_background/` is the copy the figure reads.
 * Rendered under `/home/ivan.specht/miniconda/envs/antigen-figs/bin/Rscript`, per s34.
+
+---
+
+## 37. Why the fixed maps are at exactly zero in K-L, checked (2026-10-19)
+
+Raised on review of s36's figure: *different queries have different wild-type masks, so
+a static (L, E) predictor's top decile could still move between backgrounds -- why would
+it be exactly zero?* The objection is correct in general, it is the one s33 tripped over,
+and the answer is a property of the pool rather than anything about the models. Checked
+four ways, all from the committed artefacts.
+
+### The objection is real, and the per-query ruler shows it
+
+Under the published convention -- pool = eval range minus **this query's** residues --
+the fixed maps are nowhere near chance:
+
+| constant map | AUC, `coguk_all_perquery` | AUC, `coguk_unseen_perquery` |
+|---|---:|---:|
+| pyr0 | 0.615 | 0.615 |
+| Omicron BA.2 bind | 0.614 | 0.687 |
+| CoVFit | 0.603 | 0.639 |
+| pssm_root | 0.423 | 0.464 |
+| MSA Trans. (XFG eval) | 0.415 | 0.432 |
+
+Max departure from chance over the 12 constant maps x 4 cell sets: **0.187 of AUC**. A
+host is more derived than its controls, so the mask removes more of its high-scoring
+cells and lifts whatever is left. That is exactly the effect the objection describes.
+
+### Why the drawn ruler is immune: the pool is maskable by nobody
+
+The headline pool is the eval-range cells **no backbone genotype carries at all** --
+4,134 of 4,422 (`background_contrast.py`, `carried` / `pool_mask`). A query's wild-type
+mask can only ever remove cells that query *carries*, and by construction the pool holds
+none. Recomputed from `backbone_queries.csv` and `backbone_manifest.json` rather than
+trusted: **0 pool cells are maskable by any of the 402 queries.**
+
+The two remaining query-dependent-looking steps are not: `np.isfinite(scores).all(axis=0)`
+reduces over the query axis, and the target cell is removed from its own reference set by
+`keep = pool_idx != c_flat`, which is the same removal in every query. So within a cell's
+contrast, host and control are ranked in a byte-identical reference set. Also checked:
+**0 of 490 host nodes already carry their own target residue**, so there is no asymmetry
+smuggled in through the target either.
+
+### The zeros are exact for a second, independent reason
+
+The stored matrices are raw, so a map with no sequence input is literally constant down
+the query axis -- max spread across the 402 queries **0.000e+00** for pyr0, CoVFit, the
+four DMS rungs, EVEscape, both PSSMs and the three MSA-Transformer rungs.
+
+Across the whole roster the correspondence is **exact and 1:1**: all 13 models with a
+constant matrix have lift exactly 0.0 in all four cell sets; all 17 without one are
+nonzero in every cell set. No exceptions either way.
+
+### The zero row is not "the baselines", and that is easy to misread
+
+**BLOSUM62, the codon table and the substitution matrix are NOT at zero** (+0.8, +1.6,
++2.9 pp on `coguk_all`), and they should not be: they score a wild-type -> mutant
+*transition*, so the background is an input. BLOSUM62's matrix varies by up to 14.0
+across queries. The dividing line in panels K-L is **"does the score depend on the
+background at all"**, not "learned model vs lookup table" -- three lookup tables sit
+above the line and one learned rung (`eve_frozen`, -0.4) sits below it.
+
+### A correction to s33's justification for the fixed pool
+
+s33 motivated the pool change with the AUC confound and wrote that at ~0.1 of AUC it
+"swamps the effect being measured". That is true of the AUC and **not** of the metric the
+panels actually draw. Under the per-query ruler the *lift* of those same 12 maps is
+already within **0.296 pp of zero** across all four cell sets -- the confound is almost
+entirely a rank-only phenomenon, because the mask reshuffles the tail without pushing
+cells across the decile boundary.
+
+So the fixed pool buys **exact** zero rather than **approximately** zero for the null
+band, and it is the `auc` column in the CSV that it genuinely rescues.
+
+**CORRECTED IN s38.** The sentence that stood here -- "the panels would have been off by
+at most a third of a percentage point" -- generalised the 0.296 pp from the twelve fixed
+maps to the whole panel, which it does not cover. The *scored* models move far more than
+that when the ruler changes: base antiGen goes +4.4 -> +0.7 pp on `coguk_all`. The 0.3 pp
+bound is a statement about maps that cannot respond to the query at all, and nothing
+more. s38 tables the real effect. The pool is still the right choice (a null
+that is exactly zero by construction is worth having, and the CSV carries both rulers),
+but the stated size of the problem applied to a column the figure does not show.
+
+No numbers change and no panel is redrawn.
+
+---
+
+## 38. K-L moved onto the per-query pool, and what that costs (2026-10-19)
+
+Raised on review of s37: *is the fixed pool a fair way to pose the eval? Why not just use
+the usual per-query pool and accept that the pools differ between queries?* Both rulers
+have been in the CSV since s33, so this is a figure change, not a rerun.
+
+> **SUPERSEDED BY s39. The recommendation in this section is wrong and the default was
+> changed back.** The three arguments below are answered one by one in s39: the second
+> is simply false (the fixed pool drops a *superset* of the carried cells), the first is
+> presentational and probably a category error, and the third is weaker than stated. The
+> tables in this section are correct and still worth having -- it is the conclusion drawn
+> from them that does not hold. s39 also shows the whole fixed-vs-per-query question is
+> second-order next to the choice of quantile.
+
+### The per-query pool is the better default, for three reasons (WRONG -- see s39)
+
+1. **It is the ruler every other panel uses.** A-H rank in the eval range minus the
+   query's own residues. A reader comparing K-L with D or F should not have to know that
+   the bottom row silently switched reference sets.
+2. **It is the operationally meaningful pool.** A cell the query already carries is not a
+   candidate mutation from that query. Removing it is the correct thing to do, not a
+   confound to be engineered away.
+3. **The null stops being a tautology.** On the fixed pool a query-blind map is at
+   0.000 *by construction* -- it cannot be anything else, so it is arithmetic, not
+   evidence. On the per-query pool it is measured, and it passes: the twelve constant
+   maps come in within **0.296 pp** of zero across all four cell sets.
+
+The cost is that `auc` on the per-query pool is confounded by up to 0.187 (s37), so the
+CSV's AUC column should still be read on the fixed pool. The figure draws lift, not AUC.
+
+`fig_coguk_list.R` now takes `coguk.bg_suffix`; the default is the per-query pool and
+`"_fixed"` restores the old reading. Checked rather than assumed: rendering with
+`"_fixed"` reproduces the committed s36 PNG at **RMSE = 0**, pixel for pixel.
+
+### What changes, and the one number that does not change at all
+
+| cell set | n | antiGen, fixed pool | antiGen, per-query |
+|---|---:|---|---|
+| CoG-UK all | 53 | +4.4 [-2.3, +11.7] **3rd** | **+0.7** [-6.1, +7.6] **8th** |
+| CoG-UK de novo | 19 | +12.4 [-2.3, +29.0] **1st** | **+7.4** [-4.1, +20.5] **4th** |
+| all RBD | 145 | +4.3 [+0.8, +8.0] **2nd** | +3.0 [-0.5, +6.8] **4th** |
+| de novo RBD | 50 | +12.3 [+4.3, +21.3] **1st** | **+10.7 [+3.4, +18.9] 1st** |
+
+This is a real demotion on the two small cell sets, and it is reported rather than
+buried: on the CoG-UK cuts antiGen is no longer 1st or near it. Tranception frozen still
+leads `coguk_all` (+8.2, unchanged), and the 35M partial-FT arm takes `coguk_unseen`
+(+12.5).
+
+**But `delta_pct` -- the mean host-minus-control percentile gap -- is identical under the
+two rulers to three decimals, for every model in the roster.** antiGen on `coguk_all` is
++0.012 under both; `where x which` +0.014 under both; Tranception frozen +0.039 under
+both. The AUCs move by at most ~0.03. So the two pools **agree on how far apart host and
+control percentiles are, and on their ordering**. They disagree only about which side of
+the q = 0.1 line a cell lands on.
+
+That is the honest reading of the whole disagreement: **it is a threshold effect, not a
+difference of opinion about the underlying signal.** At 19 or 53 cells a 1.2-percentile-
+point gap crossing or not crossing the decile boundary is a couple of cells either way,
+which is why `coguk_*` reorders and `rbd_unseen` does not.
+
+### What survives, and what the headline should now rest on
+
+**Ruler-independent**: on `rbd_unseen` (50 cells, the best-powered de novo set) antiGen
+is **1st under both pools** with an interval clearing zero under both (+12.3 [+4.3,+21.3]
+fixed; +10.7 [+3.4,+18.9] per-query). `where x which` is 2nd under both. That panel is
+the one the de novo claim should be stated against.
+
+**Ruler-dependent, and therefore not a claim**: everything on `coguk_all` and
+`coguk_unseen`. Their intervals span zero under both rulers anyway, so nothing was ever
+settled there; the ruler change just makes that visible in the bar lengths as well as the
+whiskers.
+
+**So s36's headline needs narrowing again.** "antiGen is 1st on both de novo cuts" was
+true of the fixed pool only. The supportable statement is now: **on the best-powered de
+novo cell set, antiGen is the most background-adaptive model on either ruler** -- with
+the CoG-UK cuts too small to rank anything. That is weaker than s36 and it is what the
+data supports.
+
+### A note on lift as the statistic
+
+s33 chose lift over AUC because AUC is scale-free and scores a 0.7 pp nudge like a 28 pp
+swing. That reasoning stands. But this section shows lift's own weakness: it is a
+thresholded statistic, so at n = 19-53 it converts a stable underlying gap into an
+unstable rank. `delta_pct` is the stable reading and is in the CSV. Not changed here --
+lift is still in the units the decile row above it is read in, which is why it was picked
+-- but a reader moving between the two rulers should be told that the gap did not move,
+only the threshold crossing did. The panel titles do not say this; NOTES does.
+
+### Files
+
+`figures/fig_coguk_list.R` (`coguk.bg_suffix`, default per-query), re-rendered
+`coguk_list_results{,_supp}.png` and their PDFs. The backbone control is unaffected --
+it does not draw this row.
+
+---
+
+## 39. Which pool answers K-L's question, and a quantile sweep that reframes it (2026-10-19)
+
+Asked directly: *which of the two rulers better shows that base antiGen predicts a
+mutation well against the right background and badly against the wrong one -- that being
+the whole purpose of K-L?* Answering it properly meant running a check neither s33 nor
+s38 ran, and the check moves the ground under both.
+
+### The fixed pool, and s38's reasoning was wrong
+
+**The estimand decides it.** K-L asks: *does the model's score move with the background?*
+
+* Fixed pool: a cell's percentile is its rank in a reference set that is byte-identical
+  across queries. It can move **only** if the model's scores move. That is the estimand,
+  measured directly.
+* Per-query pool: the reference set moves with the background too. A host is more derived
+  than its matched controls, so more of its high-scoring cells are masked out and
+  whatever remains is lifted -- which is a fact about the tree, not about the model.
+
+That contamination is not hypothetical; it is measurable on a map that cannot respond to
+the query at all. **pyr0's host-control gap goes from exactly 0.000000 on the fixed pool
+to 0.000318 on the per-query pool, and its AUC from 0.500 to 0.615.** And it is not a
+constant offset -- `pssm_root` moves the other way (AUC 0.423) -- so it cannot be
+subtracted out.
+
+Taking s38's three arguments in turn:
+
+1. *"Same ruler as panels A-H."* Presentational, and probably a **category error**. A-H
+   fix the query and rank mutations; the per-query pool is correct **for that question**,
+   because the candidate set genuinely is "mutations reachable from this query". K-L is
+   the transpose and does not inherit the ruler along with the data.
+2. *"The per-query pool is the operationally meaningful one -- a cell the query already
+   carries is not a candidate."* **This is simply false as an argument for it.** The
+   fixed pool drops every cell *any* backbone genotype carries, which is a strict
+   superset of what the per-query mask drops. It is the *more* conservative of the two
+   about impossible mutations, never the less. Checked earlier: 0 of 490 hosts carry
+   their own target residue.
+3. *"A measured null beats a constructed one."* The only argument with weight, and it is
+   weaker than s38 made it. A control designed to read zero when the model is query-blind
+   is a **well-designed control**, not a tautology -- that is what makes a nonzero
+   reading attributable. And the per-query ruler is demonstrably confounded on AUC; it is
+   clean on lift by luck, not by validity.
+
+**So the default is back to the fixed pool.** `coguk.bg_suffix` now defaults to `""` =
+fixed, with `"_perquery"` for the other reading. The re-rendered PNGs are **RMSE = 0**
+against the s36 commit, i.e. the figure in `figs/` is byte-for-byte the one already
+pushed; only the script and NOTES changed.
+
+### But the pool is second-order, and here is the thing that is not
+
+`background_contrast.py --qtile` re-run at 0.05 and 0.20 (no GPU; it reuses the stored
+matrices). Base antiGen's lift and rank:
+
+| cell set | ruler | q = 0.05 | **q = 0.10** | q = 0.20 |
+|---|---|---|---|---|
+| CoG-UK all | fixed | -1.1 (26th) | **+4.4 (3rd)** | +0.7 (11th) |
+| | per-query | -1.5 (27th) | +0.7 (8th) | +3.0 (6th) |
+| CoG-UK de novo | fixed | +0.2 (13th) | **+12.4 (1st)** | +3.6 (8th) |
+| | per-query | +2.3 (10th) | +7.4 (4th) | +6.8 (4th) |
+| all RBD | fixed | +1.6 (12th) | **+4.3 (2nd)** | +4.3 (5th) |
+| | per-query | +0.9 (13th) | +3.0 (4th) | +4.7 (2nd) |
+| de novo RBD | fixed | +4.5 (10th) | **+12.3 (1st)** | +11.7 (3rd) |
+| | per-query | +3.5 (12th) | +10.7 (1st) | +12.4 (2nd) |
+
+**antiGen's first place exists only at q = 0.10.** At q = 0.05 it is 10th to 27th on
+every cell set and every ruler. The quantile moves it by ten to twenty rank positions;
+the pool moves it by one to five. **The ruler question, which is what s38 spent itself
+on, is the small term.**
+
+### The stable statistics do not support the headline at all
+
+`delta_pct` -- the mean host-minus-control percentile gap -- has no threshold in it and
+is nearly pool-independent (the two rulers agree to ~3 decimals everywhere). Ranked on
+it, antiGen is:
+
+| cell set | antiGen's delta_pct | rank (fixed / per-query) | who leads |
+|---|---:|---|---|
+| CoG-UK all | +1.24 pp | **10th / 10th** | Tranception frozen +3.85 |
+| CoG-UK de novo | +3.16 pp | **10th / 10th** | substitution +5.46 |
+| all RBD | +2.11 pp | **6th / 6th** | codon +2.71 |
+| de novo RBD | +4.96 pp | **6th / 6th** | codon +7.72 |
+
+So antiGen's top-decile lift advantage is **not** backed by a larger overall shift: the
+codon table and the substitution matrix move their rankings with the background *more*
+than antiGen does, on both rulers. What antiGen has is a shift concentrated near the top
+of its ranking. That could be a real and interesting property -- the decile is the
+operationally relevant region -- but at q = 0.05 it is gone, which is the opposite of
+what "concentrated at the top" predicts.
+
+### What is actually supportable
+
+The base-vs-finetune comparison, which is the one the figure exists to make, survives
+only on the stable statistic and only on the RBD cell sets:
+
+| cell set | finetunes beating base antiGen on delta_pct |
+|---|---|
+| all RBD | **0 of 8** |
+| de novo RBD | **1 of 8** |
+| CoG-UK all | 4 of 8 |
+| CoG-UK de novo | 4 of 8 |
+
+On lift it is again a q = 0.1 effect: at q = 0.05, five to eight of the eight finetunes
+beat base antiGen on every cell set.
+
+**Supportable**: *on the RBD cell sets, base antiGen's ranking responds to the background
+more than its own finetunes' do* -- quantile-free, ruler-free, and consistent with s33's
+percentile-sd observation (0.054 against 0.0066-0.0071, an eight-fold gap).
+
+**Not supportable**: "antiGen is the most background-adaptive model in the roster"
+(s36), and "antiGen is 1st on both de novo cuts" (s36, narrowed in s38, now retired).
+Both were readings of lift at a single quantile.
+
+### Open -- a decision, not a measurement
+
+The panels draw lift at q = 0.1 and the claim does not survive the quantile sweep. Three
+options, none of them taken here because the choice is the user's:
+
+1. **Draw `delta_pct` instead.** Stable, pool-independent, quantile-free -- and it says
+   antiGen is 6th-10th overall while beating 7-8 of its 8 finetunes on RBD. Honest, and
+   a much weaker headline.
+2. **Keep lift but add the quantile sweep** as a supplement panel, so the q = 0.1
+   dependence is visible rather than implicit.
+3. **Keep lift at q = 0.1 and state the claim only base-vs-finetunes on the RBD sets**,
+   with the sweep recorded here as the caveat.
+
+What should NOT happen is the figure continuing to carry s36's ordering as though the
+quantile were incidental to it.
+
+### Files
+
+`figures/fig_coguk_list.R` (`coguk.bg_suffix`, default `""` = fixed pool). Sweep outputs
+are in the session scratchpad only -- rerunnable in ~3 min with
+`background_contrast.py --qtile`, so they were not copied into `data/`.
+
+---
+
+## 40. The q-sweep figures: the whole list figure at 5% and 20% (2026-10-19, RUNNING)
+
+s39 established that the background row's ordering is a q = 0.1 effect and recorded it as
+a caveat. The caveat is not good enough: **every** "top decile" in this figure is a
+top-q, and q was 0.1 by convention, so the right answer is to render the entire figure at
+two other quantiles and compare panel for panel. Requested with the recall curves on a 5%
+grid as well, which the published 10% grid cannot supply.
+
+`coguk_list_results` and its supplement are **untouched** -- checked, not asserted:
+after the whole parameterisation below, re-rendering them is **RMSE = 0** against the
+commit, twice (once after the quantile option, once after a label-form fix).
+
+### What actually has to be recomputed, and what was already in hand
+
+| row | depends on q? | source |
+|---|---|---|
+| A-B recall curves | no (it *is* the q axis) | needs the 5% grid -> **re-run** |
+| C-D recall at q | **yes** | macro CSV, keyed by (model, variant, qtile) |
+| E-F recall AUC | no, but the grid changes the trapezoid | same CSV |
+| G-J BA.2 yield + chance + ceiling | **yes** | varrecall CSV, **no qtile column** |
+| K-L background lift | **yes** | background CSV -- **already computed in s39** |
+
+The published macro grid is 0.10...0.90 in tenths, so **q = 0.20 was already available and
+q = 0.05 was not**, and neither was any odd multiple of 5%. One re-run supplies both.
+
+**The quantile grid is nearly free; the forward pass is the cost.** `cell_pass()` loops
+quantiles *inside* the batch loop, so going from 9 to 19 grid points adds arithmetic, not
+passes. The ~10h is the 17,978-example sweep over the ESM-2 arms and is unavoidable.
+
+### Jobs
+
+* **3373137** `macro_qsweep` -- full roster, `--qtiles 0.05,0.10,...,0.95`,
+  `--percell-qtile 0.05`, `--multitree-baselines`, into
+  `evals_sc2_lists_macro_qsweep/`. ~10h by the precedent of 3362535 (09:57:34).
+* **3373141 / 3373142** `varr_q0.05` / `varr_q0.20` -- ~90s each (one forward pass on the
+  variant root), into `evals_sc2_lists_varrecall_q0.05/` and `_q0.20/`.
+* Background: **no job**. s39's `--qtile` sweep already wrote both; archived to
+  `evals_sc2_background_q0.0{5}/` and `_q0.20/` and copied into `antiGen-figures/data/`.
+
+### A new output directory per quantile is mandatory, and for two different reasons
+
+The macro CSV *is* keyed by qtile, so a second grid appended to the published directory
+would not collide -- but it would silently change **every AUC in the published figure**,
+because the AUC is a trapezoid over whatever grid is present. The varrecall CSV is worse:
+it has **no qtile column at all** (q is baked into `n_selected`), so two grids in one
+directory are indistinguishable. Hence `evals_sc2_lists_macro_qsweep/` and a per-q
+varrecall directory, and hence the hard stop below.
+
+### Code
+
+Parameterised rather than forked, per s34:
+
+* `examples/slurm/eval_sc2_list_macro.sh` -- `QTILES`, `PERCELL_Q`, `OUTDIR` env
+  overrides plus pass-through extra args; defaults reproduce the published invocation.
+* `examples/slurm/eval_sc2_varrecall.sh` -- new, because this eval had only ever been
+  launched as an ad-hoc `sbatch --wrap` and there was nothing to parameterise.
+* `figures/fig_coguk_list.R` -- `coguk.qtile` (default 0.1). It drives the C-D slice, the
+  G-J chance curve (`QTILE * n_targets / n_selected`), the C-D chance rule, and every
+  label. **It hard-stops** if the requested quantile is not in the macro CSV's grid, and
+  names the grid it did find -- rendering 0.05 against a 0.1 directory would otherwise
+  draw the 0.1 numbers under a 0.05 title, which is exactly the failure mode this
+  section's directory discipline exists to prevent.
+* `figures/fig_coguk_list_q05.R`, `fig_coguk_list_q20.R` -- the two wrappers.
+
+**A label trap worth recording.** The first parameterisation collapsed "top decile" to one
+string and changed the published figure at RMSE 9.1 -- it had dropped the "top" from
+"Chance: a top decile picked at random" and the hyphen from "Top-decile lift". The phrase
+appears in four grammatical slots (nominal, attributive, and the title-case of each), so
+there are now four forms, `q_noun` / `q_Noun` / `q_adj` / `q_Adj`. A text-only regression
+like this produces no error and no warning; only the pixel diff caught it.
+
+### What will NOT be comparable across the three figures
+
+**The AUC bars E-F, and the smoothness of A-B.** The two new figures read a 19-point
+grid and the published one reads 9 points. A trapezoid over a finer grid is a different
+(better) estimate of the same integral, so E-F may shift slightly for every model. Both
+wrapper headers say to compare E-F between the two new figures and never against
+`coguk_list_results`. The alternative -- re-rendering the published figure on the fine
+grid -- was not taken, because the request was explicitly to leave it as is.
+
+### State
+
+Three jobs pending at the time of writing (`macro_qsweep` on Resources, the two
+varrecalls on Priority), behind two unrelated `eval_sc2_lists` jobs that have been
+running ~24h. Figures render as soon as `macro_qsweep` lands; everything else is staged.
+
+---
+
+## 41. The backbone control, completed: full roster and the background row (2026-10-19)
+
+Two gaps in `coguk_list_backbone`, both closed without a GPU.
+
+### The six missing models were only ever a timing accident
+
+s34 shipped the backbone control with **24 of 30 models**, missing Tranception (frozen
+and FT), EVmutation, codon, substitution and `where x which`, because job 3364881 was
+still inside evcouplings' plmc rebuild when the CSVs were written (10-18 23:44; the job
+finished 10-19 02:58). `backbone_list_eval.py` reads the score matrices
+`background_discrimination.py` wrote and does no forward passes of its own, so the fix
+was to re-run it against the now-complete directory: **36 seconds, CPU only.**
+
+**The re-run reproduces the old numbers exactly**, which is the check that adding models
+changed nothing else: of the 864 overlapping (model, variant, qtile) rows, **864 are
+byte-identical**, and of the 5,760 overlapping varrecall rows, **5,760 are**. Zero rows
+only in the old file. Every metric in the figure now prints `30 models, complete`.
+
+### The background row is drawn here now, and it is the same row
+
+s34 omitted K-L from the backbone figure on the argument that it would be identical.
+That argument is correct and the row is now drawn anyway, because the figure should be
+self-contained and panel letters should mean the same thing in both. **Verified rather
+than asserted: below the title lines the K-L band of `coguk_list_backbone.png` is
+pixel-identical to that of `coguk_list_results.png` -- 0 differing pixels -- and differs
+only in the title row, which carries the " [backbone]" suffix.**
+
+**So it must not be read as corroboration.** The background contrast is computed on the
+guide tree *before* attachment in both figures -- that is what `background_tree.py`
+builds -- so there is no attached-vs-backbone distinction for this row to have. A reader
+comparing the two figures panel-for-panel gets independent evidence from A-J and the
+*same* evidence twice from K-L. The wrapper header now says this in those words.
+
+(The " [backbone]" suffix on K-L is, unusually, accurate in *both* figures. It is the
+main figure's K-L that could stand to say it is backbone-only.)
+
+### One asymmetry remains, and it is in the main figure
+
+The sets are now **30/30 in every panel of the backbone figure**, but the main figure is
+**29/30 in A-J and 30/30 in K-L**: `evcouplings` / EVmutation has no bar in its recall or
+yield rows, because `evals_sc2_lists_macro/` was built before the plmc rebuild too. The
+figure prints the absentee rather than dropping it, so the row label is there with no bar.
+
+Closing it needs a GPU pass of `list_macro.py` and `list_variant_recall.py` over the
+published q = 0.1 grid -- **not** done here, because it would mean re-rendering
+`coguk_list_results`, which was explicitly to be left alone. The pending `macro_qsweep`
+job (s40) will show whether evcouplings scores on that path at all; if it does, the two
+q-sweep figures get 30/30 and only the published q = 0.1 figure keeps the gap.
+
+### Files
+
+`antiGen-figures/data/evals_sc2_lists_macro_backbone/` (both CSVs replaced from
+`evals_sc2_lists_macro_backbone_full/`), `figures/fig_coguk_list_backbone.R`
+(`coguk.bg_dir` now points at the real directory; header rewritten).
+`coguk_list_results.png` and its supplement are **unchanged, RMSE = 0**.

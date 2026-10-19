@@ -51,8 +51,9 @@
 ##   K-L  (new)          background lift: the transpose of every panel above it --
 ##                       fix the MUTATION, vary the background, and ask whether
 ##                       the model's top decile moves the right way. See the
-##                       block above BG_METRICS for the construction and for why
-##                       half the roster sits at exactly zero.
+##                       block above BG_METRICS for the construction, for which
+##                       pool the percentile is taken in, and for why a third of
+##                       the roster sits on zero.
 ##
 ## Figure 2's PSSM-precision panels (its G-J) are NOT carried over. They are a
 ## single-query metric, so the pooling question this figure exists to ask does
@@ -155,6 +156,33 @@ titled <- function(x) paste0(x, TITLE_SUFFIX)
 TITLE_SIZE <- getOption("coguk.title_size", NA_real_)
 title_theme <- if (!is.na(TITLE_SIZE)) theme(plot.title = element_text(size = TITLE_SIZE)) else NULL
 
+## --- The selection quantile -------------------------------------------------
+## Every "top decile" in this figure -- panels C-D, the BA.2 yield row's selection
+## and its chance curve, and the background row -- is a top-q, and q was 0.1 by
+## assumption rather than by argument. NOTES s39 showed the background row's whole
+## ordering turns on it (base antiGen is 1st at q = 0.1 and 10th-27th at q = 0.05),
+## so the figure is rendered at three quantiles and the three are compared.
+##
+## This changes INPUTS, not just labels: the macro CSV is keyed by (model, variant,
+## qtile) and the varrecall CSV bakes q into `n_selected` with no qtile column at
+## all, so each quantile needs its own input directories. Rendering q = 0.05
+## against the published 0.1 directories would silently draw the 0.1 numbers under
+## a 0.05 title, which is why QTILE is checked against the data below rather than
+## trusted.
+QTILE <- getOption("coguk.qtile", 0.1)
+## "decile" is only the right word at 0.1; at 0.05 and 0.2 it is a lie in the axis
+## label. One noun, derived once.
+## Four forms, because the figure uses the phrase in four grammatical slots and
+## getting one wrong is a silent text diff rather than an error: nominal ("a top
+## decile picked at random"), attributive with its hyphen ("top-decile lift"),
+## and the title-case versions of each.
+is_decile <- abs(QTILE - 0.1) < 1e-9
+q_noun  <- if (is_decile) "top decile"  else sprintf("top %g%%", 100 * QTILE)
+q_Noun  <- if (is_decile) "Top decile"  else sprintf("Top %g%%", 100 * QTILE)
+q_adj   <- if (is_decile) "top-decile"  else sprintf("top-%g%%", 100 * QTILE)
+q_Adj   <- if (is_decile) "Top-decile"  else sprintf("Top-%g%%", 100 * QTILE)
+q_label <- sprintf("q = %g", QTILE)
+
 
 ## --- Model inventory -------------------------------------------------------
 ##
@@ -244,7 +272,7 @@ MODEL_LABEL <- c(
 ## The bottom row's two reference curves. Named here because they are both a
 ## legend entry and a scale key, and the two must not drift apart.
 REF_CEILING <- "Ceiling: every listed cell emerged by t"
-REF_CHANCE  <- "Chance: a top decile picked at random"
+REF_CHANCE  <- sprintf("Chance: a %s picked at random", q_noun)
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
                   "Pandemic Data in Training Window", "Pre-Pandemic Data Only")
@@ -345,7 +373,7 @@ if (have_varr) {
   varr_ref <- varr %>%
     group_by(metric, x) %>%
     summarise(ceiling = median(n_targets / n_selected),
-              chance  = median(0.1 * n_targets / n_selected), .groups = "drop") %>%
+              chance  = median(QTILE * n_targets / n_selected), .groups = "drop") %>%
     as.data.frame()
   by_x <- rbind(by_x, varr[, c("model", "metric", "x", "value")])
 }
@@ -383,17 +411,46 @@ if (have_varr) {
 ## practice, background-blind. Lift combines sign and size and is in the units
 ## the decile row above is already read in.
 ##
-## THE RUNGS AT EXACTLY ZERO ARE THE POINT, NOT A HOLE. Every data/baselines/
-## rung -- PSSM, the DMS panels, EVEscape, PyR0, CoVFit, the MSA Transformers --
-## is a fixed (position x residue) map with no access to the query, so its decile
-## is the same list whatever it is asked about and its lift is identically zero.
-## They are the measured null band. That is only exact because the percentile is
-## taken in a pool held fixed across queries: under the published per-query
-## masking, which drops each query's own residues, those same rungs drift to
-## 0.609 / 0.614 / 0.418 of AUC purely because a derived genotype has had more of
-## its high-scoring cells masked away. Those rows are kept in the CSV as
-## `*_perquery` and are not drawn.
+## THE RUNGS AT ZERO ARE THE POINT, NOT A HOLE. Every data/baselines/ rung --
+## PSSM, the DMS panels, EVEscape, PyR0, CoVFit, the MSA Transformers -- is a
+## fixed (position x residue) map with no access to the query, so its decile is
+## the same list whatever it is asked about and it cannot move. They are the
+## null band. NOTE that this is NOT the same as "the baselines": BLOSUM62, the
+## codon table and the substitution matrix score a wild-type -> mutant
+## TRANSITION, so the background is an input to them and they are correctly
+## nonzero. The line here is "does the score depend on the background at all".
+##
+## WHICH POOL THE PERCENTILE IS TAKEN IN (`coguk.bg_suffix`). Two rulers, both
+## computed by background_contrast.py off one forward pass:
+##
+##   "" (default)  a pool held FIXED across queries: the eval-range cells no
+##                 backbone genotype carries at all, 4,134 of 4,422, plus the
+##                 target cell. A wild-type mask can only remove cells the query
+##                 CARRIES and the pool holds none, so the reference set is
+##                 byte-identical for every query and the ONLY thing that can
+##                 move a cell's percentile is the model's own score.
+##   "_perquery"   the published convention -- the eval range minus THIS query's
+##                 residues, the ruler panels A-H use.
+##
+## THE FIXED POOL IS THE RIGHT INSTRUMENT FOR *THIS* QUESTION, and the reason is
+## the estimand rather than consistency. These panels ask "does the model's score
+## move with the background". Under the per-query ruler the REFERENCE SET moves
+## with the background too -- a host is more derived than its controls, so more
+## of its high-scoring cells are masked away and whatever is left is lifted --
+## and that is a property of the tree, not of the model. It is contamination,
+## not signal, and it is measurable: a fixed (L, E) map, which cannot respond to
+## the query at all, goes from a host-control gap of exactly 0.000000 on the
+## fixed pool to 0.000318 on the per-query one, and from AUC 0.500 to 0.615.
+## A-H are NOT transposed and the per-query pool is correct for them; the
+## transpose does not inherit that. See NOTES s37-s39.
+##
+## Note that the fixed pool is the MORE conservative of the two about impossible
+## mutations: it drops every cell any genotype carries, a superset of what the
+## per-query mask drops, so it never ranks against a cell the query already has.
 
+BG_SUFFIX  <- getOption("coguk.bg_suffix", "")
+## The CSV names the fixed-pool rows bare and the per-query ones with a suffix.
+bg_cellset <- function(m) paste0(m, BG_SUFFIX)
 BG_METRICS <- c("coguk_all", "coguk_unseen", "rbd_all", "rbd_unseen")
 longform_bg_metrics <- c("background lift, all list cells",
                          "background lift, de novo",
@@ -404,12 +461,22 @@ bg_path <- file.path(BG_DIR, "background_summary.csv")
 have_bg <- file.exists(bg_path)
 if (have_bg) {
   bg <- read.csv(bg_path)
-  bg <- bg[bg$cellset %in% BG_METRICS, ]
+  ## Select the ruler, then rename back to the bare cell-set names so nothing
+  ## downstream has to know which one was picked.
+  wanted <- bg_cellset(BG_METRICS)
+  missing_rows <- setdiff(wanted, unique(bg$cellset))
+  if (length(missing_rows) > 0) {
+    stop("background_summary.csv has no rows for ", paste(missing_rows, collapse = ", "),
+         " -- is it from a run with --skip-perquery?")
+  }
+  bg <- bg[bg$cellset %in% wanted, ]
+  bg$cellset <- BG_METRICS[match(bg$cellset, wanted)]
   bg_df <- data.frame(model = bg$model, metric = bg$cellset,
                       value = 100 * bg$lift,
                       lo = 100 * bg$lift_lo, hi = 100 * bg$lift_hi,
                       n_cells = bg$n_cells, stringsAsFactors = FALSE)
-  cat(sprintf("background: %d models, %s\n", length(unique(bg_df$model)),
+  cat(sprintf("background: %d models, ruler=%s, %s\n", length(unique(bg_df$model)),
+              if (BG_SUFFIX == "_perquery") "per-query pool" else "fixed pool",
               paste(sprintf("%s n=%d", BG_METRICS,
                             vapply(BG_METRICS, function(m)
                               max(c(0, bg_df$n_cells[bg_df$metric == m])), numeric(1))),
@@ -460,7 +527,13 @@ summary_df <- by_x %>%
   as.data.frame()
 
 ## The top decile on its own, as a summary like the AUC (see the header).
-decile_df <- by_x[by_x$metric %in% RECALL_METRICS & abs(by_x$x - 0.1) < 1e-9,
+if (!any(abs(by_x$x[by_x$metric %in% RECALL_METRICS] - QTILE) < 1e-9)) {
+  stop("coguk.qtile = ", QTILE, " is not in the macro CSV's quantile grid (",
+       paste(sort(unique(by_x$x[by_x$metric %in% RECALL_METRICS])), collapse = ", "),
+       "). Re-run list_macro.py with that quantile in --qtiles; do NOT render ",
+       "against another grid's directory.")
+}
+decile_df <- by_x[by_x$metric %in% RECALL_METRICS & abs(by_x$x - QTILE) < 1e-9,
                   c("model", "metric", "value")]
 
 #' Attach each model's group and display name.
@@ -705,11 +778,11 @@ recall_curve_panel <- function(metric, first) {
 }
 
 decile_bar <- function(metric, first) {
-  bar_panel(recall_q10_df, metric, "Recall at q = 0.1",
-            titled(paste0("Top decile, ", metric)),
+  bar_panel(recall_q10_df, metric, paste0("Recall at ", q_label),
+            titled(paste0(q_Noun, ", ", metric)),
             labels_on_y = first, xrange = decile_range) +
     ## Chance, for a metric whose scale is otherwise easy to misread.
-    geom_vline(xintercept = 0.1, linetype = "dotted", linewidth = 0.3,
+    geom_vline(xintercept = QTILE, linetype = "dotted", linewidth = 0.3,
                color = "grey30")
 }
 
@@ -722,8 +795,8 @@ auc_bar <- function(metric, first) {
 
 varr_curve <- function(metric) {
   curve_panel(varr_x, varr_max_df, metric, "Date (t, years into pandemic)",
-              "P(top-decile cell is listed & emerged by t)",
-              titled(paste0("BA.2 top decile, ", metric)), refs = varr_ref)
+              sprintf("P(%s cell is listed & emerged by t)", q_adj),
+              titled(paste0("BA.2 ", q_noun, ", ", metric)), refs = varr_ref)
 }
 
 #' One background-lift panel.
@@ -732,13 +805,13 @@ varr_curve <- function(metric) {
 #' it are the query-blind baselines, which cannot move their decile at all, and
 #' a model below it ranks a mutation HIGHER in backgrounds that did not host it.
 bg_bar <- function(metric, first, metrics) {
-  bar_panel(bg_df, metric, "Top-decile lift, host - control (pp)",
+  bar_panel(bg_df, metric, sprintf("%s lift, host - control (pp)", q_Adj),
             titled(paste0("Background, ", sub("^background lift, ", "", metric))),
             labels_on_y = first, xrange = bg_range_for(metrics)) +
     geom_vline(xintercept = 0, linewidth = 0.3, color = "grey30") +
-    ## A zero-length bar is invisible, and most of the roster sits at EXACTLY
-    ## zero here, which must not read as a missing row: the dot says the model
-    ## was scored and could not move its decile at all.
+    ## A zero-length bar is invisible, and a third of the roster sits on zero
+    ## here, which must not read as a missing row: the dot says the model was
+    ## scored and could not move its decile at all.
     geom_point(size = 0.7, color = "grey20") +
     ## 95% bootstrap over CELLS, drawn because these denominators are small --
     ## 53 listed cells and 19 de novo ones, against 145 and 50 for the RBD

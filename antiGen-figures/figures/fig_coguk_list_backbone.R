@@ -38,9 +38,15 @@
 ## tip, against 200 at 1+ cases in the published version) and the two bottom rows
 ## are NOT on the same scale. Read that row within this figure, not across.
 ##
-## THE BACKGROUND ROW IS OMITTED. Panels K-L of the main figure are already
-## computed on the backbone alone, so they would be identical here and the two
-## figures are easier to compare panel-for-panel without them.
+## THE BACKGROUND ROW IS DRAWN, BUT IT IS NOT AN INDEPENDENT MEASUREMENT.
+## Panels K-L are byte-for-byte the main figure's K-L. The background contrast is
+## computed on the guide tree *before* attachment in both figures -- that is what
+## antiGen/background_tree.py builds -- so there is no attached-vs-backbone
+## distinction for it to have. The row is here so this figure is self-contained
+## and so every panel letter means the same thing in both; it is NOT corroboration
+## of the main figure's K-L, and a reader must not count it twice. (The
+## " [backbone]" suffix on its titles is, unusually, accurate in both figures: it
+## is the main figure's K-L that could stand to say so.)
 ##
 ## Output: figs/coguk_list_backbone.png   figs_vector/coguk_list_backbone.pdf
 ##         figs/coguk_list_backbone_supp.png   (+ .pdf)
@@ -49,8 +55,9 @@
 options(
   coguk.macro_dir    = "data/evals_sc2_lists_macro_backbone",
   coguk.varr_dir     = "data/evals_sc2_lists_macro_backbone",
-  ## Already backbone-only in the main figure; see the header.
-  coguk.bg_dir       = "data/evals_sc2_background__omitted",
+  ## The same directory the main figure reads; see the header for why that is
+  ## correct rather than a copy-paste slip.
+  coguk.bg_dir       = "data/evals_sc2_background",
   coguk.fig_main     = "coguk_list_backbone",
   coguk.fig_supp     = "coguk_list_backbone_supp",
   coguk.title_suffix = " [backbone]"

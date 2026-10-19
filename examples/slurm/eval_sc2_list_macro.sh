@@ -36,7 +36,24 @@ echo "Job ID: $SLURM_JOB_ID"
 REPO=/home/ivan.specht/antiGen
 RANGE=${1:-default}
 if [ "$RANGE" = "full" ]; then SUFFIX=_fullseq; else SUFFIX=; fi
+
+# The quantile grid and the output directory are overridable so the q-sweep figures
+# (NOTES s40) come off this same script rather than a fork that would drift. The grid
+# is applied AFTER the forward pass -- cell_pass() loops quantiles inside the batch
+# loop -- so a finer grid is very nearly free and the cost is the pass itself.
+# A new OUTDIR is mandatory whenever the grid changes: the CSVs are keyed by
+# (model, variant, qtile) and appending a second grid into the published directory
+# would silently change every AUC that is trapezoided over it (NOTES s31).
+QTILES=${QTILES:-0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9}
+PERCELL_Q=${PERCELL_Q:-0.1}
+OUTDIR=${OUTDIR:-/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro${SUFFIX}}
+shift || true
+EXTRA=("$@")          # e.g. --multitree-baselines, or --models eve_,simple_
+
 echo "Eval range: $RANGE | output suffix: '${SUFFIX}'"
+echo "Quantiles:  $QTILES"
+echo "Output dir: $OUTDIR"
+echo "Extra args: ${EXTRA[*]}"
 
 python - <<'PY' || { echo "ABORT: ESM-2 backbone unavailable."; exit 1; }
 import sys
@@ -56,7 +73,9 @@ python "$REPO/antiGen/list_macro.py" \
     --eval-range "$RANGE" \
     --data-dir /home/ivan.specht/antiGen-data/output1 \
     --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
-    --output-dir "/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro${SUFFIX}" \
-    --mutation-list coguk="$REPO/coguk.csv"
+    --output-dir "$OUTDIR" \
+    --qtiles "$QTILES" \
+    --percell-qtile "$PERCELL_Q" \
+    --mutation-list coguk="$REPO/coguk.csv" "${EXTRA[@]}"
 
 echo "Job finished at: $(date)"
