@@ -5441,3 +5441,151 @@ which is what they should be doing anyway.
 `antiGen-figures/figures/fig_backbone_update_allrbd.R`, and the two-list CSVs in
 `data/evals_sc2_lists_macro_backbone_update/`. `backbone_list_eval.py` already
 took `--mutation-list` repeatedly, so no package code changed.
+
+---
+
+## 46. Validation-selected epochs: the design, and why the temporal arm is blocked (2026-10-19, RUNNING)
+
+The whole sc2 roster trains a fixed **32 epochs**, selected on nothing. This section
+records the retrain that tests it, the leak that had to be avoided, and a measurement
+that killed half the design.
+
+### 32 was never chosen
+
+It entered as `--epochs 64` in `61f3b6a` ("slurm scripts"), was halved to 32 four days
+later in `e7c963d` as an unmentioned one-line rider in a commit about *evaluation*, and
+propagated verbatim to all 14 main-text SLURM scripts and all 36 sweep scripts.
+`README.md:142` still documents 64, so the docs and the scripts disagree and neither
+gives a reason. Epochs was never a swept dimension; there is no early stopping, patience
+or LR decay anywhere in the package.
+
+### The held-out curve the loss figure drops
+
+`figS_training_loss.R` plots `loss/training_loss_curves_sc2.csv`, which is **training
+loss only** -- every curve is still falling at epoch 31, which is all that figure can
+say. But the 2026-era `train.py` also printed a `test_batch_loss=` probe every 10
+batches (removed in `8ebe594`), so the logs carry a held-out signal. Averaging its 6-12
+sampled minibatches per epoch:
+
+| arm | held-out min | NLL penalty at epoch 32 |
+|---|---:|---:|
+| Tranception full FT | epoch 3 | **+2.20** |
+| ESM-2 35M partial FT | epoch 5 | +0.40 |
+| ESM-2 650M partial FT | epoch 7 | **+1.91** |
+| EVE full FT | epoch 7 | **+1.00** |
+| ESM-2 35M frozen | epoch 14 | +0.10 |
+| **antiGen (`simple_d128_n2`)** | **epoch 28** | **+0.12** |
+
+**The asymmetry is the point, and it is uncomfortable.** The fixed budget over-trains the
+*comparators* far more than antiGen, whose curve is nearly epoch-insensitive and arguably
+*under*-trained -- its minimum sits at 28 of 32. A principled stopping rule is therefore
+more likely to raise EVE and ESM-2 than to raise antiGen, and could narrow the lead the
+figures report. That is a reason to do this, not a reason not to.
+
+Caveat on the evidence: the probe draws from the **reported test set**, so it is
+diagnostic, not a legitimate selection signal. That is exactly the leak below.
+
+### The default stopping rule would select on the test set
+
+`split_examples` (`train.py:275-294`), under `--val-mode file` -- the repo default --
+sets `val = [e for e in examples if not e.is_training]`, i.e. **validation IS the
+167,600 post-cutoff TESTING examples**. The published runs never passed `--save-best`, so
+no selection happened and nothing is contaminated. But bolting `--save-best` onto the
+published scripts would have chosen the epoch on the reported test set. The arms below
+therefore do not use the default.
+
+### Arm A: random split inside the training window (running)
+
+```
+--val-mode random --val-frac 0.1 --split-seed 0 --save-best --experiment valsel-random
+```
+
+`random` mode **drops all 167,600 TESTING examples outright** and splits the 3,648
+TRAINING pool 90/10, so nothing post-cutoff reaches training, validation or the epoch
+choice. `--test-frac` is deliberately not used: its purpose is a selection-free set when
+numbers are *reported on val*, and here they are reported on the post-cutoff figures,
+which this mode never touches.
+
+Five runs, jobs **3375635-3375639**, each into its own output directory under
+`fitness-inference/valsel/`:
+
+| arm | epochs | seeds |
+|---|---:|---|
+| antiGen `simple_d128_n2` | **64** | 42, 43, 44 |
+| ESM-2 35M partial FT | 32 | 42 |
+| EVE full FT | 32 | 42 |
+
+antiGen gets 64 because its optimum sits at 28 of 32 and a 32-epoch ceiling would not
+bracket it; the per-epoch JSON records every epoch, so "best within 32" and "best within
+64" both come off the same run. The three antiGen seeds are the **noise baseline** --
+without one, a null result is an assertion rather than a measurement, and there are no
+seed replicates anywhere in the published store (all 178 checkpoints are `--seed 42`;
+same-config duplicates differ only by CUDA jitter, rel-L2 ~ 0.003).
+
+### Arm B: the temporal split, attempted and BLOCKED
+
+The intended design: rebuild the corpus at an inner cutoff D', diff the TRAINING blocks,
+and label the (D', 1.0] slice as validation -- the pattern `make_nested_split.py`
+established, which needs no package change because `--val-mode file` consumes a
+TRAINING/TESTING relabelling directly.
+
+**It cannot be done by matching records across builds.** There is no per-example date:
+`Example` (`load.py:13`) carries id, parent id, mutation-from-parent, the TRAINING/TESTING
+flag, variant blocks, sequence and targets, and nothing temporal. File order is DFS
+pre-order, not time, and parent-chain depth counts mutations, not years. So the slice has
+to be recovered by matching records between two builds -- and the records do not match.
+
+`write_training_examples` decomposes a multi-mutation branch into intermediate genotypes
+in a **shuffled** order (`set_mutation_pos_order`, `main.cpp:519-542`). The RNG is seeded
+`std::mt19937 rng(123)` -- fixed -- but it is seeded **inside** `generate_cutoff_outputs`,
+*after* `prune_tree`, and then consumed over a traversal whose node set depends on the
+cutoff. A smaller cutoff means fewer nodes before any given deep node, so the stream
+desynchronises and the same branch gets a different decomposition in the two builds.
+
+**Measured, not inferred.** `output1` (cutoff 1.0) against `output4` (cutoff 4.0), same
+guide tree, keying on (sequence, targets):
+
+| | matched verbatim |
+|---|---|
+| all 3,648 TRAINING records | **439 (12.0%)** |
+| the 2,928 single-target records | 377 (12.9%) |
+| the 720 multi-target records | 62 (8.6%) |
+
+12% is not a basis for anything. Arm B is **dropped on instruction**, and the generator
+job for it (3375634, D' = 0.80) was cancelled before it started.
+
+**The fix, available but not taken.** Emit the node time from the generator: `Node::time`
+(`types.h:23`) is already in scope in `write_training_examples`, there is a commented-out
+block in that function that printed similar per-node fields, and branch `is-dev`
+(`78d9625`) already implemented the whole pattern -- `TIME_INTERVAL` / `TIME_RANGE` lines,
+an **optional, order-tolerant** prelude in `load.py` (required, since the parser is
+strictly positional and any unconditional new line breaks every other consumer), and a
+`split_by_window` + `--test-window`. One rebuild would then give a dated corpus with D'
+choosable, or sweepable, post hoc -- strictly better than the two-build diff even
+ignoring the RNG problem. Cost is ~3 lines of C++, an optional parse, a new val mode, a
+binary rebuild (`nvcc` lives at `/usr/local/cuda/bin`, not on PATH) and one ~3 h
+attachment.
+
+### Mechanics that would have corrupted this silently
+
+* **Prefix collision.** `run_prefix` (`train.py:715-748`) appends `arm_tag` only on the
+  `esm2` branch; for `simple_d*` and `eve_ft_*` it does not. A retrain written to the
+  published store would have produced the *same* prefix as the published checkpoint, and
+  `discover_checkpoints` keeps the newest per config label -- silently shadowing the
+  published model in every figure. Hence one output directory per run.
+* **`*_best.pt` is invisible to eval.** `_CKPT_RE` (`eval.py:84`) requires
+  `_YYYYMMDD_HHMMSS.pt`. The best checkpoints need staging symlinks under parseable
+  names, the `ckpt_stage_mt2021` pattern.
+* **`--val-mode random` auto-tags `experiment='multitree'`** (`train.py:438-441`), which
+  every scorer skips without `--include-experimental`. `--experiment valsel-random` is
+  set explicitly so the arm is labelled rather than inheriting a misleading tag.
+
+### Open
+
+Jobs 3375635-3375639 are queued behind two multi-day eval jobs; scheduler estimates put
+the first starts ~20 h out. Nothing is measured yet. The pre-registered comparison is
+val-selected against the published 32-epoch checkpoint, per arm, on cell-weighted top
+decile (panels C/D) of `coguk_list_results`, both cuts, with the selected epoch reported
+beside it -- that last column is what answers s11's warning that **an NLL-optimal choice
+need not move ranking at all**, which is a live risk here because selection is on NLL and
+the figure reports recall.
