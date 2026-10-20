@@ -219,6 +219,25 @@ q_Adj   <- if (is_decile) "Top-decile"  else sprintf("Top-%g%%", 100 * QTILE)
 q_label <- sprintf("q = %g", QTILE)
 
 
+## --- Which target set the figure is asked about -----------------------------
+## Everything above is about the SELECTION quantile; this is about the TARGETS.
+## The figure was written for the CoG-UK list, but the same twelve panels are
+## meaningful over every RBD cell the backbone hosts -- the curation is the only
+## thing that changes, and on a backbone test set that is a 79-cell question
+## against a 191-cell one. `coguk.list` is the label the CSVs are keyed by
+## (`backbone_list_eval.py --mutation-list LABEL=PATH`); the nouns are what the
+## panel titles and axes call it.
+##
+## DEFAULTS REPRODUCE THE PUBLISHED STRINGS EXACTLY, so the two CoG-UK figures
+## render byte-identically through this parameterisation -- checked, not assumed.
+LIST     <- getOption("coguk.list",     "coguk")
+BG_LIST  <- getOption("coguk.bg_list",  LIST)
+ALL_NOUN <- getOption("coguk.all_noun", "all list cells")
+DN_NOUN  <- getOption("coguk.dn_noun",  "de novo")
+Y_RECALL <- getOption("coguk.y_recall", "P(listed mutation in top q)")
+Y_YIELD  <- getOption("coguk.y_yield",  "P(%s cell is listed & emerged by t)")
+
+
 ## --- Model inventory -------------------------------------------------------
 ##
 ## Mirrors `fig2_sc2_benchmarks.R`'s inventory, extended with the models Figure
@@ -306,7 +325,8 @@ MODEL_LABEL <- c(
 
 ## The bottom row's two reference curves. Named here because they are both a
 ## legend entry and a scale key, and the two must not drift apart.
-REF_CEILING <- "Ceiling: every listed cell emerged by t"
+REF_CEILING <- getOption("coguk.ref_ceiling",
+                         "Ceiling: every listed cell emerged by t")
 REF_CHANCE  <- sprintf("Chance: a %s picked at random", q_noun)
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
@@ -371,15 +391,16 @@ macro <- drop_unrequested_mt2021(macro)
 ## the long frame is built directly.
 RECALL_METRICS <- c("micro_all", "micro_unseen", "macro_all", "macro_unseen")
 longform_recall_metrics <- c(
-  "all list cells, event-weighted",
-  "de novo, event-weighted",
-  "all list cells, cell-weighted",
-  "de novo, cell-weighted"
+  sprintf("%s, event-weighted", ALL_NOUN),
+  sprintf("%s, event-weighted", DN_NOUN),
+  sprintf("%s, cell-weighted",  ALL_NOUN),
+  sprintf("%s, cell-weighted",  DN_NOUN)
 )
 
 recall_long <- do.call(rbind, lapply(RECALL_METRICS, function(metric) {
   pooling <- sub("_.*", "", metric)
-  variant <- if (grepl("unseen", metric)) "list_coguk_unseen_fullpool" else "list_coguk_fullpool"
+  variant <- if (grepl("unseen", metric)) paste0("list_", LIST, "_unseen_fullpool")
+             else paste0("list_", LIST, "_fullpool")
   sub <- macro[macro$variant == variant, ]
   data.frame(model = sub$model, metric = metric, x = sub$qtile,
              value = sub[[pooling]], stringsAsFactors = FALSE)
@@ -410,16 +431,16 @@ by_x <- recall_long
 ## what a forecaster would have flagged among mutations BA.2's descendants had
 ## not already made, and 115 of the 143 de novo listed cells ever emerge at 1+.
 VARR_METRICS <- c("varr_1_all", "varr_1_unseen", "varr_100_all", "varr_100_unseen")
-longform_varr_metrics <- c("emerged 1+ cases, all list cells",
-                           "emerged 1+ cases, de novo",
-                           "emerged 100+ cases, all list cells",
-                           "emerged 100+ cases, de novo")
+longform_varr_metrics <- c(sprintf("emerged 1+ cases, %s",   ALL_NOUN),
+                           sprintf("emerged 1+ cases, %s",   DN_NOUN),
+                           sprintf("emerged 100+ cases, %s", ALL_NOUN),
+                           sprintf("emerged 100+ cases, %s", DN_NOUN))
 
 varr_path <- file.path(VARR_DIR, "list_variant_recall.csv")
 have_varr <- file.exists(varr_path)
 if (have_varr) {
   varr <- read.csv(varr_path)
-  varr <- varr[varr$list == "coguk", ]
+  varr <- varr[varr$list == LIST, ]
   varr <- drop_unrequested_mt2021(varr)
   varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
                         ifelse(varr$subset == "unseen", "unseen", "all"))
@@ -508,11 +529,21 @@ if (have_varr) {
 BG_SUFFIX  <- getOption("coguk.bg_suffix", "")
 ## The CSV names the fixed-pool rows bare and the per-query ones with a suffix.
 bg_cellset <- function(m) paste0(m, BG_SUFFIX)
-BG_METRICS <- c("coguk_all", "coguk_unseen", "rbd_all", "rbd_unseen")
-longform_bg_metrics <- c("background lift, all list cells",
-                         "background lift, de novo",
-                         "background lift, all RBD cells",
-                         "background lift, de novo RBD")
+## The first pair follows `coguk.list` (so an all-RBD rendering asks the
+## background question of the same cells its recall rows do); the second is
+## always every RBD cell with a backbone host. When the two coincide -- which is
+## exactly the all-RBD case -- `unique` collapses them and both figures draw the
+## same pair, rather than the script trying to relabel one cellset twice.
+bg_main_cells <- paste0(BG_LIST, c("_all", "_unseen"))
+bg_supp_cells <- c("rbd_all", "rbd_unseen")
+BG_METRICS    <- unique(c(bg_main_cells, bg_supp_cells))
+bg_label <- function(cs) {
+  if (identical(cs, bg_main_cells[1])) sprintf("background lift, %s", ALL_NOUN)
+  else if (identical(cs, bg_main_cells[2])) sprintf("background lift, %s", DN_NOUN)
+  else if (identical(cs, "rbd_all")) "background lift, all RBD cells"
+  else "background lift, de novo RBD"
+}
+longform_bg_metrics <- vapply(BG_METRICS, bg_label, character(1), USE.NAMES = FALSE)
 
 bg_path <- file.path(BG_DIR, "background_summary.csv")
 have_bg <- file.exists(bg_path)
@@ -810,18 +841,18 @@ legend_grob <- extract_legend(
 ##         event weighting answers a question about branches rather than
 ##         mutations.
 
-RECALL_MAIN <- c("all list cells, cell-weighted", "de novo, cell-weighted")
-RECALL_SUPP <- c("all list cells, event-weighted", "de novo, event-weighted")
+RECALL_MAIN <- sprintf("%s, cell-weighted",  c(ALL_NOUN, DN_NOUN))
+RECALL_SUPP <- sprintf("%s, event-weighted", c(ALL_NOUN, DN_NOUN))
 ## Two panels each, all list cells then de novo, so the yield row reads down
 ## the figure the way the recall rows read across it.
-VARR_MAIN   <- c("emerged 1+ cases, all list cells", "emerged 1+ cases, de novo")
-VARR_SUPP   <- c("emerged 100+ cases, all list cells", "emerged 100+ cases, de novo")
+VARR_MAIN   <- sprintf("emerged 1+ cases, %s",   c(ALL_NOUN, DN_NOUN))
+VARR_SUPP   <- sprintf("emerged 100+ cases, %s", c(ALL_NOUN, DN_NOUN))
 ## The main figure asks the background question of the curated list, to the same
 ## all/de novo grammar as the rows above it; the supplement asks it of every RBD
 ## cell with a backbone host, which roughly triples the denominator (146 and 51
 ## cells against 54 and 20) at the cost of leaving the list behind.
-BG_MAIN <- c("background lift, all list cells", "background lift, de novo")
-BG_SUPP <- c("background lift, all RBD cells", "background lift, de novo RBD")
+BG_MAIN <- vapply(bg_main_cells, bg_label, character(1), USE.NAMES = FALSE)
+BG_SUPP <- vapply(bg_supp_cells, bg_label, character(1), USE.NAMES = FALSE)
 stopifnot(all(c(RECALL_MAIN, RECALL_SUPP) %in% longform_recall_metrics))
 stopifnot(!have_varr || all(c(VARR_MAIN, VARR_SUPP) %in% longform_varr_metrics))
 
@@ -842,7 +873,7 @@ bg_range_for <- function(metrics) {
 
 recall_curve_panel <- function(metric, first) {
   curve_panel(recall_x, recall_auc_df, metric, "Quantile (q)",
-              if (first) "P(listed mutation in top q)" else "",
+              if (first) Y_RECALL else "",
               titled(paste0("Recall, ", metric)), chance = 1)
 }
 
@@ -864,7 +895,7 @@ auc_bar <- function(metric, first) {
 
 varr_curve <- function(metric) {
   curve_panel(varr_x, varr_max_df, metric, "Date (t, years into pandemic)",
-              sprintf("P(%s cell is listed & emerged by t)", q_adj),
+              sprintf(Y_YIELD, q_adj),
               titled(paste0("BA.2 ", q_noun, ", ", metric)), refs = varr_ref)
 }
 

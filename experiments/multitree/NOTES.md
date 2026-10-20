@@ -5335,3 +5335,109 @@ them typographically different for no reason, which is the trade s34 declined.
 
 Checked by a detector rather than by eye (any ink in the last 6 columns of a
 title band), run over all four PNGs.
+
+---
+
+## 45. The same panels asked of every RBD mutation, not of the list (2026-10-19)
+
+`backbone_update_allrbd{,_supp}`: the s44 backbone figure with the curation
+removed. Fourth member of a matched set, all four off `fig_coguk_list.R` through
+options.
+
+| wrapper | test set | targets | cells |
+|---|---|---|---:|
+| `fig_coguk_list.R` | attached | CoG-UK | 235 |
+| `fig_coguk_list_backbone.R` | old tree | CoG-UK | 56 |
+| `fig_coguk_list_backbone_update.R` | sc2_update | CoG-UK | 79 |
+| **`fig_backbone_update_allrbd.R`** | sc2_update | **all RBD** | **191** |
+
+Only the TARGET set changes. Queries, candidate pool, masking, tie rule, de novo
+mask, models and score matrices are the sibling's; no GPU was used.
+
+### Reversions are 27 of the 191, and the obvious list drops all of them
+
+`rbd_all_cells.csv` lists all 201 x 22 = **4,422** cells of the eval range,
+**including each position's Wuhan residue**. Building it the obvious way -- every
+residue *except* the root's -- scored **164 cells while calling itself "all
+mutations"**. The 27 missing were, every one of them, reversions to the root
+residue: 339G, 344A, 346R, 356K, 371S, 373S, 375S, 376T, 403R, 408R, 417K, 440N,
+452L, 455L, 456F, 460N, 475A, 477S, 478T, 481N, 483V, 484E, 486F, 490F, 493Q,
+501N, 505Y. A branch reverting a position to Wuhan is a mutation on this tree and
+belongs in the denominator.
+
+Listing the root residue is safe as well as necessary: the wild-type letter in the
+CSV is ignored by the parser, and `compute_hit_rate` masks each **query's** own
+residue, so a cell can never be a candidate in a background that already carries
+it. Checked: the list covers **191 of 191** observed host cells, and the eval
+reports `n_cells=191, n_events=610`, matching `backbone_manifest.json` exactly.
+
+### The curation matters more than the tree did
+
+Top decile, cell-weighted, both columns on the *same* tree and the *same* scores:
+
+| | Spearman |
+|---|---:|
+| CoG-UK vs all RBD, all cells | **0.926** |
+| CoG-UK vs all RBD, de novo | **0.887** |
+| (for comparison, s44: old tree vs sc2_update, CoG-UK) | 0.978 / 0.952 |
+
+**Swapping the target set moves the ordering further than swapping the guide tree
+did.** The direction is consistent and worth stating plainly:
+
+| model | all cells: list -> all RBD | de novo: list -> all RBD |
+|---|---|---|
+| PSSM | 0.533 -> 0.596, **12th -> 4th** | - |
+| `where x which` | - | 0.400 -> 0.508, **11th -> 4th** |
+| substitution matrix | - | 0.367 -> 0.400, 15th -> 8th |
+| **antiGen** | 0.640 -> 0.596, 4th -> **3rd** | 0.558 -> 0.581, 5th -> **3rd** |
+| antiGen as ESM 2 (35M) partial FT | 0.717 -> 0.573, **2nd -> 5th** | 0.625 -> 0.478, **3rd -> 6th** |
+| EVE / EVE full FT | 1st / 3rd -> 1st / 2nd | 1st / 2nd unchanged |
+
+**The composition baselines gain and the ESM-2 fine-tunes lose** once the
+curation is removed. A reading consistent with s32's recurrence finding is that
+the CoG-UK list is enriched for antigenically notable cells, which the
+sequence-evolution rungs rank well, while the full set of observed mutations
+contains many ordinary ones at variable positions, which plain composition
+captures. **This is a hypothesis, not a measurement** -- what is measured is the
+rank movement. What it does establish is that **a curated list can flatter a model
+that has learned the curation**, and the all-RBD panel is the better-powered of
+the two (191 cells against 79, 65 de novo against 30).
+
+### K-L is not a new measurement here
+
+In the CoG-UK figures the main asks the background question of the list and the
+supplement asks it of every RBD cell. Here the list **is** every RBD cell, so the
+two coincide; `fig_coguk_list.R` collapses them with `unique` rather than
+relabelling one cellset twice. **Verified: below the title line, K-L is
+pixel-identical (0 differing pixels) between this figure, its own supplement, and
+the CoG-UK sibling's supplement**; only the title row differs. A reader must not
+count it twice against that figure.
+
+### The script parameterisation, and the regression that guards it
+
+`fig_coguk_list.R` gained `coguk.list` (the CSV label), `coguk.bg_list` (the
+background cellset prefix), `coguk.all_noun`, `coguk.dn_noun`, `coguk.y_recall`,
+`coguk.y_yield` and `coguk.ref_ceiling`. The longform metric vectors, `RECALL_*`,
+`VARR_*` and `BG_*` are now derived from the nouns instead of being literals.
+
+**Every default reproduces the published string exactly, checked rather than
+asserted: all six existing PNGs -- `coguk_list_results`, `coguk_list_supp`,
+`coguk_list_backbone{,_supp}`, `coguk_list_backbone_update{,_supp}` -- re-render
+at RMSE = 0 through the parameterisation.** The 1,260 coguk macro rows and 8,400
+varrecall rows of the regenerated two-list CSVs are byte-identical to the
+committed one-list versions.
+
+### The title budget again
+
+s44 measured it at about two characters. "de novo" -> "de novo RBD" spends four,
+so the suffix gives four back: **" [2026]"** against the sibling's
+" [2026 tree]". Net zero, and the clipping detector reports no title touching the
+right edge on either PNG. The nouns do the distinguishing between the two figures,
+which is what they should be doing anyway.
+
+### Files
+
+`rbd_all_cells.csv` (repo root, beside `coguk.csv`),
+`antiGen-figures/figures/fig_backbone_update_allrbd.R`, and the two-list CSVs in
+`data/evals_sc2_lists_macro_backbone_update/`. `backbone_list_eval.py` already
+took `--mutation-list` repeatedly, so no package code changed.
