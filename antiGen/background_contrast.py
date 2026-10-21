@@ -256,6 +256,10 @@ def main():
     ap.add_argument('--min-hosts', type=int, default=1)
     ap.add_argument('--drop-nan', action='store_true',
                     help='drop non-candidate pairs instead of ranking them last')
+    ap.add_argument('--legacy-pool', action='store_true',
+                    help="the published per-model pool: keep gap/stop and cut each "
+                         "model's own non-finite cells. The regression for the common "
+                         "pool -- under it this must reproduce the published CSV.")
     ap.add_argument('--skip-perquery', action='store_true',
                     help="do not also report the published per-query pool convention")
     ap.add_argument('--n-boot', type=int, default=10000)
@@ -315,11 +319,27 @@ def main():
                 w.writerow([name, c[0], c[1], len(usable[c][0]), len(usable[c][1]),
                             int(is_denovo(c))])
 
-    # ── The query-independent pool ──────────────────────────────────────────
+    # ── The query-independent AND model-independent pool ────────────────────
     # A cell is in it when no backbone genotype carries that residue, so no query is
     # ranking one of its own residues, and the pool is literally the same set for every
-    # query. The per-model finiteness cut is applied below (a gap/stop column, or a
-    # codon -inf, is not a usable reference value).
+    # query.
+    #
+    # It is now also the same set for every MODEL. It used to carry a per-model
+    # finiteness cut, which left the pool at 4,134 cells for antiGen, the PSSMs, pyr0 and
+    # CoVFit, 3,933 for ESM-2, 3,734 for EVE and Tranception and 3,696 for BLOSUM62 -- an
+    # 11% spread, and 400 of antiGen's were gap or stop columns. That did not bias `lift`
+    # the way it biased the recall panels, since lift is a difference of two probabilities
+    # for the SAME model and chance is 0 whatever the pool size. It did something subtler:
+    # a model that emits gap and stop ranks them HIGH (measured: 39.8% of antiGen's top
+    # decile at the BA.2 root), so a tenth of its reference pool was cells it scored above
+    # most real ones, pushing every real cell down in percentile and compressing its lift
+    # toward zero. Excluding them for everyone removes that, and makes the whole figure
+    # one convention (NOTES s51).
+    #
+    # A pool cell a model cannot score is ranked LAST rather than dropped -- it is filled
+    # with -inf below, so it never counts as above a finite target score while keeping the
+    # denominator identical across models. That is the same treatment `compute_hit_rate`
+    # and `rank_fractions` now give an unscorable in-pool cell.
     R, Ecols = len(eval_range), E
     carried = np.zeros((R, Ecols), dtype=bool)
     for q in queries:
@@ -327,8 +347,13 @@ def main():
             carried[r, allowed_aas.index(ch)] = True
     eval_seq_idx = np.asarray(
         [[allowed_aas.index(ch) for ch in q["eval_seq"]] for q in queries], dtype=np.int64)
+    real_col = np.asarray([a not in "-*" for a in allowed_aas], dtype=bool)
+    common_pool = (~carried) if args.legacy_pool else ((~carried) & real_col[None, :])
     print(f"pool: {int((~carried).sum())} of {R * Ecols} eval-range cells are carried by "
           f"no backbone genotype")
+    print(f"      {'LEGACY per-model pool' if args.legacy_pool else 'COMMON pool'}: "
+          f"{int(common_pool.sum())} cells"
+          f"{'' if args.legacy_pool else ' (gap and stop columns excluded for every model)'}")
 
     target_cells = sorted({(pos_of[c[0] - 1], allowed_aas.index(c[1])) for c in usable})
 
@@ -341,7 +366,16 @@ def main():
         model = os.path.basename(path)[len("scores_"):-len(".npz")]
         with np.load(path) as z:
             scores = z["scores"].astype(np.float32)
-        pool_mask = (~carried) & np.isfinite(scores).all(axis=0)
+        if args.legacy_pool:
+            pool_mask = common_pool & np.isfinite(scores).all(axis=0)
+        else:
+            # Model-independent by construction. An unscorable cell inside it is filled
+            # with -inf so it ranks last without leaving the denominator.
+            pool_mask = common_pool
+            bad = pool_mask[None, :, :] & ~np.isfinite(scores)
+            if bad.any():
+                scores = scores.copy()
+                scores[bad] = -np.inf
         if pool_mask.sum() < 100:
             print(f"  [skip] {model}: only {int(pool_mask.sum())} pool cells")
             continue

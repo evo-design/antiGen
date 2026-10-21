@@ -103,7 +103,7 @@ HOSTS = "backbone_hosts.csv"
 MANIFEST = "backbone_manifest.json"
 
 
-def rank_fractions(scores, aa_batch, eval_range):
+def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=False):
     """(above, tie, n_valid): rank fractions over the eval-range pool.
 
     ``scores`` is (B, seq_len, E) or (B, R, E); ``aa_batch`` is (B, seq_len). ``above``
@@ -112,11 +112,43 @@ def rank_fractions(scores, aa_batch, eval_range):
     ``compute_hit_rate`` masks it -- the query's own residue at every eval-range
     position, and ``-inf`` sentinels -- and :func:`top_q_weight` turns these three back
     into that function's fractional top-q weight, cell for cell.
+
+    ``pool_mask`` is the (R, E) COMMON CANDIDATE POOL and is passed through to keep that
+    identity holding: it must mean here exactly what it means in ``compute_hit_rate``,
+    or the ensemble path and the published path stop being the same metric. A cell in
+    the pool that the model cannot score ranks last; a cell outside it leaves the pool.
+
+    ``return_filled`` adds a fourth return value: the (B, R, E) mask of in-pool cells the
+    model could not score, which were filled to rank last. **A caller using a pool mask
+    must zero its top-q weights there.** Ranking last is not the same as never being
+    selected: the filled cells form one tie block at the bottom, so once q is large
+    enough that the quota exceeds the SCORABLE count, the boundary lands inside that
+    block and every cell in it takes fractional weight. Measured on BLOSUM62, which
+    carries query-dependent ``-inf`` (460 in-pool cells at one test query, 80 at
+    another): nothing at q <= 0.5, but **75.8 of the 3,437.1 selected at q = 0.9**,
+    worth -0.0039 of its recall AUC. That is a baseline being credited for cells it
+    declined to score, so it is removed rather than reported.
     """
     aa_sub = aa_batch if aa_batch.shape[1] == len(eval_range) else aa_batch[:, eval_range]
     sub = scores[:, eval_range, :] if scores.shape[1] != len(eval_range) else scores
     sub = sub.clone().float()
+    if pool_mask is not None:
+        pm = pool_mask.to(sub.device)
+        unscorable = (torch.isnan(sub) | torch.isneginf(sub)) & pm
+        filled_mask = unscorable.clone()
+        if unscorable.any():
+            finite = torch.where(torch.isfinite(sub), sub,
+                                 torch.full_like(sub, float('inf')))
+            floor = finite.reshape(sub.shape[0], -1).min(dim=1).values
+            floor = torch.where(torch.isfinite(floor), floor,
+                                torch.zeros_like(floor)).view(-1, 1, 1) - 1.0
+            sub = torch.where(unscorable, floor.expand_as(sub), sub)
+        sub = torch.where(pm.unsqueeze(0).expand_as(sub), sub,
+                          torch.full_like(sub, float('nan')))
+    else:
+        filled_mask = torch.zeros_like(sub, dtype=torch.bool)
     sub.scatter_(2, aa_sub.unsqueeze(-1), float('nan'))
+    filled_mask = filled_mask & ~torch.isnan(sub)
     sub = torch.where(torch.isneginf(sub), torch.full_like(sub, float('nan')), sub)
 
     B = sub.shape[0]
@@ -137,6 +169,8 @@ def rank_fractions(scores, aa_batch, eval_range):
     bad = torch.isnan(sub)
     above[bad] = float('nan')
     tie[bad] = float('nan')
+    if return_filled:
+        return above, tie, n_valid, filled_mask
     return above, tie, n_valid
 
 

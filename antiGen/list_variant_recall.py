@@ -84,15 +84,40 @@ from antiGen.mutation_lists import describe as describe_list, load_mutation_list
 OUT = "list_variant_recall.csv"
 
 
-def top_q_weights(scores_2d, qtile):
+def top_q_weights(scores_2d, qtile, pool_mask=None):
     """Fractional membership of each cell in the top-q of ``scores_2d``.
 
     1.0 strictly inside, ``frac`` on the boundary block, 0 elsewhere -- the expected
     membership under random tie-breaking, which is what makes the metric seed-free and
-    fair to coarse-valued predictors. NaN cells (wild type, gap/stop, -inf sentinels,
-    anything masked out) are never selected and never counted in the pool.
+    fair to coarse-valued predictors. NaN cells are never selected and never counted in
+    the pool.
+
+    NB on ``-inf``: this tests ``isnan`` only, so a ``-inf`` sentinel stays IN the pool
+    and is merely never selected. ``eval_utils.compute_hit_rate`` folds ``-inf`` into
+    NaN and drops it. The two conventions therefore disagree on ``n_valid`` for any
+    model that emits ``-inf``; measured on this roster at the BA.2 root, none does, so
+    they coincide here. Fixed rather than reconciled because a ``pool_mask`` makes the
+    question moot.
+
+    ``pool_mask`` is the COMMON CANDIDATE POOL -- see ``eval_utils.compute_hit_rate``.
+    It matters more here than anywhere else in the figure, because ``n_valid`` is this
+    metric's DENOMINATOR: without it a model that declines to score the gap and stop
+    columns is scored against a top decile 10% smaller, and so can catch strictly fewer
+    listed cells than a rival and still report a higher yield. Measured: the nine-member
+    mean of log-probs catches 98.0 listed cells to EVE full FT's 94.0 and scored 0.2322
+    against 0.2461. A cell in the pool that the model cannot score ranks last.
     """
     p = scores_2d.float()
+    filled = None
+    if pool_mask is not None:
+        pm = pool_mask.to(p.device)
+        unscorable = (torch.isnan(p) | torch.isneginf(p)) & pm
+        filled = unscorable.clone()
+        if unscorable.any():
+            finite = p[torch.isfinite(p)]
+            floor = (finite.min() - 1.0) if finite.numel() else torch.zeros((), dtype=p.dtype)
+            p = torch.where(unscorable, torch.full_like(p, float(floor)), p)
+        p = torch.where(pm, p, torch.full_like(p, float('nan')))
     valid = ~torch.isnan(p)
     n_valid = int(valid.sum())
     if n_valid == 0:
@@ -103,17 +128,22 @@ def top_q_weights(scores_2d, qtile):
     n_above = float(above.sum())
     n_at = max(float(at.sum()), 1.0)
     frac = min(max((qtile * n_valid - n_above) / n_at, 0.0), 1.0)
-    return above.float() + frac * at.float(), n_valid
+    w = above.float() + frac * at.float()
+    if filled is not None and filled.any():
+        # Ranked last is not never-selected: the filled cells are one tie block, so a
+        # large enough q puts the boundary inside it. See rank_fractions' return_filled.
+        w = torch.where(filled & valid, torch.zeros_like(w), w)
+    return w, n_valid
 
 
-def curve(scores_2d, target_masks, qtile):
+def curve(scores_2d, target_masks, qtile, pool_mask=None):
     """[(n_targets, n_selected, value)] per time step, for one score map.
 
     ``n_selected`` is the denominator -- the size of this model's top decile -- and is
     the same at every time step. A step where nothing has emerged yet gives 0, not NaN:
     the top decile exists and contains none of the list, which is a real zero.
     """
-    w, n_valid = top_q_weights(scores_2d, qtile)
+    w, n_valid = top_q_weights(scores_2d, qtile, pool_mask=pool_mask)
     n_selected = max(qtile * n_valid, 1e-9)
     return [(int(tm.sum()), n_selected, float((w * tm.float()).sum()) / n_selected)
             for tm in target_masks]

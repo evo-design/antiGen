@@ -191,6 +191,98 @@ if (length(setdiff(MT2021, names(MT2021_KNOWN))) > 0) {
        paste(setdiff(MT2021, names(MT2021_KNOWN)), collapse = ", "))
 }
 
+## --- The validation-selected-epoch arm (opt-in) ------------------------------
+## NOTES s46. The published roster trains a fixed 32 epochs, chosen on nothing.
+## This arm retrains with `--val-mode random --val-frac 0.1 --split-seed 0
+## --save-best`, which drops all 167,600 post-cutoff TESTING examples outright
+## and splits the 3,648-example TRAINING pool 90/10, so the epoch is chosen on a
+## held-out set that this figure's test set never touches.
+##
+## EMPTY BY DEFAULT, for the same reason as MT2021 above: these are retrains on a
+## 90% subsample of the training pool, not another rung of the published roster,
+## and the published figure must not acquire them silently.
+##
+## READ THE TWO ROWS OF EACH MODEL AS A PAIR, NOT AS A SINGLE BAR. A val-selected
+## rung differs from its published rung in TWO ways at once -- the epoch, and the
+## 10% of training data held out to choose it -- so a `valsel` bar on its own
+## cannot separate the selection from the subsample. The `fix32` rung is the
+## control that does: same 90% split, same seed, no selection, stopped at the
+## published budget's last epoch. The decomposition is
+##
+##   published -> fix32    the cost of the 10% held out  (data)
+##   fix32     -> valsel   the effect of choosing the epoch  (selection)
+##
+## and only the second is what s46 set out to measure. A figure drawn with the
+## `valsel` rungs and not their `fix32` controls would attribute both to
+## selection, which is the specific misreading this arm exists to avoid.
+VALSEL_KNOWN <- c(
+  valselAntigen_s42         = "antiGen, val-selected epoch",
+  valselAntigen_s43         = "antiGen, val-selected epoch (s43)",
+  valselAntigen_s44         = "antiGen, val-selected epoch (s44)",
+  fix32Antigen_s42          = "antiGen, fixed 32 ep, 90% split",
+  fix32Antigen_s43          = "antiGen, fixed 32 ep, 90% split (s43)",
+  fix32Antigen_s44          = "antiGen, fixed 32 ep, 90% split (s44)",
+  valselEsm2p_s42_partial4  = "antiGen as ESM 2 (35M) partial FT, val-selected epoch",
+  fix32Esm2p_s42_partial4   = "antiGen as ESM 2 (35M) partial FT, fixed 32 ep, 90% split"
+)
+VALSEL_GROUP <- "Validation-selected epoch"
+VALSEL <- getOption("coguk.valsel", character(0))
+if (length(setdiff(VALSEL, names(VALSEL_KNOWN))) > 0) {
+  stop("coguk.valsel names checkpoints that are not in this arm: ",
+       paste(setdiff(VALSEL, names(VALSEL_KNOWN)), collapse = ", "))
+}
+
+## --- The ensembling arm (opt-in) ---------------------------------------------
+## NOTES s48. Combinations of the roster's already-trained checkpoints -- no further
+## training -- asking whether the panels below can be beaten by mixing what exists.
+## Panels C-F invite it: no single model leads more than two of the four, and the
+## per-cell oracle over the 30 rungs is 0.96 against best singles of 0.51.
+##
+## WHAT A READER MUST KNOW ABOUT THESE BARS, because they are not another rung OF the
+## roster: every member of a mixture is already drawn as its own bar in these panels, so
+## an ensemble bar sits beside its own parts. Comparing it with the bars next to it is
+## comparing a thing with the things it is made of, which is a legitimate comparison and
+## a different one from the roster comparison the rest of the figure makes. The group is
+## drawn last and in its own colour so the distinction is visible rather than stated.
+##
+## HOW THE RULE WAS CHOSEN, which is what makes the bar readable. The combination rule
+## and its members were selected on a DISJOINT SET OF TARGET CELLS: the ~1,235 observed
+## RBD cells that are NOT on the CoG-UK list (720 of them de novo), scored over the same
+## queries with the same pool, masking and tie rule. The 235 and 131 cells these panels
+## report are never seen during selection. The honest limitation is that this is
+## disjointness of TARGETS, not of the test window -- val and test share the post-cutoff
+## tree and the queries.
+##
+## READ THE BAR AGAINST THE SEED FLOOR, NOT AGAINST ZERO. s47 measured antiGen's spread
+## over three seeds on these exact panels at 0.028-0.035 (0.098 on the event-weighted de
+## novo cut). A margin inside that band is not a result, and the paired bootstrap
+## intervals over cells are in `ensemble_contrasts.csv` beside the figure CSV.
+##
+## Names are `ens_<rule_id>`, a canonical hash of the rule, so two searches arriving at
+## the same combination collapse to one row rather than appearing as two.
+ENSEMBLE_GROUP <- "Ensembles"
+## The default is not "draw none", it is "draw what THIS figure's own macro directory
+## says". `ensemble_figure_rows.tsv` is written by `antiGen/ensemble_report.py` beside
+## the CSV it scored, so a directory carrying ensemble rows draws them and one that does
+## not is untouched -- which is what keeps the backbone, valsel and all-RBD siblings
+## clear of this group without any of them having to opt out of it. An explicit
+## `coguk.ensemble` still overrides, and `character(0)` still disables.
+ens_rows_default <- local({
+  f <- file.path(MACRO_DIR, "ensemble_figure_rows.tsv")
+  if (!file.exists(f)) NULL
+  else read.delim(f, header = FALSE, col.names = c("id", "label"),
+                  stringsAsFactors = FALSE)
+})
+ENSEMBLE <- getOption("coguk.ensemble",
+                      if (is.null(ens_rows_default)) character(0) else ens_rows_default$id)
+ENSEMBLE_LABELS <- getOption("coguk.ensemble_labels",
+                             if (is.null(ens_rows_default)) character(0)
+                             else ens_rows_default$label)
+if (length(ENSEMBLE) > 0 && !all(grepl("^ens_", ENSEMBLE))) {
+  stop("coguk.ensemble names must start with 'ens_': ",
+       paste(ENSEMBLE[!grepl("^ens_", ENSEMBLE)], collapse = ", "))
+}
+
 ## --- The selection quantile -------------------------------------------------
 ## Every "top decile" in this figure -- panels C-D, the BA.2 yield row's selection
 ## and its chance curve, and the background row -- is a top-q, and q was 0.1 by
@@ -351,11 +443,48 @@ if (length(MT2021) > 0) {
   GROUP_COLORS <- c(GROUP_COLORS, setNames("#0077b6", MT2021_GROUP))
 }
 
+## The ensembling arm, on the same terms. Its own colour rather than a cast of
+## antiGen's blue, because a mixture is not an antiGen model -- it may contain DMS
+## panels and composition baselines, and colouring it as antiGen would assert
+## otherwise.
+if (length(ENSEMBLE) > 0) {
+  lab <- if (length(ENSEMBLE_LABELS) == length(ENSEMBLE)) ENSEMBLE_LABELS else
+    paste0("Ensemble ", substr(ENSEMBLE, 5, 10))
+  MODEL_GROUP <- c(MODEL_GROUP, setNames(rep(ENSEMBLE_GROUP, length(ENSEMBLE)), ENSEMBLE))
+  MODEL_LABEL <- c(MODEL_LABEL, setNames(lab, ENSEMBLE))
+  GROUP_LEVELS <- c(GROUP_LEVELS, ENSEMBLE_GROUP)
+  GROUP_COLORS <- c(GROUP_COLORS, setNames("#bc6c25", ENSEMBLE_GROUP))
+}
+
+## The val-selection arm, on the same terms and for the same reasons. A third
+## cast of antiGen's blue: every rung in it is an antiGen model, and none of them
+## is the published one.
+if (length(VALSEL) > 0) {
+  MODEL_GROUP <- c(MODEL_GROUP, setNames(rep(VALSEL_GROUP, length(VALSEL)), VALSEL))
+  MODEL_LABEL <- c(MODEL_LABEL, VALSEL_KNOWN[VALSEL])
+  GROUP_LEVELS <- c(GROUP_LEVELS, VALSEL_GROUP)
+  GROUP_COLORS <- c(GROUP_COLORS, setNames("#48cae4", VALSEL_GROUP))
+}
+
 ## Rows of the arm that were not asked for. Its CSVs carry every seed scored, and
 ## a seed that is in the data but not in the inventory would otherwise stop the
 ## run at the "models with no group assignment" check below.
 drop_unrequested_mt2021 <- function(df) {
   df[!grepl("^mt2021", df$model) | df$model %in% MT2021, , drop = FALSE]
+}
+
+## Same, for the validation-selected arm. Its CSVs carry all three antiGen seeds
+## and both the selected and the fixed-budget rung of each model.
+drop_unrequested_valsel <- function(df) {
+  df[!grepl("^(valsel|fix32)", df$model) | df$model %in% VALSEL, , drop = FALSE]
+}
+
+## Same, for the ensembling arm. The sweep writes one row per rule it reports, which is
+## many more than any figure draws, and the prefix is matched EXACTLY (`^ens_`, not
+## `^ens`) so that no future model whose name merely begins with those letters can slip
+## a sixth bar into the published figure.
+drop_unrequested_ensemble <- function(df) {
+  df[!grepl("^ens_", df$model) | df$model %in% ENSEMBLE, , drop = FALSE]
 }
 
 
@@ -385,7 +514,8 @@ macro <- macro[!duplicated(key), ]
 
 ## The 2021-cutoff arm is drawn only where it was asked for (see MT2021 above).
 ## Unasked-for seeds are dropped here rather than left to trip the grouping check.
-macro <- drop_unrequested_mt2021(macro)
+macro <- drop_unrequested_ensemble(
+  drop_unrequested_valsel(drop_unrequested_mt2021(macro)))
 
 ## One "metric" per (subset, pooling). `melt` would mix the two poolings, so
 ## the long frame is built directly.
@@ -441,13 +571,27 @@ have_varr <- file.exists(varr_path)
 if (have_varr) {
   varr <- read.csv(varr_path)
   varr <- varr[varr$list == LIST, ]
-  varr <- drop_unrequested_mt2021(varr)
+  varr <- drop_unrequested_ensemble(
+    drop_unrequested_valsel(drop_unrequested_mt2021(varr)))
   varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
                         ifelse(varr$subset == "unseen", "unseen", "all"))
   varr$x <- (varr$step + 1) / 10
-  ## Both references are model-independent except through N_RBD, which varies by
-  ## ~10% with the gap/stop columns a model does not emit; the median is used so
-  ## the lines are single curves rather than a band.
+  ## Both references are model-independent, now exactly rather than nearly. They
+  ## depend on the model only through N_RBD, which USED to vary by ~10% with the
+  ## gap/stop columns a model does not emit -- so these were a median over a band.
+  ## Under the common candidate pool (NOTES s51) every model selects the same
+  ## number of cells, so the band collapses to a point and the median is that
+  ## point. Kept as `median` for the stated reason, and guarded: a spread here
+  ## now means the pool convention has been broken somewhere upstream.
+  n_sel_spread <- max(tapply(varr$n_selected, varr$metric,
+                             function(v) diff(range(v))))
+  if (n_sel_spread > 1e-6) {
+    stop("n_selected varies by ", signif(n_sel_spread, 3), " across models -- the top ",
+         "decile must be the same size for every model (see NOTES s51). Re-run ",
+         "antiGen/rescore_common_pool.py without --legacy-pool.")
+  }
+  cat(sprintf("yield row: top decile = %.1f cells, identical across %d models\n",
+              varr$n_selected[1], length(unique(varr$model))))
   varr_ref <- varr %>%
     group_by(metric, x) %>%
     summarise(ceiling = median(n_targets / n_selected),
@@ -549,7 +693,8 @@ bg_path <- file.path(BG_DIR, "background_summary.csv")
 have_bg <- file.exists(bg_path)
 if (have_bg) {
   bg <- read.csv(bg_path)
-  bg <- drop_unrequested_mt2021(bg)
+  bg <- drop_unrequested_ensemble(
+    drop_unrequested_valsel(drop_unrequested_mt2021(bg)))
   ## Select the ruler, then rename back to the bare cell-set names so nothing
   ## downstream has to know which one was picked.
   wanted <- bg_cellset(BG_METRICS)

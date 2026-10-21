@@ -5444,7 +5444,12 @@ took `--mutation-list` repeatedly, so no package code changed.
 
 ---
 
-## 46. Validation-selected epochs: the design, and why the temporal arm is blocked (2026-10-19, RUNNING)
+## 46. Validation-selected epochs: the design, and why the temporal arm is blocked (2026-10-19)
+
+> **Status: Arm A measured; see s47 for the result.** Arms antiGen and ESM-2 35M
+> partial have run and been scored on the list panels; EVE (3375639) is still
+> training. Arm B remains blocked. The "Open" block at the foot of this section is
+> superseded by s47.
 
 The whole sc2 roster trains a fixed **32 epochs**, selected on nothing. This section
 records the retrain that tests it, the leak that had to be avoided, and a measurement
@@ -5589,3 +5594,930 @@ decile (panels C/D) of `coguk_list_results`, both cuts, with the selected epoch 
 beside it -- that last column is what answers s11's warning that **an NLL-optimal choice
 need not move ranking at all**, which is a live risk here because selection is on NLL and
 the figure reports recall.
+
+---
+
+## 47. The val-selected epochs, measured: a null on the figure, and a sign flip (2026-10-19)
+
+s46 designed Arm A and left it queued. Two of its three arms have now run, been
+scored on the CoG-UK list panels, and drawn. **Validation-based epoch selection does
+not improve the headline numbers.** For antiGen it moves them less than the seed
+spread; for ESM-2 it moves them the wrong way.
+
+### What ran, and what the scheduler estimates were worth
+
+| job | arm | result |
+|---|---|---|
+| 3375635-37 | antiGen `simple_d128_n2`, 64 ep, seeds 42/43/44 | best **ep 48, 49, 46** |
+| 3375638 | ESM-2 35M partial FT, 32 ep, seed 42 | best **ep 7** |
+| 3375639 | EVE full FT, 32 ep, seed 42 | still in VAE pretrain |
+| 3377097-99 | antiGen **fix32 controls**, 32 ep, seeds 42/43/44 | final ep 31 |
+| 3377171 | `eval_sc2_list_macro.sh` over all eight | 7.5 min |
+
+s46 put the first start ~20 h out. Every estimate was beaten by hours; the antiGen
+runs are **~6 min each** and the whole arm cleared in under an hour of wall clock.
+The eval was the one real queue: submitted to `gpu_batch` it estimated **17 h**, and
+`scontrol update JobId=3377171 Partition=gpu,gpu_batch` started it in **three
+minutes**. The two partitions are the same ten nodes, nine of them up (`sinfo`); only the time
+limit differs (1 d against 14 d), and this script asks for 1 d. **Any eval in this package
+that fits a day should be submitted to both.**
+
+### The fix32 control, which is the reason the numbers are readable
+
+A val-selected rung differs from its published rung in **two** ways -- the epoch, and
+the 10% of the training pool held out to choose it. `--val-mode random --val-frac 0.1`
+trains on 3,283 of the 3,648 TRAINING examples. A `valsel` bar read against its
+published bar therefore charges the subsample to selection.
+
+The `fix32` rungs separate them: same 90% split, same seed, same recipe, no selection,
+stopped at the published budget's last epoch. ESM-2's control needed no run at all --
+its non-`best` checkpoint **is** epoch 31 on that split. antiGen's did, because its
+64-epoch run ends at 63; the three 32-epoch reruns cost 216, 213 and 201 s. The decomposition:
+
+    published -> fix32     the cost of the 10% held out       (data)
+    fix32     -> valsel    the effect of choosing the epoch   (selection)
+
+Their best-within-32 (8.0669 / 8.0889 / 8.0702) reproduces the same quantity read off
+the 64-epoch runs' per-epoch JSON (8.0664 / 8.0887 / 8.0703) to **5e-4**, which is an
+independent check on both at CUDA-jitter level.
+
+### Held-out NLL: the arm works, and the probe was inflated
+
+Selection on the clean in-window split, 1,191 val mutations, identical across arms:
+
+| arm | best ep | best NLL | ep 31 | penalty of the fixed budget | s46 probe said |
+|---|---:|---:|---:|---:|---:|
+| antiGen (mean of 3 seeds) | 46-49 | 8.0552 | 8.0902 | +0.035 | +0.12 |
+| ESM-2 35M partial | 7 | 8.5078 | 8.5628 | **+0.055** | **+0.40** |
+
+The probe located ESM-2's minimum correctly (it said 5, the clean split says 7) and
+**overstated what it is worth by about seven times**. antiGen's three seeds span
+**0.045** at epoch 31 while selection moves the mean by **0.035**: the effect and the
+noise are the same size, which is exactly what the seed baseline was built to detect
+and the reason s46 insisted on one.
+
+### The figure: panels C/D, cell-weighted recall at the top decile
+
+`coguk_list_fullpool`, q = 0.1, antiGen columns are the mean of three seeds.
+
+| | published | fix32 | valsel | data | **selection** | seed spread |
+|---|---:|---:|---:|---:|---:|---:|
+| antiGen, all cells | 0.4460 | 0.4452 | 0.4588 | -0.001 | **+0.014** | 0.035 |
+| antiGen, de novo | 0.5089 | 0.4805 | 0.4904 | -0.028 | **+0.010** | 0.028 |
+| ESM-2 partial, all | 0.5125 | 0.4908 | 0.4665 | -0.022 | **-0.024** | (1 seed) |
+| ESM-2 partial, de novo | 0.4097 | 0.4067 | 0.3888 | -0.003 | **-0.018** | (1 seed) |
+
+**antiGen: null.** Both selection effects are smaller than the seed spread. AUC
+(panels E/F) agrees -- +0.0009 and -0.0008.
+
+**ESM-2: the sign flips, and this is the finding.** Selection did what it was asked
+and bought 0.055 of NLL. On the figure metric it **lost** 0.024 and 0.018. This is
+s11's warning realised, and worse than its statement of it: the risk recorded was
+that an NLL-optimal choice "need not move ranking at all", and what happened is that
+it moved ranking *backwards*. AUC is the one place ESM-2 gains (+0.0056 all,
++0.0167 de novo), so the loss is specifically at the top decile.
+
+The event-weighted reading (supplement) is the same story louder: antiGen +0.034 /
++0.023, ESM-2 -0.022 / **-0.074**. antiGen's de novo seed spread there is 0.098, wider
+than any effect on the row.
+
+**Nothing in the roster reorders**, on either cut, in either pooling.
+
+### Note the data cost is not small, and sometimes dominates
+
+antiGen's de novo panel loses 0.028 to the 10% subsample and regains 0.010 from
+selection, so its net against the published bar is **negative** although selection
+helped. Reading `valsel` against `published` without the control would have reported
+that as selection hurting. The control is not a formality here.
+
+### What this does and does not settle
+
+It settles the pre-registered question for two of three arms: a principled stopping
+rule does not raise the comparators past antiGen, and does not narrow the lead. The
+s46 worry that it might was reasonable and is not borne out.
+
+It does **not** settle whether the fixed budget costs the comparators anything on the
+figures, because **Arm A may be structurally unable to see that**. Selection is on a
+random split *inside* the training window; the figure reports *post-cutoff* recall.
+Over-fitting to the window is invisible to an in-window held-out set and is precisely
+what degrades extrapolation. So "+0.055 clean against +0.40 leaky" has two readings --
+the probe was inflated by test-set leakage, or the in-window split is blind -- and
+nothing here distinguishes them. That is the Arm B argument restated with a
+measurement behind it, and it raises the value of the ~3-line `Node::time` emit
+(s46, "The fix, available but not taken") from a convenience to the thing that would
+make this section conclusive.
+
+### The figure is a sibling, and the published one is byte-identical
+
+The arm is drawn on `coguk_list_valsel`, not on `coguk_list_results`, following the
+`coguk.mt2021` precedent and for its stated reason: a retrain on a 90% subsample of
+the training pool is not another rung of the published roster and must not silently
+become one. `coguk.valsel` is **empty by default**, `drop_unrequested_valsel` removes
+the rows, and `coguk_list_results.png` re-rendered unchanged -- md5
+`906eca00d379bc746b707570fbe8b50a` -- both before and after the new CSV was added to
+the shared macro directory. Opting the arm into the main figure is one line.
+
+The re-render does leave `figs_vector/coguk_list_results.pdf` and
+`coguk_list_supp.pdf` dirty in `git status`, which is a false alarm and worth knowing
+before someone chases it: same byte size, and the only difference is the embedded
+`/CreationDate` and `/ModDate`. The PNGs are the artefact to check equality on.
+
+**Panels G-L are blank for this arm.** The yield row needs `list_variant_recall.csv`
+and the background row `background_summary.csv`, which are separate evals these
+checkpoints have not been put through. The script reports the holes rather than
+hiding them, and A-F -- which carry the top decile this arm exists to test -- are
+complete.
+
+Title suffix `" [val-sel]"` is 10 characters, inside the ~13 s44 measured, and clean
+in both PNGs.
+
+### Files
+
+* `figures/fig_coguk_list.R` -- `VALSEL_KNOWN` / `VALSEL_GROUP` / `coguk.valsel`
+  (empty by default), `drop_unrequested_valsel`, applied at all three sites the
+  mt2021 drop is applied (macro, varr, bg). Colour `#48cae4`.
+* `figures/fig_coguk_list_valsel.R` -- the wrapper, with the decomposition in its header.
+* `data/evals_sc2_lists_macro/list_macro_summary_valsel.csv` -- 288 rows, 8 models.
+* `figs/coguk_list_valsel.png`, `figs/coguk_list_valsel_supp.png` (+ `figs_vector/*.pdf`).
+* `fitness-inference/valsel/{antigen_rand_s42..44, antigen_fix32_s42..44, esm2p_rand_s42}/`
+* `fitness-inference/ckpt_stage_valsel/` -- 8 symlinks, `fitness_<label>_<ts>.pt`,
+  timestamps preserved from the source runs.
+* `fitness-inference/evals_sc2_lists_macro_valsel/`
+
+### Open
+
+* **EVE (3375639)** is still in VAE pretrain (step 285k/400k at 2 h 45 m) with 32
+  fine-tune epochs after it. Adding it is mechanical: stage its `_best.pt` and its
+  final checkpoint under `valselEve_s42` / `fix32Eve_s42`, rerun 3377171's command,
+  copy the CSV, add two names to `VALSEL_KNOWN` and to the wrapper's vector, re-render.
+* **Tranception (+2.20) and ESM-2 650M partial (+1.91) have no arm at all**, and the
+  s46 probe ranks them as the two most over-trained rungs -- above EVE (+1.00) and far
+  above the 35M partial (+0.40) that is the only comparator measured here. The arm as
+  submitted tests the hypothesis on the two comparators least able to show it. Each is
+  one `sbatch` under the flags in this section.
+* Panels G-L for the arm, if the yield and background rows are wanted.
+
+---
+
+## 48. Ensembling the pretrained roster: the harness, and what the backbone says (2026-10-20)
+
+Asked whether a better model can be built by **combining the existing checkpoints with no
+further training**, targeting panels C-F of `coguk_list_results` -- the cell-weighted
+CoG-UK recall at the top decile (C/D) and the recall AUC (E/F). Plan in
+`~/.claude/plans/read-notes-to-get-spicy-lemon.md`.
+
+### Why the panels invite it: no model leads more than two of the four
+
+| panel | metric | leader | value |
+|---|---|---|---:|
+| C | top decile, `list_coguk_fullpool` | antiGen as ESM 2 (35M) partial FT | 0.5125 |
+| D | top decile, `list_coguk_unseen_fullpool` | antiGen | 0.5089 |
+| E | recall AUC, fullpool | antiGen as ESM 2 (35M) LM head FT | 0.8239 |
+| F | recall AUC, unseen fullpool | antiGen | 0.8235 |
+
+E and F are trapezoids over the committed quantile grid with the (0,0) and (1,1) anchors
+`fig_coguk_list.R` adds, recomputed here rather than quoted.
+
+**The complementarity is large and was already on disk.** From
+`evals_sc2_lists_macro*/list_macro_percell.csv`, picking the best of the 30 rungs **per
+cell** scores **0.962** (C) and **0.957** (D) against best singles of 0.5125 / 0.5089.
+Between the two decile leaders, 0.148 of panel C is caught by the 35M partial arm alone
+and 0.081 by antiGen alone; on D it is 0.119 and 0.219.
+
+**The members that add most are not the strongest singles**, which is the finding that
+sets the member policy. Greedy oracle-union (add the member raising the per-cell max most):
+
+| k | panel C | union | panel D | union |
+|--:|---|--:|---|--:|
+| 1 | ESM-2 35M partial FT | 0.513 | antiGen | 0.509 |
+| 2 | **Tranception (frozen)** | 0.675 | **Tranception (frozen)** | 0.682 |
+| 3 | EVEscape | 0.767 | substitution matrix | 0.770 |
+| 4 | MSA Trans. (XFG) | 0.816 | EVEscape | 0.833 |
+| 5 | BA.1 DMS (expression) | 0.852 | BA.1 DMS (expression) | 0.879 |
+
+Tranception is 6th/2nd alone and is the first addition on both panels; EVEscape, the DMS
+panels and the factored baselines each add 0.03-0.09 while scoring 0.17-0.44 alone. These
+are CEILINGS taken with the answer, and s14's whole lesson is that such headroom is a
+selection failure rather than a capacity one -- but they do say the member pool has to be
+broad rather than the top-6.
+
+### The validation set: disjoint TARGET cells, measured
+
+The metric is a mean over cells, so the target cell set is a free axis. Streaming
+`examples_cutoff_1.txt` against the CoG-UK cell set and the `pssms/root.csv` mask
+(reproduces `list_macro.py`'s own printout: 167,600 testing examples, 17,978 carrying a
+listed RBD target, 235 observed listed cells, 131 de novo):
+
+| target set | cells | de novo | events | k >= 5 |
+|---|---:|---:|---:|---:|
+| CoG-UK observed (**reported, C-F**) | 235 | 131 | 26,491 | -- |
+| off-list RBD, same 17,978 queries (**val**) | **1,235** | **720** | 19,449 | 524 |
+| ... also position-disjoint | 764 | 442 | 9,393 | 319 |
+| off-list RBD, all 167,600 queries | 2,093 | 1,393 | 52,065 | 1,044 |
+| pre-cutoff TRAINING targets | 552 | -- | 1,343 | 68 |
+
+Selection runs on the off-list cells, which are ~5x the reported count and cost no extra
+forward pass -- they come off the same `cell_pass`. Queries, pool, masking and tie rule
+are identical between val and test; **only which cells are counted differs.** The honest
+limitation: this is disjointness of *targets*, not of the test window.
+
+**Two alternatives were rejected on measurement, not taste.**
+
+* *In-window pre-cutoff split.* Every published checkpoint trained on all 3,648
+  pre-cutoff examples, so weights fit there reward whichever member memorised the window
+  hardest. s46's Arm A escaped that only by retraining, which this arm forbids. And s47
+  already argued an in-window split is structurally blind to the extrapolation failure
+  that matters.
+* *The backbone guide tree.* **Its CoG-UK cells are a strict subset of the reported ones**
+  -- 79/79 of the 2026 tree's cells lie inside the 235 and 30/30 inside the 131, i.e. 34%
+  and 23% of the reported targets; the old tree is 56/56 and 20/20. Unusable for
+  selection. It remains the harness-validation and robustness substrate, but a backbone
+  re-run of a frozen rule is **not** independent confirmation and must not be read as one.
+
+### Architecture: dump once, sweep many
+
+`cell_pass` already isolates the only thing that differs between a model and a fixed map
+behind one callback, so an ensemble is just another `score_fn` and a cached map is just
+another way to supply one. `background_discrimination.py` already exploits that on the
+backbone substrate; this extends the convention to the attached test queries.
+
+| file | what it is |
+|---|---|
+| `antiGen/score_cache.py` | the on-disk contract: `query_sha1`, `MapWriter` (.tmp + rename), manifest/queries, `load_map`/`load_block` |
+| `antiGen/ensemble_rules.py` | pure rule algebra: `normalize`, `resolve_nan`, `pool`, frozen `Rule` with a canonical `rule_id`, an explicit `LEGAL` set |
+| `antiGen/ensemble_sweep.py` | the grid, the val/test cell sets, the metric loop |
+| `antiGen/ensemble_diagnostics.py` | the `rank_agreement.py` analogue: Spearman, top-q overlap, per-cell oracle, greedy union |
+| `antiGen/list_macro.py` | `cell_pass(..., sink=)` and `--dump-scores` |
+| `examples/slurm/dump_sc2_list_scores.sh` | the one GPU job, `--partition=gpu,gpu_batch` |
+| `antiGen/tests/test_ensemble_rules.py`, `test_score_cache_replay.py` | 14 tests |
+
+**float32, not float16, and it was measured rather than assumed.** The fractional tie rule
+is an exact-equality test against the boundary value, so a half-precision round-trip
+manufactures ties. The saving would be ~5 GB on a volume with 45 TB free. Rejected.
+
+**Maps go on `/large_storage`, not the session scratchpad.** The first smoke dump wrote
+318 MB to a scratchpad path and the job exited 0 with the completeness assertion passing
+-- on the compute node, where the directory is node-local and invisible from the login
+node. The SLURM script's default was already shared storage; the override was not.
+
+### The load-bearing test: a one-member ensemble is the identity
+
+Every verification in this arm compares a *one-member ensemble* against a published
+single-model row, so those checks mean nothing unless a one-member ensemble is guaranteed
+to be a no-op on ranks. `test_one_member_is_a_no_op` asserts it through `compute_hit_rate`
+itself (not on the sort order) for all 75 legal (norm, pool, nan) combinations, on a
+coarse map as well as a continuous one, and repeated-member rules too.
+
+**It caught a real bug immediately.** `logsoftmax` emits non-positive values, and `geom`
+pools `sum(w * log(x))` after `clamp(min=1e-6)` -- which flattened every log-softmax map
+to a constant. The fix exposed that `(logsoftmax, geom)` is an exact **alias** of
+`(logsoftmax, arith)`: the positive-domain form of a log-softmax is `exp(ls)`, and
+`log(exp(ls)) == ls`. It is now absent from `LEGAL`, and `apply` exponentiates a
+log-softmax before pooling it geometrically. This is the s32-shaped trap of rules that are
+secretly the same rule: shipping both would have counted one rule as two pieces of
+evidence and made any multiple-comparisons correction wrong.
+
+### GATE 1 passed: the harness reproduces the published backbone numbers
+
+A one-member ensemble under `pctile`/`arith`/`union_min`, over all 29 members of
+`evals_sc2_background_update/`, against
+`evals_sc2_lists_macro_backbone_update/list_macro_summary_backbone.csv`:
+
+* **all 522 comparable (model, variant, quantile) cells agree to 5.0e-9** on both `macro`
+  and `micro`, with zero `n_cells` mismatches. The published CSV is written `%.8f`, so
+  5e-9 is half an ulp of the printed value: the agreement is as exact as the file can
+  express.
+* The six absentees are the mt2021 arm, whose maps are in a different background
+  directory. Not a defect.
+
+Pool sizes confirm the convention matters, and by the predicted amount: on the fullpool
+`union_*` gives **n_valid = 4,221** (= 4,422 - 201 wild-type cells, exactly) against
+**3,779** for `intersect` -- a **10.5%** shrink, which is the ~10% N_RBD spread s32
+measured across families, now reproduced as an identity rather than an observation. Over
+the grid `union_min` and `union_median` differ on 271 of 1,620 comparable cells and
+`union_min` and `intersect` on 977, so the three are genuinely distinct.
+
+### The backbone families grid: 135 rules, and ensembling does move it
+
+29 members, uniform weights, every legal (norm, pool, nan) cell. 10m40s on one CPU core.
+Cell-weighted top decile, **q = 0.1**, ranked by the SELECT column (off-list cells -- what
+selection is permitted to see) with REPORT beside it:
+
+| pool | best SINGLE | top-select rule | its REPORT | best REPORT (biased ceiling) |
+|---|---:|---|---:|---:|
+| fullpool | 0.7215 (EVE frozen) | `rankgauss arith union_min` | **0.7953** | 0.8291 (`zscore arith`) |
+| unseen fullpool | 0.6667 (EVE frozen) | `rankgauss trimmed t=0.1` | **0.7250** | 0.7856 (`logsoftmax trimmed`) |
+
+So on this substrate a plain uniform average of all 29 members, with no weights fitted at
+all, beats the best single rung by **+0.07** and **+0.06**, and the best rule in the grid
+by +0.11 / +0.12. `vote` pooling appears nowhere in either top 10 and the boundary tie
+fraction is 0.0% for every rule in them, so the degeneracy that pooling risks did not
+bite here.
+
+**Read this as a harness result, not a finding.** The backbone's denominators are 79 and
+30 observed cells, so these are very noisy; its cells are a subset of the reported ones;
+and the attached-tree numbers are what panels C-F report. What it establishes is that the
+machinery works end to end and that the effect is large enough to be worth the one GPU
+job.
+
+### State
+
+* GATE 1 passed; 14 new tests plus the existing 100 all pass.
+* Smoke dump on one model reproduced `list_coguk_fullpool` macro **0.4460** and
+  `list_coguk_unseen_fullpool` **0.5089** -- the published values to 4 dp -- from the same
+  forward pass that wrote the map.
+* Next: the full-roster dump (one GPU job, ~10 h from job 3362535's 21 models over the
+  same 281 batches), then GATE 2's replay at 1e-7 against
+  `list_macro_summary_main.csv`, then the sweep on the attached tree.
+
+---
+
+## 49. Static ensembles of the antiGen family: averaging works, and the val set does not agree (2026-10-20)
+
+Asked, on top of s48's harness, the narrower question: take **base antiGen and its eight
+fine-tunes** -- the two leftmost legend groups of `coguk_list_results`, nothing else --
+and combine them with **simple static rules**: the mean, the max and the min of what each
+model says, in ranking space and in logit space. No weights fitted, no members chosen, no
+parameters at all. Draw the result on the figure as its own category.
+
+### The members, and the one judgement in them
+
+Nine rungs, uniform weights: `simple_d128_n2_lr0.0001` (antiGen) plus `eve_ft_lr0.0001`,
+`tranception_ft_both_lr0.0001` and the six ESM-2 arms (35M and 650M x partial4 / frozen /
+full). Excluded, each on a rule: the two `*_noft` rungs (grouped *Pre-Pandemic Data Only*
+in the figure, not antiGen fine-tunes); the six `valsel`/`fix32` seed retrains of s46-s47
+(antiGen models, but not rungs of this figure, and three near-replicates of antiGen would
+have tripled its weight in the average); and everything outside the family.
+
+**The members are not independent, and the figure's own grouping hides it.** Six of the
+nine are ESM-2 at two sizes x three fine-tuning depths. An unweighted mean is therefore
+tilted six-to-one-to-one toward ESM-2 by construction, which is the most likely reason
+`pctile`/`arith` -- one equal vote each -- is the weakest of the three means on panel D,
+the one panel base antiGen leads.
+
+### Three spaces, three pools
+
+`min` pooling did not exist in `ensemble_rules`; it is added here, with `max`'s LEGAL
+coverage. It is the one pooling whose answer depends strongly on the NaN convention:
+under `union_min` an abstaining member is imputed at its own floor, so it vetoes the cell
+outright. EVE and Tranception abstain on two residue columns and the ESM-2 arms on one,
+so this is not hypothetical.
+
+"Logit space" is `logsoftmax`, i.e. a per-query log-softmax over the candidate pool.
+Worth stating because it is not obvious: log-softmax subtracts a per-query **scalar** per
+member, so a weighted mean of log-softmaxes is rank-identical *within a query* to a
+weighted mean of the raw logits. `(logsoftmax, arith)` therefore IS "average the logits",
+and needs no separate rule. That equivalence does **not** extend to `max` or `min`, which
+are not shift-equivariant across members -- there the logsumexp really does matter, and
+the log-softmax form is the better-defined one.
+
+### GATE 2 passed, on the attached tree
+
+A one-member ensemble under `pctile`/`arith`/`union_min`, for each of the nine, against
+`antiGen-figures/data/evals_sc2_lists_macro/list_macro_summary_*.csv`:
+
+* **all 162 (model, variant, qtile) cells agree to 4.9e-9** on `macro` and 5.0e-9 on
+  `micro`, with every `n_cells` and `n_events` identical. The published CSVs are written
+  `%.8f`, so this is half an ulp of the printed value.
+
+That is the check that makes every ensemble number below mean something: the cached maps
+plus this harness reproduce the published rows exactly, so any difference is the rule.
+
+### The result: the mean wins, the max and the min do not
+
+Cell-weighted recall, `q = 0.1` and the recall AUC, on the reported cells (C/E: 235
+cells; D/F: 131 de novo). SELECT = the 1,235 / 720 off-list RBD cells.
+
+| rule | C q0.1 | E AUC | D q0.1 | F AUC |
+|---|---:|---:|---:|---:|
+| **Mean of z-scores** | **0.5740** | **0.8667** | 0.5382 | 0.8474 |
+| **Mean of log-probs** | 0.5606 | 0.8630 | **0.5500** | **0.8507** |
+| Mean of ranks (Borda) | 0.5560 | 0.8587 | 0.4833 | 0.8362 |
+| Min of z-scores | 0.5299 | 0.8247 | 0.4101 | 0.7619 |
+| Min of ranks | 0.5072 | 0.8154 | 0.3968 | 0.7635 |
+| Min of log-probs | 0.4936 | 0.7995 | 0.4141 | 0.7578 |
+| Max of z-scores | 0.4918 | 0.8310 | 0.4931 | 0.8340 |
+| Max of ranks | 0.4856 | 0.8251 | 0.4881 | 0.8307 |
+| Max of log-probs | 0.4500 | 0.8217 | 0.4868 | 0.8265 |
+| *best single of the nine* | *0.5125* | *0.8239* | *0.5089* | *0.8235* |
+
+The best single differs by panel -- 35M partial FT on C, 35M LM-head FT on E, antiGen on
+D and F -- which is s48's premise restated inside one family.
+
+**`(logsoftmax, arith)` beats all nine of its own parts on all four panels at once**, by
++0.048 (C), +0.039 (E), +0.041 (D), +0.027 (F). Against the s47 seed floor of 0.035
+(C/E) and 0.028 (D/F): C, E and D clear it; **F does not** -- +0.027 is inside the band,
+so panel F is not a result. `(zscore, arith)` is larger on C and E and smaller on D and F.
+
+Every `max` and every `min` rule is worse than every `mean` rule on C and E. `min` is the
+weakest overall, which is what the veto reading predicts.
+
+### The validation cells do not confirm it, and that is the finding to carry
+
+The same sweep scores every rule on the target-disjoint off-list cells. Nothing was
+fitted, so this is not a selection check -- it is a transfer check, and it fails more
+often than it passes:
+
+| | SELECT fullpool q0.1 | AUC | SELECT unseen q0.1 | AUC |
+|---|---:|---:|---:|---:|
+| antiGen alone | 0.2872 | **0.7611** | **0.3496** | **0.7581** |
+| Mean of log-probs | **0.3107** | 0.6703 | 0.3411 | 0.7368 |
+| Mean of z-scores | 0.3094 | 0.6706 | 0.3466 | 0.7409 |
+| Mean of ranks | 0.2964 | 0.6707 | 0.3422 | 0.7391 |
+
+Base antiGen alone wins **three of the four** off-list cuts, and the means beat it only on
+`fullpool` at q = 0.1. So the gain measured on the CoG-UK panels is specific to the
+curated cell set rather than a general improvement on RBD targets. s45 measured exactly
+this axis -- swapping the target set moved the ordering more than swapping the guide tree
+did -- and this is another instance of it, now with a mixture rather than a single rung.
+Two readings are available and the data here does not separate them: the list is a
+better-posed target set, or the list is a narrower one that happens to suit an
+ESM-2-weighted average. State the disagreement wherever the +0.048 is stated.
+
+### Code
+
+* `antiGen/ensemble_rules.py` -- `min` pooling, in `POOLS` and in `LEGAL` beside `max`.
+* `antiGen/ensemble_report.py` -- `--rule-json` now accepts a LIST of rules, and
+  `percell_for_rules` replaces the per-predictor passes with one block-outermost pass
+  that shares a normalised stack (a rule-outermost loop re-read every 318 MB map once per
+  rule: ~100 GB of I/O over this set). Each comparator is scored as a **one-member rule**
+  through the same code path, on the identity `test_one_member_is_a_no_op` pins.
+  The list mode is for a family fixed in advance and reported **whole** -- all nine bars,
+  losers included. Running several and drawing the best is selection on the reported
+  cells with the selection step hidden, which is what the single-rule design prevented.
+* `antiGen/tests/test_ensemble_rules.py` -- `min` enters `_all_legal_rules` automatically,
+  so the no-op gate covers it; added to the permutation-invariance list explicitly.
+  **102 tests pass** (the whole suite, 18 m 13 s).
+
+### A measurement for the yield row, taken rather than assumed
+
+Panels G-J need the model's map on the **BA.2 testing root**, which `list_variant_recall.py`
+queries. That genotype is **already in the dump**: its 1,273-residue `aa_idx` matches
+dumped query **index 8920**, exactly one hit out of 17,978. So the whole yield row is
+reachable with no GPU. It is not free, though -- `compute_hit_rate` folds `-inf` into NaN
+and drops it from `n_valid`, while `list_variant_recall.top_q_weights` keeps `-inf` as a
+valid never-selected cell, so the same map yields two different top-decile denominators.
+That has to be reconciled, and gated on reproducing a published
+`list_variant_recall.csv` row from the cached map at 1e-7, before any G-J bar is drawn.
+
+### State
+
+* GATE 2 passed; sweep written (648 rows), 18 rules over 2 pools x 2 cell sets x 9 qtiles.
+* `ensemble_report.py` over the nine rules + nine comparators: RUNNING, ~10 m in.
+  It writes the figure CSV, the paired-bootstrap contrasts (10,000 resamples, cells as
+  the unit), the per-cell table and `ensemble_figure_rows.tsv`.
+* Not yet rendered. The wrapper `fig_coguk_list_ensemble.R` and every R-side hook
+  (`ENSEMBLE`, `drop_unrequested_ensemble`, the sixth group and its colour) were already
+  built in s48 and are unchanged.
+* **Open:** G-J per the measurement above; K-L remain invalid for these rules, since all
+  three normalisations are within-query and destroy exactly the cross-query level
+  information the background contrast reads (s48) -- only a `globalz` rule could fill
+  that row.
+  > **CORRECTED in s50.** The K-L half of this is wrong. That panel's ruler compares
+  > cells *within* one query and holds only the reference pool's cell set fixed across
+  > queries, so a within-query normalisation is a no-op on it -- measured at exactly
+  > 0.000e+00, and confirmed end to end by GATE 4. All three means are drawn on K-L.
+  > `globalz` is a preference for that row, not a requirement. G-J needed no GPU either.
+
+---
+
+## 50. K-L was never blocked, and the rest of the figure for the three means (2026-10-20)
+
+s49 closed with G-J reachable and **K-L declared invalid** for every rule in the family:
+"all three normalisations are within-query and destroy exactly the cross-query level
+information the background contrast reads (s48) -- only a `globalz` rule could fill that
+row." That claim is **wrong**, and this section records the measurement that kills it,
+because the same sentence had been copied into three files and was about to decide what
+the published figure can show.
+
+### The ruler is a within-query rank, so a within-query normalisation is a no-op
+
+`background_contrast.common_percentiles` computes, for cell `c` at query `q`:
+
+    above = (vals > s_c[:, None]).sum(axis=1)
+
+`vals` and `s_c` are **both row `q`** of the same score matrix. What is held fixed across
+queries is the reference pool's **cell set**, not any scale -- that is what makes a fixed
+(L, E) map land at exactly 0.5, which was the fixed pool's whole purpose. So K-L is a
+**within-query rank evaluated at many queries and then contrasted host-against-control**,
+not a comparison of score levels across queries. Any strictly monotone within-query
+transform leaves it unchanged, ties included.
+
+Measured on `evals_sc2_background/scores_simple_d128_n2_lr0.0001.npz`, 40 cells:
+
+| transform | max \|pct - pct_raw\| |
+|---|---:|
+| per-query z-score | **0.000e+00** |
+| per-query percentile | **0.000e+00** |
+
+against a mean per-cell sd across queries of **0.0275**, which is the signal K-L reads --
+so the invariance is not a degenerate map being compared with itself.
+
+**Where the error came from, since it is a reusable trap.** The docstring stated the right
+test -- "harmless for any metric that ranks within a query" -- and then answered it wrong
+for K-L, because K-L *compares across* queries. What it compares across queries is a rank.
+"Compares across queries" and "reads cross-query levels" are not the same property, and
+the first does not imply the second.
+
+### What survives, and it is a preference rather than a constraint
+
+The no-op holds for **one member**. For an ensemble the normalisation decides how members
+combine, so mean-of-pctiles and mean-of-z-scores are different pooled maps and genuinely
+distinct predictors on K-L rather than aliases. And `globalz` remains the better-motivated
+normalisation *for this panel specifically*: under it a member whose raw score barely moves
+with the background contributes a near-constant map, whereas `pctile` stretches that
+member's within-query ranks to uniform regardless and lets the mean amplify what may be
+noise-level background sensitivity.
+
+**That prediction is visible in the result below**: `Mean of ranks` is the weakest of the
+three means on K-L by a wide margin, and the only one that is *worse than base antiGen*.
+
+### GATE 3 (G-J) and GATE 4 (K-L), both exact
+
+Same discipline as s48's GATE 1 and s49's GATE 2: each member is pushed through the new
+code as a **one-member rule** and must reproduce its own published row.
+
+| gate | comparison | rows | worst \|d\| |
+|---|---|---:|---:|
+| **3 (G-J)** | one-member ensembles vs `list_variant_recall.csv` | 2,160 | **0.000e+00** |
+| **4 (K-L)** | one-member ensembles vs `background_summary.csv` | 72 | **0.000e+00** |
+
+GATE 4 is also the end-to-end confirmation of the correction above: replacing a model's
+entire map with its within-query percentile ranks and pushing it through the unmodified
+`background_contrast.py` reproduces the published lift, AUC, delta, `n_cells` and
+`n_pairs` **to the bit**, for all nine members over eight cellsets.
+
+Neither row needed a GPU. The BA.2 testing root is dumped query **8920** -- located by
+matching `aa_idx` against all 17,978 dumped queries, not by quoting s49's index -- and the
+backbone maps were already on disk as `evals_sc2_background/scores_*.npz`.
+
+### The -inf reconciliation s49 flagged: real in general, empty here
+
+`compute_hit_rate` folds `-inf` into NaN before counting `n_valid`;
+`list_variant_recall.top_q_weights` tests only `isnan`, so it keeps `-inf` in the pool --
+**despite a docstring that explicitly claims it drops it**. The two therefore disagree on
+the top-decile denominator for any member emitting `-inf`. Measured: **none of the nine
+emits a single `-inf` cell**, so both conventions give identical `n_valid` and the
+published one is used unchanged. The check runs on every invocation rather than being
+remembered, because it is a property of the members: adding the codon baseline to a rule
+makes it bite immediately.
+
+### G-J: the ensemble catches more cells and still loses the published ratio
+
+Max yield of the BA.2 top decile, CoG-UK, over the time grid:
+
+| | all 1+ | de novo 1+ | all 100+ | de novo 100+ |
+|---|---:|---:|---:|---:|
+| **EVE full FT** (best single) | **0.2461** | **0.0812** | **0.1466** | 0.0419 |
+| Tranception full FT | 0.2042 | 0.0759 | 0.1388 | 0.0419 |
+| antiGen | 0.1516 | 0.0261 | 0.0948 | 0.0095 |
+| Mean of log-probs | 0.2322 | 0.0592 | 0.1374 | 0.0332 |
+| Mean of z-scores | 0.2322 | 0.0592 | 0.1350 | 0.0308 |
+| Mean of ranks | 0.2300 | 0.0569 | 0.1303 | 0.0261 |
+
+> **SUPERSEDED by s51.** The table above was computed with a top decile whose SIZE
+> differed by model, which is a defect rather than a confound. s51 fixes it with a common
+> candidate pool and restates every number in this section. The diagnosis below stands and
+> is what led there; the conclusion drawn from it -- that `union_min` must stay and the
+> confound merely be reported -- does not.
+
+**This is the opposite of A-F, where all three means beat all nine of their parts** -- and
+the gap is a denominator artefact, which has to be said with the numbers rather than left
+for a reader to find:
+
+| | listed cells caught | own top decile | ratio |
+|---|---:|---:|---:|
+| EVE full FT | 94.0 | 381.9 | 0.2461 |
+| Mean of log-probs | **98.0** | 422.1 | 0.2322 |
+| EVE full FT, *at the ensemble's denominator* | 94.0 | 422.1 | *0.2227* |
+
+The ensemble catches **four more listed cells** than EVE-FT and is scored against a **10%
+larger** top decile, because `union_min` hands it antiGen's gap-emitting pool (4,221 cells)
+while EVE emits no gap/stop columns (3,819). This is the ~10% N_RBD spread `fig_coguk_list.R`
+already warns about in its own yield-row header, now deciding an ordering.
+
+**`intersect` would match the denominators and flip the ordering, and it is not being
+switched to.** s49 fixed `union_min` before any of this was scored; changing the NaN
+convention now, having seen that it costs the ensemble the panel, is selection on the
+reported cells. It stays, and the confound is reported instead.
+
+> **s51 note.** That reasoning was right about `intersect` and wrong about what to do.
+> Switching the ensemble's NaN convention after seeing the result would indeed have been
+> selection -- but the fair comparison was never the ensemble's to make by changing its
+> own rule. The pool had to be fixed for EVERY model at once, which is not selection
+> because it is not a choice about the ensemble at all. `union_min` does stay.
+
+### K-L: the mean of log-probs leads the de novo cut, the mean of ranks loses
+
+Background lift in percentage points, CoG-UK cells (chance is 0):
+
+| | all | de novo |
+|---|---:|---:|
+| antiGen as ESM 2 (35M) partial FT | **+5.95** | +11.20 |
+| **antiGen** | +4.41 | +12.37 |
+| antiGen as ESM 2 (35M) full FT | +3.38 | +8.25 |
+| antiGen as EVE full FT | +0.73 | +6.80 |
+| antiGen as ESM 2 (650M) frozen | -3.23 | -16.39 |
+| **Mean of log-probs** | +5.02 | **+15.62** |
+| **Mean of z-scores** | +4.78 | +12.34 |
+| **Mean of ranks** | +2.73 | +8.61 |
+
+`Mean of log-probs` is the only rule that beats every one of its parts on the de novo cut.
+`Mean of ranks` sits **below base antiGen on both**, which is the `globalz` argument above
+showing up as a number: three of the nine members have *negative* background lift, and a
+rank normalisation gives their background sensitivity the same spread as everyone else's.
+
+No seed floor exists for K-L, so these are read against the published `lift_lo`/`lift_hi`
+in `background_summary.csv` and not against each other informally.
+
+### What is drawn, and the rule for it
+
+All nine static rules are scored and written to `list_macro_summary_ensemble.csv`. The
+**three means** get bars; the six max/min rules stay in the CSV undrawn. The selection rule
+is `pooling == arith`, statable without looking at any result, which is what keeps this
+from being "draw the best three of nine".
+
+**The bars are on `coguk_list_results` itself, not only the sibling.** s48 had argued for a
+sibling on the grounds that an ensemble bar sits beside its own parts; that is still true
+and is now said in the figure header and marked by the group's own colour, rather than
+being handled by keeping the row off the figure.
+
+`coguk.ensemble` no longer defaults to empty. It defaults to whatever
+`ensemble_figure_rows.tsv` in **that figure's own macro directory** lists, so a directory
+carrying ensemble rows draws them and the backbone, valsel and all-RBD siblings are
+untouched without having to opt out.
+
+### Code
+
+* `antiGen/ensemble_panels.py` -- new. G-J from the list dump and K-L maps from the
+  backbone dump, both gates built in, `--gate-only` to run just the checks. It writes
+  combined background maps as `scores_ens_*.npz` and leaves the contrast to
+  `background_contrast.py` **unmodified**: the published path stays the published path and
+  the ensemble enters it as just another model. Refuses a `globalz` rule on G-J, whose
+  moments are taken over the whole block and would be computed from one query.
+* `antiGen/ensemble_rules.py` -- the module docstring's last paragraph and the `globalz`
+  comment, both rewritten; the wrong claim and the reason it was wrong are kept rather than
+  silently deleted.
+* `antiGen-figures/figures/fig_coguk_list.R` -- `ENSEMBLE` defaults from the macro dir's
+  rows file; the "empty by default" rationale replaced by what a reader needs to know.
+* `antiGen-figures/figures/fig_coguk_list_ensemble.R` -- header corrected.
+
+### Open
+
+* `globalz` is still unscored anywhere. It is the better-motivated normalisation for K-L
+  and is now the only remaining reason to prefer one mean over another on that row; a
+  `(globalz, arith, union_min)` run would settle it and costs one CPU pass.
+* G-J's denominator confound deserves a matched-pool reading reported beside the published
+  one -- the same "both conventions from one pass" move `background_contrast` already makes
+  for `_perquery`. Not done here, because inventing it after seeing the ordering is the
+  thing the `union_min` note above refuses.
+
+---
+
+## 51. One pool for every model: "the top decile" was a different size per rung (2026-10-20)
+
+s50's G-J table reported EVE full FT ahead of every ensemble on the yield row. The
+numerator says otherwise: the nine-member **mean of log-probs caught 98.0 listed cells to
+EVE-FT's 94.0** and still reported 0.2322 against 0.2461, because the two were scored
+against top deciles of different sizes. That is not a confound to report beside the
+number, as s50 proposed; it is a defect in the metric, and this section fixes it.
+
+### The size of "the top decile" was a property of a model's alphabet
+
+Every top-q set in panels A-J is `q * n_valid`, and `n_valid` was **each model's own
+emission set**. Measured over the 17,978 test queries, by variant:
+
+| variant | panels | n_valid across the 37 rungs | spread |
+|---|---|---|---:|
+| `list_coguk_fullpool` | **A, C, E** | 3,682.8 .. 4,221.0 | **12.75%** |
+| `list_coguk_unseen_fullpool` | **B, D, F** | 3,287.0 .. 3,602.2 | **8.75%** |
+| `list_coguk` | *not drawn* | 224.1 .. 236.8 | 5.35% |
+| `list_coguk_unseen` | *not drawn* | 134.1 .. 141.4 | 5.19% |
+
+**All six recall panels were affected, not just the yield row.** `fig_coguk_list.R`'s
+`recall_long` points all four of its metrics at the `*_fullpool` variants -- A/B are the
+event-weighted reading and C/D the cell-weighted one of the *same* pool -- so the 12.75%
+applies to the published headline panels. The list-restricted variants, which would have
+been nearly fair, are computed by `list_macro.py` and never drawn.
+
+At the single BA.2 root query the spread is 10.0% and takes five values: 4,221 (antiGen,
+the PSSMs, pyr0, CoVFit, substitution, `where x which`), 4,020 (all eight ESM-2 arms, the
+MSA Transformers, codon), 3,819 (EVE, Tranception, BLOSUM62, evcouplings, the BA.1 DMS
+panels), 3,804 (EVEscape) and 3,801 (the BA.2 DMS panels). Almost all of it is the 201 gap
+plus 201 stop cells. **BLOSUM62 is the extreme over the full query set**, not EVE, because
+it also abstains on listed cells -- which is why even the undrawn list-restricted variants
+were not fair.
+
+### The pool spread understates it: 44% of the USABLE slots, and it penalised antiGen
+
+The first version of this section said a larger pool meant "more chances to catch a
+target", so the artefact flattered antiGen on A-F. **That was backwards**, and the
+measurement that settles it is how many of a model's top-decile slots went to cells that
+cannot be targets at all. 0 of the 247 listed RBD cells is a gap or a stop, so every slot
+spent on a gap/stop cell is a wasted one. At the BA.2 root, q = 0.1, legacy pool:
+
+| model | slots | spent on gap/stop | **usable** |
+|---|---:|---:|---:|
+| substitution matrix | 422.1 | 193.1 (45.7%) | **229.0** |
+| **antiGen** | 422.1 | **168.0 (39.8%)** | **254.1** |
+| PSSM (root) | 422.1 | 146.9 (34.8%) | 275.2 |
+| `where x which` | 422.1 | 113.0 (26.8%) | 309.1 |
+| codon | 402.0 | 26.1 (6.5%) | 375.9 |
+| EVE / Tranception / BLOSUM62 | 381.9 | 0 | 381.9 |
+| pyr0 | 422.1 | 38.0 (9.0%) | 384.1 |
+| ESM-2 35M partial FT | 402.0 | 0.0 | 402.0 |
+| CoVFit | 422.1 | 10.0 (2.4%) | 412.1 |
+
+**The usable spread is 229.0 to 412.1 -- 44%**, against the 12.75% spread in nominal pool
+size. And the sign is the reverse of the naive reading: the models with the LARGEST pools
+are the ones that threw most of the surplus away, because the models that emit gap and
+stop are exactly the ones that rank them highly. antiGen was selecting 254 usable cells
+against EVE-FT's 382 -- a **33% handicap** -- while appearing to have 10.5% more slots.
+
+So the artefact **penalised antiGen on A-F**, and on G-J it penalised it twice over: a
+denominator 10.5% larger AND 39.8% of the selection wasted. The composition baselines
+(substitution, the PSSMs, `where x which`) were hit hardest of all, which is a caution
+about every ranking in s32 and s45 that involved them.
+
+The prediction this makes is therefore the opposite of the one first written here:
+antiGen and the composition baselines should RISE on A-F under the common pool, and the
+EVE / Tranception / ESM-2 arms should be close to unchanged. Whether that is what
+happens is a measurement, not an expectation, and it comes from the same cached maps with
+the convention as the only difference.
+
+### The fix, and what it costs
+
+One pool, defined without reference to any model: the variant's own cell set intersected
+with the **20 real amino-acid columns** (`eval_utils.real_substitution_mask`). A cell
+inside the pool that a model cannot score is **ranked last** rather than dropped, so
+EVEscape's 15 and the BA.2 DMS panels' 18 genuinely missing measurements do not shrink the
+pool for everyone. That is the convention `background_contrast.common_percentiles` has
+always used for K-L, which is why the background row needed no change at all.
+
+**It removes no target: 0 of the 247 CoG-UK listed RBD cells is a gap or a stop.** The
+change is to the denominator and to the size of the selected set, never to what counts as
+a hit.
+
+**Why exclude gap/stop for everyone rather than keep all 4,221 columns and rank the
+non-emitters' gap/stop last.** The latter converts the asymmetry instead of removing it:
+antiGen could spend top-decile slots on stop codons while EVE structurally cannot, so the
+gap-emitting models would then be penalised for emitting. Excluding the columns asks every
+model only the question all of them can answer.
+
+### The regression ran first, and it passed
+
+`rescore_common_pool.py --legacy-pool` must reproduce the published CSVs from the cached
+maps before any common-pool number is believed; otherwise a difference could be the new
+script rather than the new convention.
+
+| | rows compared | worst \|d\| |
+|---|---:|---:|
+| A-F macro | 144 | **6.0e-08** (half an ulp of the published `%.8f`) |
+| A-F micro | 144 | **6.0e-08** |
+| G-J value / n_selected | 960 | **0.000e+00** |
+
+with zero `n_cells` / `n_events` mismatches, and the run's own diagnostic correctly
+reporting that under `--legacy-pool` the top decile **still varies** (380.4 / 381.9 /
+422.1) -- the defect, reproduced on demand.
+
+### Code
+
+* `antiGen/eval_utils.py` -- `real_substitution_mask`, and `compute_hit_rate(pool_mask=)`.
+* `antiGen/background_discrimination.py` -- `rank_fractions(pool_mask=)`, so the ensemble
+  path and the published path stay the same metric. The identity between the two is
+  re-verified under the mask.
+* `antiGen/list_variant_recall.py` -- `top_q_weights(pool_mask=)` and `curve(pool_mask=)`.
+  Its docstring claimed `-inf` left the pool; it tests `isnan` only, so it does not. Noted
+  rather than changed, because a pool mask makes it moot.
+* `antiGen/ensemble_sweep.py` -- `Substrate.pool_mask` excludes gap/stop, which propagates
+  to `ensemble_report` and the sweep through `_wt_masked` with no other change.
+* `antiGen/rescore_common_pool.py` -- new; re-scores A-F and G-J for every cached rung and
+  every rule from the cache, with `--legacy-pool` as the regression.
+* `antiGen/tests/test_common_pool.py` -- **20 tests**: the mask drops exactly gap and stop,
+  `n_valid` is model-independent under it, an unscorable in-pool cell ranks last and still
+  counts, the two metric implementations agree under it, and `pool_mask=None` is bit-exact
+  with the published behaviour.
+* `antiGen-figures/figures/fig_coguk_list.R` -- the yield row's reference curves were a
+  median over a band because N_RBD varied; the band is now a point. Guarded: a spread in
+  `n_selected` across models is a hard error.
+
+### The published numbers move, and s49/s50's tables are superseded
+
+Panels C/D are where s49's incumbents (0.5125, 0.5089) and its `+0.048` live. Those were
+computed at mixed pool sizes. **Every A-J number in s49 and s50 is restated under this
+convention**; the five per-job macro CSVs are moved to
+`data/evals_sc2_lists_macro/legacy_per_model_pool/` rather than deleted, so what the figure
+used to say remains on disk.
+
+That retires `fig_coguk_list.R`'s cross-job agreement check, which compared the 12 models
+appearing in more than one GPU job. The replacement is not nothing: every map this
+re-score reads was gated by replaying it to the published row written beside it (s48
+GATE 1, s49 GATE 2, both exact), which is the same claim. And the ensemble rows are still
+written by two independent paths -- `rescore_common_pool.py` and `ensemble_report.py` --
+so the check retains something real to compare.
+
+### Audit of the selection path: one real leak, one bounded artefact, three clean
+
+Asked, after two bugs in this arm were caught by guards rather than by review, whether the
+comparison is actually fair -- whether each model gets the same number of top-q picks for a
+given query. Measured on the cached maps across 13 rungs and q in {0.1, 0.2, 0.5, 0.9}.
+
+**A. `n_valid` is identical across models, per query.** Verified for all 13 against a
+reference rung, exactly. The per-query variation that remains (3,819 / 3,823 / 3,842 ...)
+is the query's own residue being masked, and it is the same number for every model at the
+same query. This is the property the arm exists to establish, and it holds.
+
+**B. The realised selected MASS is not exactly `q * n_valid`, by at most one cell.**
+`nanquantile(1-q, interpolation='lower')` picks ascending index `floor((n_valid-1)(1-q))`,
+so for a continuous-valued model at n_valid = 3,819, q = 0.1 the count strictly above the
+boundary is 382 while the quota is 381.9; `frac` clamps at 0 and the realised mass is
+**382.0**. A coarse predictor has a large tie block at the boundary, `frac` lands inside
+[0, 1], and its mass is exactly 381.9. So continuous rungs select 0.1 of a cell more than
+coarse ones -- **0.026%**, worth at most 0.000426 of a panel-C macro score, **82x below the
+seed floor**. `top_q_weight`'s docstring already says the two "differ by up to one cell".
+Documented, not changed: removing it would mean abandoning `interpolation='lower'`, which
+is what makes the boundary reproducible.
+
+**C. A REAL LEAK, now fixed: an unscorable cell could be selected at high q.** The common
+pool fills an in-pool cell the model cannot score with `min(finite) - 1`, so it ranks last
+but stays in the denominator. Ranking last is not the same as never being selected: the
+filled cells are **one tie block**, so once `q * n_valid` exceeds the SCORABLE count the
+boundary falls inside that block and every cell in it takes fractional weight.
+
+BLOSUM62 carries query-dependent `-inf` (460 in-pool cells at one test query, 80 at
+another, 0 at the rest). Leaked selection weight:
+
+| q | weight on cells it cannot score | of selected |
+|---:|---:|---:|
+| 0.1 | 0.0000 | 381.9 |
+| 0.5 | 0.0000 | 1,909.5 |
+| 0.9 | **75.80** | 3,437.1 (**2.2%**) |
+
+Effect on the reported number: **recall AUC 0.6113 -> 0.6073, dAUC = -0.0039**; q = 0.9
+recall 0.9262 -> 0.9062. codon and antiGen are unaffected (0.0000), so panels C/D at
+q = 0.1 were never touched -- only E/F, which integrate out to q = 0.9.
+
+**This was introduced by the common-pool fill itself.** Before it, `-inf` was folded to
+NaN and dropped, so such a cell could never be selected. Fixed by zeroing the weight on
+filled cells while keeping them in `n_valid`: a model that abstains forgoes that pick. It
+cannot be credited for a cell it declined to score, and it cannot gain from a smaller pool
+either. The consequence to state plainly is that at q large enough, an abstaining model
+selects slightly FEWER than `q * n_valid` cells -- which is the honest representation,
+since it has no more cells to offer.
+
+`rank_fractions` grew `return_filled=`; `compute_hit_rate` and `top_q_weights` zero
+internally. A name collision found on the way: `rank_fractions` already had a local
+`filled` (its sort buffer), so the new mask had to be `filled_mask` -- the first version
+returned the sort buffer and the test caught it.
+
+**D. The three implementations agree under the pool.** `compute_hit_rate`,
+`rank_fractions` + `top_q_weight`, and `list_variant_recall.top_q_weights` give the same
+hit mass to 1.5e-4 on masses of ~275 (float32), with identical `n_valid`, across
+blosum62 / EVEscape / codon / antiGen at q in {0.1, 0.5, 0.9}.
+
+**E. A one-member rule through the `_wt_masked` path equals the single model exactly** --
+`n_valid` equal and hit mass identical to 0.000e+00, which is what makes every gate in
+s48-s51 mean anything.
+
+**F. `pool_mask=None` is bit-exact with the published behaviour**, so the legacy
+regression is a real check and not a tautology. Re-verified after the leak fix: 0.000e+00.
+
+Tests: `antiGen/tests/test_common_pool.py` is now **28**, including one that drives a model
+to abstain on most of the pool and asserts zero leaked weight at q up to 0.95, and one that
+puts every target on an unscorable cell and asserts zero credit.
+
+### Durability: this re-score had to be a SLURM job, and it took three tries to admit it
+
+Worth recording because it cost more wall-clock than the measurement did, and because s48
+already wrote down half of it.
+
+1. **Attempt 1** ran under `setsid nohup` with its output directory in the session
+   scratchpad. The session ended; the scratchpad was deleted with it. The processes were
+   still alive afterwards, writing to unlinked inodes -- `ps` showed them running and
+   `ls` showed nothing, which is exactly as confusing as it sounds. s48's own note says
+   "maps go on `/large_storage`, not the session scratchpad", for the same reason, about
+   a different artifact.
+2. **Attempt 2** fixed the path but kept `setsid nohup`. It survived one session restart
+   and not the next, dying with 0 of 9 blocks done.
+3. **Attempt 3** is `examples/slurm/rescore_commonpool.sh`, which depends on nothing but
+   the shared filesystem. The interactive box has **4 cores**; the `cpu` partition has
+   **184**. The two concurrent jobs had been oversubscribing torch's default 4 threads
+   each onto those 4 cores, which is why `ensemble_report`'s `fullpool` pass went from
+   ~10 minutes alone to over 23 minutes, and why the whole thing looked slower than any
+   per-job estimate predicted.
+
+The rule to carry: anything in this arm that takes more than a few minutes goes through
+`sbatch`, with outputs under `/large_storage`. Monitoring watches the SLURM job id rather
+than a shell pid, so the watch survives whatever happens to the session.
+
+Also `pkill -f <script>.py` matches the interactive shell wrapper whose command line
+contains that string, and so kills the command issuing it. Kill by PID here.
+
+### Open
+
+* K-L is unaffected (it always used a fixed pool), so the background row is the one place
+  where the old and new figures are directly comparable.
+* The s45 all-RBD sibling takes `rbd_all_cells.csv`, which **does** list the gap and stop
+  columns (201 each of its 4,422). Under the common pool those cells are no longer
+  candidates, so that figure's denominators change too and its targets in those columns
+  become uncatchable. Not re-run here; it needs its own pass and its own note.

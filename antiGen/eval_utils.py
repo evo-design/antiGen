@@ -57,9 +57,55 @@ def compute_loss_full(probs, target_batch):
 
 RBD_RANGE = list(range(330, 531))  # 0-indexed, inclusive
 
+ALLOWED_AAS = "ACDEFGHIKLMNPQRSTVWY*-"
+
+
+def real_substitution_mask(n_positions, allowed_aas=ALLOWED_AAS, device=None):
+    """(n_positions, E) True on the 20 amino-acid columns, False on gap and stop.
+
+    The model-independent half of the candidate pool, and the default ``pool_mask`` for
+    :func:`compute_hit_rate`. Gap and stop are what the roster actually disagrees about:
+    across the 38 cached rungs, ``n_valid`` at the BA.2 root takes the values 3,801 /
+    3,804 / 3,819 / 4,020 / 4,221, and the whole 4,221 -> 3,819 part of that is the 201
+    gap plus 201 stop cells that antiGen, the PSSMs, pyr0, CoVFit and the factored
+    baselines emit while EVE, Tranception, BLOSUM62, evcouplings and the DMS panels do
+    not (ESM-2 and the MSA Transformers emit one of the two). Excluding both from the
+    pool for every model makes "the top decile" the same size for all of them.
+
+    It costs no target on the panels this figure reports: **0 of the 247 CoG-UK listed
+    RBD cells are a gap or a stop**, so no model loses a cell it could have been
+    credited for. The residual 3,819 -> 3,801/3,804 spread is EVEscape's 15 and the BA.2
+    DMS panels' 18 genuinely missing measurements, which are handled by ranking them
+    last inside the common pool rather than by shrinking it for everyone.
+    """
+    import torch as _t
+    keep = _t.tensor([a not in "-*" for a in allowed_aas], dtype=_t.bool, device=device)
+    return keep.unsqueeze(0).expand(n_positions, len(allowed_aas)).clone()
+
 
 def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
-                     per_cell=False):
+                     per_cell=False, pool_mask=None):
+    """Hit mass of the top-q of ``scores``, against ``target_batch``.
+
+    ``pool_mask`` is an (len(eval_range), E) boolean COMMON CANDIDATE POOL, and passing
+    one is what makes a comparison across models fair. Without it the pool is each
+    model's own emission set, so ``n_valid`` -- and with it the size of "the top decile"
+    -- varies by model: measured across this roster it runs 3,801 to 4,221, a **10%
+    spread**, almost all of it the gap and stop columns that some models emit and others
+    do not. Two models then select top-q sets of different sizes and the one with the
+    larger pool gets more chances to catch a target, which is a property of its alphabet
+    rather than of its predictions.
+
+    With a pool mask, every model ranks the same cells and selects ``q * |pool|`` of
+    them. A cell inside the pool that a model cannot score is **ranked last** rather than
+    dropped -- it stays in the denominator and is never selected -- which is the
+    convention ``background_contrast.common_percentiles`` already uses for the K-L row,
+    and it keeps one model's missing measurements from shrinking everyone's pool.
+
+    The query's own residue is masked out after the pool is applied, so ``n_valid`` is
+    ``|pool| - 1`` per query rather than exactly ``|pool|``; it is still identical across
+    models, which is the property that matters.
+    """
     target_batch = target_batch.to(scores.device)
     aa_batch = aa_batch.to(scores.device)
 
@@ -79,6 +125,25 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     # predictions, giving a comparable metric across models with different -inf
     # coverage (e.g. BLOSUM62 vs the from-scratch transformer).
     scores = scores.clone()
+    if pool_mask is not None:
+        pm = pool_mask.to(scores.device)
+        if pm.shape != scores.shape[1:]:
+            raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the eval-range "
+                             f"score grid {tuple(scores.shape[1:])}")
+        # Inside the pool, a cell the model cannot score ranks LAST instead of leaving
+        # the pool: one finite step below the query's own minimum, so it is never
+        # selected and never changes the boundary value, but still counts in n_valid.
+        unscorable = (torch.isnan(scores) | torch.isneginf(scores)) & pm
+        filled_mask = unscorable.clone()
+        if unscorable.any():
+            finite = torch.where(torch.isfinite(scores), scores,
+                                 torch.full_like(scores, float('inf')))
+            floor = finite.reshape(scores.shape[0], -1).min(dim=1).values
+            floor = torch.where(torch.isfinite(floor), floor,
+                                torch.zeros_like(floor)).view(-1, 1, 1) - 1.0
+            scores = torch.where(unscorable, floor.expand_as(scores), scores)
+        scores = torch.where(pm.unsqueeze(0).expand_as(scores), scores,
+                             torch.full_like(scores, float('nan')))
     scores.scatter_(2, aa_batch_sub.unsqueeze(-1), float('nan'))
     scores = torch.where(
         torch.isneginf(scores),
@@ -94,6 +159,8 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     # tied cells at the boundary. That fraction is the expected count under uniform
     # random tie-breaking, so the metric is seed-free, monotone in q, and comparable
     # across models and baselines regardless of score granularity.
+    if pool_mask is None:
+        filled_mask = None
     B = scores.shape[0]
     p_flat = scores.reshape(B, -1).float()
     valid = ~torch.isnan(p_flat)
@@ -106,6 +173,12 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     n_above = above.reshape(B, -1).sum(dim=1).float()
     n_at = at.reshape(B, -1).sum(dim=1).float().clamp(min=1)
     frac = ((n_needed - n_above) / n_at).clamp(0.0, 1.0)     # (B,) share of tied block
+    if filled_mask is not None and filled_mask.any():
+        # A cell the model could not score ranks last but must never be SELECTED; see
+        # rank_fractions' `return_filled` note for the measurement that forced this.
+        keep = ~(filled_mask & ~torch.isnan(scores))
+        above = above & keep
+        at = at & keep
     hits_above = (above * target_batch).reshape(B, -1).sum(dim=1)
     hits_at = (at * target_batch).reshape(B, -1).sum(dim=1)
     n_hits = (hits_above + frac * hits_at).sum().item()

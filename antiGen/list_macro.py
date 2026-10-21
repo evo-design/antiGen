@@ -51,13 +51,16 @@ import gc
 import glob
 import os
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
 from antiGen import datasets
+from antiGen import score_cache as sc
 from antiGen.config import (AlphabetConfig, CodonConfig, ModelConfig, ModelType)
 from antiGen.eval import (MutationDataset, config_label, dataset_of_train_args,
                           discover_checkpoints, peek_checkpoint_meta)
+from antiGen import eval_utils as eu
 from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 compute_hit_rate, fit_substitution_baseline,
                                 load_baselines, load_checkpoint,
@@ -82,30 +85,55 @@ def build_variants(lists, seen_mask):
     return variants
 
 
-def cell_pass(score_fn, loader, variants, device, eval_range, qtiles):
+def cell_pass(score_fn, loader, variants, device, eval_range, qtiles, sink=None,
+              common_pool=None):
     """Accumulate per-cell hit mass and event counts over the loader.
 
     ``score_fn(aa_batch) -> (B, seq_len, E)`` is the only thing that differs between a
     model (forward pass) and a baseline (a fixed map broadcast to the batch), so both
     go through this one function and are masked and ranked identically.
 
+    ``sink(start, scores_eval)``, if given, receives each batch's eval-range slice
+    *before* any variant masking, which is what makes one cached map serve all four
+    variants: the gap/stop mask already applied is a property of the MODEL, while the
+    wild-type mask and the de novo mask are properties of the query and the variant and
+    are applied downstream. ``start`` is the running query offset, counted rather than
+    derived from the batch index, so a short final batch cannot silently shift it.
+
     Returns ``acc[(suffix, qtile)] = (cell_hits, cell_events)``, each (R, E).
     """
     acc = {}
     n_batches = len(loader)
+    start = 0
     for batch_idx, (aa_batch, target_batch) in enumerate(loader):
         if batch_idx % 50 == 0:
             print(f"    batch {batch_idx}/{n_batches}", flush=True)
         aa_batch = aa_batch.to(device)
         target_batch = target_batch.to(device)
         scores = score_fn(aa_batch)
+        if sink is not None:
+            sub = scores[:, eval_range, :] if scores.shape[1] != len(eval_range) else scores
+            sink(start, sub.detach().float().cpu().numpy())
+        start += int(aa_batch.shape[0])
 
         for suffix, score_mask, target_mask in variants:
-            if score_mask is None:
-                v_scores = scores
+            # With a common pool the candidate set is handed to compute_hit_rate as a
+            # mask instead of being burned into the scores, so that a cell inside the
+            # pool which this model cannot score RANKS LAST rather than leaving the
+            # pool -- which is what makes "the top decile" the same size for every
+            # model (NOTES s51). Without one, the published per-model behaviour.
+            v_pool = None
+            if common_pool is None:
+                if score_mask is None:
+                    v_scores = scores
+                else:
+                    v_scores = scores.clone()
+                    v_scores[score_mask.to(device).unsqueeze(0).expand_as(v_scores)] = float('nan')
             else:
-                v_scores = scores.clone()
-                v_scores[score_mask.to(device).unsqueeze(0).expand_as(v_scores)] = float('nan')
+                v_scores = scores
+                v_pool = common_pool.to(device)
+                if score_mask is not None:
+                    v_pool = v_pool & ~score_mask.to(device)[eval_range, :]
             if target_mask is None:
                 v_target = target_batch
             else:
@@ -115,7 +143,7 @@ def cell_pass(score_fn, loader, variants, device, eval_range, qtiles):
             for qtile in qtiles:
                 _h, _n, cell_hits, cell_events = compute_hit_rate(
                     v_scores, v_target, aa_batch, qtile, eval_range=eval_range,
-                    per_cell=True)
+                    per_cell=True, pool_mask=v_pool)
                 key = (suffix, qtile)
                 if key not in acc:
                     acc[key] = [torch.zeros_like(cell_hits), torch.zeros_like(cell_events)]
@@ -220,6 +248,15 @@ def main():
                          'retired esmc/vespag models, which no longer build.')
     ap.add_argument('--include-experimental', action='store_true')
     ap.add_argument('--qtiles', default='0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9')
+    ap.add_argument('--legacy-pool', action='store_true',
+                    help="Score in each MODEL's own emission set, which is what every "
+                         "published CSV before NOTES s51 used. The default is the common "
+                         "candidate pool: the 20 real amino-acid columns, identical for "
+                         "every model, so 'the top decile' is the same size for all of "
+                         "them. Under the published convention it was not -- n_valid ran "
+                         "3,801 to 4,221 across the roster and up to 45.7%% of a model's "
+                         "top decile went to gap/stop cells that can never be a listed "
+                         "target. Only pass this to reproduce a pre-s51 number.")
     ap.add_argument('--percell-qtile', type=float, default=0.1)
     ap.add_argument('--baselines-only', action='store_true')
     ap.add_argument('--multitree-baselines', action='store_true',
@@ -236,6 +273,20 @@ def main():
                          'the checkpoints without re-deriving rows another run already '
                          'has. The rows it does write are identical either way.')
     ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--dump-scores', default=None, metavar='DIR',
+                    help='Also cache each model\'s (queries, eval positions, residues) '
+                         'score map under DIR, so every later question about combining '
+                         'models is answerable without a forward pass. Mirrors '
+                         'background_discrimination.py\'s convention on the backbone '
+                         'substrate. MUST be a new directory: the maps are keyed to this '
+                         'run\'s query set by a hash, and two query sets produce maps of '
+                         'identical shape that cannot be told apart afterwards.')
+    ap.add_argument('--dump-max-bytes', type=float, default=64e9,
+                    help='Refuse a dump projected above this without --yes-big. '
+                         '--eval-range full multiplies the payload 6.3x (1273 positions '
+                         'against 201), which is 60 GB over this roster.')
+    ap.add_argument('--yes-big', action='store_true',
+                    help='Acknowledge a dump above --dump-max-bytes.')
     args = ap.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -298,9 +349,57 @@ def main():
     loader = DataLoader(MutationDataset(scored), batch_size=args.batch_size,
                         shuffle=False, num_workers=4, pin_memory=True, drop_last=False)
 
+    # ── The score-map cache, if asked for ───────────────────────────────────
+    # Everything below is set up BEFORE any model is built, so a misconfigured dump
+    # fails in seconds rather than after the first forward pass.
+    dump_dir = args.dump_scores
+    if dump_dir:
+        R = len(eval_range)
+        per_model = sc.expected_bytes(len(scored), R, E)
+        projected = per_model * max(1, len(glob.glob(os.path.join(args.checkpoint_dir,
+                                                                  'fitness_*.pt'))))
+        print(f"\n=== Score-map cache: {dump_dir} ===")
+        print(f"  {len(scored)} queries x {R} positions x {E} residues x float32 "
+              f"= {per_model / 1e6:.1f} MB per model")
+        if projected > args.dump_max_bytes and not args.yes_big:
+            raise SystemExit(
+                f"projected dump is ~{projected / 1e9:.1f} GB, above --dump-max-bytes "
+                f"({args.dump_max_bytes / 1e9:.1f} GB). Pass --yes-big to proceed. "
+                f"(--eval-range {args.eval_range} gives {R} positions per query.)")
+        aa_all = torch.stack([e.aa_idx for e in scored])              # (N, seq_len)
+        dump_sha1 = sc.query_sha1(aa_all[:, eval_range])
+        sc.write_query_manifest(
+            dump_dir, dataset=args.dataset, variant=variant, seq_len=seq_len,
+            eval_range=eval_range,
+            list_specs=[[lab, int(m.sum())] for lab, m in lists],
+            sha1=dump_sha1, n_queries=len(scored), n_events=n_events, args=args)
+        if not os.path.exists(os.path.join(dump_dir, sc.QUERIES)):
+            # Every eval-range target, not only the listed ones: the cells NOT on the
+            # list are what a later selection pass is scored on, and they come off this
+            # same forward pass for free (NOTES: the val set for the ensembling arm).
+            qi, po, al, ct = [], [], [], []
+            for i, e in enumerate(scored):
+                nz = (e.mat[eval_range, :] > 0).nonzero()
+                for r, a in nz.tolist():
+                    qi.append(i); po.append(eval_range[r]); al.append(a)
+                    ct.append(float(e.mat[eval_range[r], a]))
+            sc.write_queries(dump_dir, aa_all.to(torch.int8).numpy(),
+                             (np.array(qi), np.array(po), np.array(al),
+                              np.array(ct, dtype=np.float32)))
+            print(f"  wrote {sc.QUERIES}: {len(scored)} genotypes, {len(qi)} target cells "
+                  f"({sum(ct):.0f} events) over the whole eval range")
+        print(f"  query_sha1 {dump_sha1}", flush=True)
+
     pssm_root, _pssm_variant = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
     seen_mask = pssm_root > 0
     variants = build_variants(lists, seen_mask)
+    common_pool = (None if args.legacy_pool
+                   else eu.real_substitution_mask(len(eval_range), allowed_aas))
+    if common_pool is None:
+        print("candidate pool: per-model emission set (LEGACY, pre-s51)")
+    else:
+        print(f"candidate pool: common -- {int(common_pool.sum())} of "
+              f"{len(eval_range) * E} cells, gap/stop excluded for every model")
     for label, in_full in lists:
         n_listed = int(in_full.sum())
         n_unseen = int((in_full & ~seen_mask).sum())
@@ -379,6 +478,61 @@ def main():
     if by_model:
         print(f"Resuming: {len(by_model)} model(s) already in {SUMMARY}: {sorted(by_model)}")
 
+    def _have_map(name):
+        return bool(dump_dir) and os.path.exists(sc.map_path(dump_dir, name))
+
+    def _resume_skip(name):
+        """True only if every artifact this run is asked for already exists.
+
+        Resume is per-ARTIFACT, not per-row. Keying it on the summary CSV alone is how a
+        --dump-scores run pointed at a directory that already holds rows would print
+        [resume-skip] for all 30 models, write ZERO maps, report 'Scored 30 model(s)' and
+        exit 0 -- the same shape as the three silent successes NOTES s30/s31 record.
+        """
+        if name not in by_model:
+            return False
+        if dump_dir and not _have_map(name):
+            print(f"[re-run] {name}: has a {SUMMARY} row but no cached map")
+            return False
+        return True
+
+    def _verify_against_row(name, acc):
+        """A model re-run only for its map must reproduce the row already on disk.
+
+        Free, and it is the one place a cached map and a published number are produced by
+        the same process, so a disagreement here means the scoring path moved.
+        """
+        old = {(suf, round(q, 4)): (ma, mi) for suf, q, ma, mi, _c, _e in by_model[name]}
+        worst = 0.0
+        for suf, q, ma, mi, _c, _e in summarize(acc):
+            ref = old.get((suf, round(q, 4)))
+            if ref is None:
+                raise SystemExit(f"{name}: re-run produced variant {suf} q={q} that the "
+                                 f"existing {SUMMARY} row does not have")
+            worst = max(worst, abs(ref[0] - ma), abs(ref[1] - mi))
+        if worst > 1e-6:
+            raise SystemExit(f"{name}: re-run disagrees with the existing {SUMMARY} row "
+                             f"by {worst:.2e}; refusing to publish a map against a row "
+                             f"it does not reproduce")
+        print(f"  [verified] {name} reproduces its existing row to {worst:.1e}")
+
+    def _sink_for(name):
+        """(sink, finish) for one model, or (None, no-op) when not dumping."""
+        if not dump_dir:
+            return None, (lambda ok=True: None)
+        w = sc.MapWriter(dump_dir, name, len(scored), len(eval_range), E)
+
+        def finish(ok=True):
+            if not ok:
+                w.abort()
+                return
+            side = w.close(manifest_sha1=dump_sha1,
+                           extra={"n_queries": len(scored),
+                                  "eval_range_len": len(eval_range)})
+            print(f"  [map] {name}: {side['n_nan']} NaN, {side['n_neginf']} -inf cells",
+                  flush=True)
+        return w.write_batch, finish
+
     def record(name, acc):
         by_model[name] = summarize(acc)
         write_summary(args.output_dir, by_model)
@@ -392,20 +546,33 @@ def main():
 
     # ── Baselines (fixed maps, no forward pass) ─────────────────────────────
     for name, probs_2d in (() if args.skip_baselines else baselines):
-        if name in by_model:
+        if _resume_skip(name):
             print(f"[resume-skip] {name}")
             continue
         print(f"\n=== Baseline: {name} ===", flush=True)
         bp = probs_2d.to(device)
-        record(name, cell_pass(lambda aa, bp=bp: bp.unsqueeze(0).expand(aa.shape[0], -1, -1),
-                               loader, variants, device, eval_range, qtiles))
+        sink, finish = _sink_for(name)
+        try:
+            acc = cell_pass(
+                lambda aa, bp=bp: bp.unsqueeze(0).expand(aa.shape[0], -1, -1),
+                loader, variants, device, eval_range, qtiles, sink=sink,
+                common_pool=common_pool)
+        except BaseException:
+            finish(ok=False)
+            raise
+        if name in by_model:
+            _verify_against_row(name, acc)
+            finish()
+        else:
+            finish()
+            record(name, acc)
         del bp
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
     # ── Models ──────────────────────────────────────────────────────────────
     for prefix, path in candidates:
-        if prefix in by_model:
+        if _resume_skip(prefix):
             print(f"[resume-skip] {prefix}")
             continue
         print(f"\n=== Model: {prefix} ===", flush=True)
@@ -413,9 +580,21 @@ def main():
             model = builtin_models[prefix]()
             model.eval()
             model_mask = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
-            record(prefix, cell_pass(
-                (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
-                loader, variants, device, eval_range, qtiles))
+            sink, finish = _sink_for(prefix)
+            try:
+                acc = cell_pass(
+                    (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
+                    loader, variants, device, eval_range, qtiles, sink=sink,
+                common_pool=common_pool)
+            except BaseException:
+                finish(ok=False)
+                raise
+            if prefix in by_model:
+                _verify_against_row(prefix, acc)
+                finish()
+            else:
+                finish()
+                record(prefix, acc)
             del model
             gc.collect()
             if torch.cuda.is_available():
@@ -453,9 +632,21 @@ def main():
         model.eval()
         model_mask = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
 
-        record(prefix, cell_pass(
-            (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
-            loader, variants, device, eval_range, qtiles))
+        sink, finish = _sink_for(prefix)
+        try:
+            acc = cell_pass(
+                (lambda aa, m=model, mm=model_mask: _masked_scores(m, aa, mm)),
+                loader, variants, device, eval_range, qtiles, sink=sink,
+                common_pool=common_pool)
+        except BaseException:
+            finish(ok=False)
+            raise
+        if prefix in by_model:
+            _verify_against_row(prefix, acc)
+            finish()
+        else:
+            finish()
+            record(prefix, acc)
         del model, ckpt
         gc.collect()
         if torch.cuda.is_available():
@@ -463,6 +654,28 @@ def main():
 
     print(f"\n=== Wrote {os.path.join(args.output_dir, SUMMARY)} ===")
     print(f"Scored {len(by_model)} model(s)")
+
+    if dump_dir:
+        # "Wrote no maps and exited 0" is the failure this block exists to make
+        # impossible. Check the artifacts on disk against the roster this run was asked
+        # for, and name the gap rather than reporting success.
+        want = sorted({n for n, _ in (() if args.skip_baselines else baselines)}
+                      | {p for p, _ in candidates})
+        have = set(sc.list_models(dump_dir))
+        gap = [m for m in want if m not in have]
+        tmp = sc.stray_tmp(dump_dir)
+        exp = sc.expected_bytes(len(scored), len(eval_range), E)
+        wrong = [m for m in want if m in have
+                 and os.path.exists(sc.map_path(dump_dir, m))
+                 and os.path.getsize(sc.map_path(dump_dir, m)) - 128 != exp]
+        print(f"Score-map cache: {len(have)} map(s) in {dump_dir}")
+        if gap or tmp or wrong:
+            raise SystemExit(
+                f"score-map cache is incomplete: "
+                + (f"{len(gap)} missing ({', '.join(gap[:6])})" if gap else "")
+                + (f"; stray partial writes: {', '.join(tmp)}" if tmp else "")
+                + (f"; wrong payload size: {', '.join(wrong[:6])}" if wrong else ""))
+
     if skipped:
         raise SystemExit(
             f"{len(skipped)} model group(s) were skipped and are MISSING from "
