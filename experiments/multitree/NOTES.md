@@ -6642,3 +6642,239 @@ contains that string, and so kills the command issuing it. Kill by PID here.
   columns (201 each of its 4,422). Under the common pool those cells are no longer
   candidates, so that figure's denominators change too and its targets in those columns
   become uncatchable. Not re-run here; it needs its own pass and its own note.
+
+## 52. The other half of the pool: `-123A` was a candidate (2026-10-21)
+
+s51 made "the top decile" one size for every model by dropping the gap and stop
+**columns**: no model may pick `A123-` or `A123*`. It never asked the mirror question.
+A cell is a (position, residue) pair, and nothing looked at what the QUERY had at that
+position, so at a position whose query residue is a gap or a stop every one of the 20
+real-amino-acid cells stayed in the pool -- `-123A`, `*123C` -- and could be selected.
+
+### The arithmetic s51 left behind, and it is the wrong way round
+
+`compute_hit_rate` masks the query's own residue with a `scatter_` over the score grid.
+When the query's residue is `-`, that column is **already** out of the pool, so the
+scatter removes nothing. An ungrounded position therefore contributed a **full 20**
+candidates where a normal position contributes 19.
+
+Measured on the 17,978 CoG-UK test queries:
+
+| | count | share |
+|---|---:|---:|
+| queries with >= 1 gap/stop in the RBD | **2,763** | 15.4% |
+| (query, position) pairs that are ungrounded | **53,616** | 1.48% |
+| of which stop rather than gap | 51 | 0.1% |
+| candidate cells this put in the pool | ~1.07M | |
+
+It is overwhelmingly gap, and gap here is missing sequence, not a deletion: the
+per-query count runs to **196 of 201 positions**, which is a genome with essentially no
+RBD coverage rather than a 196-residue deletion.
+
+### It removes targets, and that is the difference from s51
+
+s51 could say "it costs no target: 0 of the 247 listed RBD cells is a gap or a stop".
+This mask cannot, and the reason is in `mutation_lists.load_mutation_list`: a list row
+becomes a **`(position, alt)` cell**. The `wildtype` column is read only as a coordinate
+check (`n_wt_mismatch`, to catch a 1-based slip) and never constrains the source. So a
+test-set event scores as a hit on a listed cell whatever the query's own residue was.
+
+`coguk.csv` itself is clean -- 323 rows, every one letter-to-letter, no `-` or `*` on
+either side. The ungrounded events are an artefact of the test set meeting the cell
+definition:
+
+| | events | from a gap/stop | cells | emptied |
+|---|---:|---:|---:|---:|
+| `list_coguk_fullpool` (A/C/E) | 26,491 | **362 (1.37%)** | 235 | 2 |
+| `list_coguk_unseen_fullpool` (B/D/F) | 5,070 | **119 (2.35%)** | 131 | 2 |
+
+The shape of them, against the list row they are credited to:
+
+| observed | list row | events |
+|---|---|---:|
+| `-501Y` | N501Y | 29 |
+| `-483G` | V483G | 28 |
+| `-477N` | S477N | 26 |
+| `-498R` | Q498R | 22 |
+| `-484A` | E484A | 17 |
+
+That is coverage returning, not a substitution. The two cells emptied are **Y489L** and
+**F490G**, each a singleton whose one event was `-489L` / `-490G`; neither was ever
+observed as a real substitution. The 84 partial cells keep their full weight in the
+macro and are scored on their grounded queries only -- N501Y on 449 events rather than
+478.
+
+### `--ungrounded-queries`, three ways, and why the default is `drop`
+
+* `score` -- the pre-s52 convention: the cell is a candidate and its events are scored.
+* `keep` -- the cell leaves the pool; its events stay in the denominator, unhittable.
+* `drop` -- **the default**: the cell leaves the pool and its events leave the metric.
+
+`drop` because it keeps the invariant `build_variants` already relies on, that every
+target is in the pool it is ranked in, and because `keep` docks every model ~1.4% (2.4%
+on de novo) for failing to predict a sequencing gap. The alternative is one flag away
+and the arm is set up to run it.
+
+### Only A-F can move, and that is measured rather than assumed
+
+* **G-J is untouched.** The row is scored at the single BA.2 root query, which carries
+  **0** gap/stop in the RBD. The mask is applied to it anyway so the row stays correct
+  if the root ever changes, and `rescore_common_pool` prints the count every run.
+* **K-L is untouched, and must not be.** Only RBD positions **344 and 483** carry a gap
+  or stop across the 402 backbone genotypes, and neither is in `coguk_all` /
+  `coguk_unseen`, the two cellsets the main figure's K-L draw. (`rbd_all` / `rbd_unseen`,
+  in the supplement, touch 483 at 3 cells and 1.) More than that, the background row
+  ranks one cell ACROSS queries against a deliberately query-INDEPENDENT pool (s39), so
+  a per-query mask would put back exactly the confound that row exists to avoid.
+  `ensemble_sweep.substrate_from_args` refuses the flag on the backbone substrate.
+
+### Gates
+
+Three, all before any s52 number is believed, for the reason s51 gives: a difference has
+to be the convention and not the plumbing.
+
+| gate | what |
+|---|---|
+| 1 | `--legacy-pool` still reaches the **pre-s51** published CSVs |
+| 2 | `--ungrounded-queries score` reaches the **shipped s51** CSVs, A-F and G-J |
+| 3 | the top decile is one size across all models |
+
+### Code
+
+* `antiGen/eval_utils.py` -- `real_wildtype_mask(aa_sub)` -> (B, R), the query-dependent
+  half of the pool, and `compute_hit_rate(wt_pool_mask=)`. The two halves are
+  intersected **before** the unscorable fill, so a cell about to leave the pool is never
+  filled and never drags the floor down with it.
+* `antiGen/background_discrimination.py` -- `rank_fractions(wt_pool_mask=)`, so the
+  ensemble path and the published path stay the same metric.
+* `antiGen/ensemble_sweep.py` -- `UNGROUNDED`, `Substrate.ungrounded` / `.wt_pool()` /
+  `.targets_block()`, and `_wt_masked(wt_pool_mask=)`. The mask has to bite in
+  `_wt_masked` and not only at ranking time, for the reason s51 measured at 0.0498.
+* `antiGen/ensemble_report.py` -- reads both through the substrate; inherits the flag.
+* `antiGen/rescore_common_pool.py` -- `--ungrounded-queries`, defaulting to `score`
+  under `--legacy-pool` so gate 1 is unchanged.
+* `antiGen/tests/test_query_pool.py` -- **19 tests**: the mask is the row mirror of the
+  column one, an ungrounded position gives 0 candidates where s51 gave it 20, nothing
+  there is ever selected even when it is the highest-scoring cell in the map, the three
+  modes do what they say, the two metric implementations agree under it, and
+  `wt_pool_mask=None` is bit-exact with s51.
+* `examples/slurm/rescore_querypool.sh` -- the job. SLURM, outputs on `/large_storage`,
+  per s51's durability rule.
+
+### Gates on the shipped run, all passed
+
+Job **3392095**, 34:41 on `cpu`, exit 0:0.
+
+| gate | what | result |
+|---|---|---:|
+| 1 | `--legacy-pool` vs the **pre-s51** published CSVs, 72 rows | **6.0e-08** |
+| 2a | `--ungrounded-queries score` vs the **shipped s51** macro CSVs, 234 rows | **0.000e+00** |
+| 2b | same, G-J `list_variant_recall.csv`, 3,120 rows | **0.000e+00** |
+| 3 | top decile one size across all models | **381.9, all 32** |
+| cross-job | the two independent paths writing the ensemble rows | **1.00e-07** |
+
+Gate 2 is the one that matters: **exact on every row**, with zero `n_cells` / `n_events`
+/ `n_targets` mismatches. The s52 path is bit-identical to s51 when switched off, so
+everything below is the convention and not the plumbing.
+
+### Measured: antiGen was being paid for recognising dropout
+
+The two models that lose most on panel C are exactly the two that were hitting the
+ungrounded events far above their own baseline. Top-decile hit rate on the 2,763
+affected queries, under the s51 convention, grounded listed events vs ungrounded:
+
+| model | grounded | **ungrounded** | ratio | panel C delta |
+|---|---:|---:|---:|---:|
+| **antiGen** | 53.0% | **78.2%** | **1.47x** | **-0.0203** |
+| ESM 2 (35M) untrained | 11.3% | 46.7% | **4.12x** | -0.0210 |
+| Tranception (frozen) | 56.1% | 54.1% | 0.97x | +0.0167 |
+| EVE full FT | 76.9% | 56.1% | 0.73x | +0.0025 |
+| codon | 30.2% | 0.2% | 0.01x | +0.0126 |
+| BLOSUM62 | 29.6% | 0.0% | 0.00x | +0.0076 |
+
+The mechanism is not subtle. antiGen is query-conditioned, so at a position reading `-`
+it predicts the consensus residue -- which is exactly what "coverage returning"
+restores. It was being credited for identifying sequencing dropout, not for predicting
+evolution. BLOSUM62 and codon score a substitution FROM the source residue, which is
+meaningless from a gap, so they never collected that credit and gain when it is
+withdrawn. This is the direction s51's composition-baseline caution would predict, for
+the opposite reason.
+
+### What moved: C and D only, and s49's headline comes back
+
+Rendered 2026-10-21 13:09. Old = s51 common pool, new = s52 query pool, same cached
+maps, convention the only difference. Test set 235 cells / 26,491 events -> **233 /
+26,129** on C, 131 / 5,070 -> **129 / 4,951** on D.
+
+**Panel C, all listed cells (macro, q = 0.10).** The leader changes back.
+
+| | s51 | s52 | delta | rank |
+|---|---:|---:|---:|---|
+| Mean of log-probs | 0.5321 | **0.5258** | -0.0063 | #2 -> **#1** |
+| Mean of ranks | 0.5245 | 0.5207 | -0.0039 | #3 -> #2 |
+| Mean of z-scores | 0.5243 | 0.5155 | -0.0087 | #4 -> #3 |
+| **antiGen** | 0.5350 | **0.5147** | **-0.0203** | #1 -> **#4** |
+| Tranception (frozen) | 0.4293 | 0.4460 | +0.0167 | #9 -> #8 |
+| substitution matrix | 0.3111 | 0.3155 | +0.0044 | #18 |
+
+**But C is a tie, and should be reported as one.** The spread from the mean of log-probs
+to antiGen is **0.0111**, well inside the **0.028 seed floor**. What s52 actually
+settles is that s51's reverse claim -- antiGen beating the means on C -- was not
+supportable either. Both conventions put four predictors inside one seed's worth of each
+other, and the ordering between them is noise.
+
+**Panel D, de novo.** Here the gap is real and it widens.
+
+| | s51 | s52 | delta |
+|---|---:|---:|---:|
+| Mean of log-probs | 0.5379 | **0.5246** | -0.0133 |
+| Mean of z-scores | 0.5221 | 0.5086 | -0.0135 |
+| Mean of ranks | 0.4705 | 0.4701 | -0.0004 |
+| antiGen | 0.4988 | 0.4675 | **-0.0313** |
+
+The mean of log-probs leads antiGen by **+0.0571**, against s51's +0.039. That clears
+the seed floor twice over, so **s49's headline is restored on D and strengthened**: it
+was s51's pool convention that had narrowed it, and s52 shows part of the narrowing was
+antiGen collecting ungrounded credit.
+
+**Panels E/F, recall AUC.** All three means still lead both, unchanged in order
+(log-probs, z-scores, ranks, then antiGen). Everyone moves down a little, because the
+dropped events were more often hits than the test set average.
+
+**G-J: byte-identical**, as predicted. `install.py` compares the files rather than
+asserting it, and the re-score prints `the variant root has 0 gap/stop residue(s) in the
+eval range` every run.
+
+**K-L: not recomputed**, deliberately. `background_summary.csv` is exactly as s51
+shipped it.
+
+### State
+
+* **Shipped.** `figs/coguk_list_results.png` and `figs/coguk_list_supp.png` re-rendered
+  2026-10-21 13:09. Inspected, not just produced: twelve panels, six legend groups, the
+  three Ensembles bars in C/D, E/F, H/J and K/L, nothing clipped, and the rank medals
+  checked against the data rather than read off the image -- the raw CSV also carries
+  undrawn `valsel` / `fix32` / `ens_` rungs that `drop_unrequested_*` filters, so the
+  medals rank the DRAWN field only, and they agree.
+* The s51 macro CSVs are in `data/evals_sc2_lists_macro/s51_query_ungrounded/`, which
+  the figure's glob cannot see, so the pre-s52 numbers stay in the tree.
+* Full test suite: **149 pass** (s51 had left it un-run end to end); 19 new in
+  `test_query_pool.py`, 47 across the two pool files.
+* **Not committed yet.**
+
+### Open
+
+* **C is inside the seed floor and the figure does not say so.** Four predictors sit
+  within 0.021 of each other and the medals imply an ordering the data does not carry.
+* **The s45 all-RBD sibling needs this too, and it is worse there.** `rbd_all_cells.csv`
+  takes every RBD cell, so its targets include the gap-sourced ones at a much higher
+  rate than the curated list does. Still stale from s51 as well.
+* The backbone siblings (s44, s45), the q0.05/q0.20 variants and the s47 valsel figure
+  are now two conventions behind the published one.
+* `keep` has not been run. It is one flag and one job if the 1.37% deflation is ever
+  wanted as a sensitivity.
+* **K-L is untouched here but not immune in general.** Positions 344 and 483 do carry
+  gap/stop across the backbone, and they reach `rbd_all` / `rbd_unseen` in the
+  supplement at 3 cells and 1. Left alone because the row's pool is query-independent by
+  design (s39), but a reader comparing the supplement's K-L to its A-F should know the
+  two are on different conventions.

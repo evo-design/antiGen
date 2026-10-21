@@ -83,8 +83,41 @@ def real_substitution_mask(n_positions, allowed_aas=ALLOWED_AAS, device=None):
     return keep.unsqueeze(0).expand(n_positions, len(allowed_aas)).clone()
 
 
+def real_wildtype_mask(aa_sub, allowed_aas=ALLOWED_AAS):
+    """(B, R) True where the QUERY's own residue is one of the 20 amino acids.
+
+    The query-dependent half of the candidate pool, and the mirror image of
+    :func:`real_substitution_mask`: that one drops the gap and stop *columns*, so no
+    model can pick ``A123-`` or ``A123*``; this one drops whole *rows*, so no model can
+    pick ``-123A`` or ``*123C`` either. Until NOTES s52 only the first half existed, and
+    a position whose query residue was a gap contributed a FULL 20 candidates -- one
+    more than a normal position's 19, because the wild-type ``scatter_`` removes nothing
+    when the query's residue is not a pool column.
+
+    Measured on the 17,978 CoG-UK test queries: 2,763 of them (15.4%) carry at least one
+    gap or stop in the RBD, over 53,616 (query, position) pairs, so ~1.07M cells were in
+    the pool that describe a mutation out of missing sequence rather than out of a
+    residue.
+
+    Unlike the column mask this one is NOT free of targets, and the reason is that
+    ``mutation_lists.load_mutation_list`` reduces a list row to a ``(position, alt)``
+    cell -- the ``wildtype`` column is only a coordinate check -- so a test-set event
+    scores as a hit whatever the query's own residue was. 362 of the 26,491 listed
+    events in ``list_coguk_fullpool`` are of the form ``-501Y`` against a list row of
+    ``N501Y``: coverage returning, not a substitution. A caller that masks the pool must
+    therefore decide what to do with those events; see
+    ``rescore_common_pool --ungrounded-queries``.
+
+    ``aa_sub`` is (B, R) residue indices, already subset to the eval range.
+    """
+    import torch as _t
+    bad = _t.tensor([i for i, a in enumerate(allowed_aas) if a in "-*"],
+                    dtype=_t.long, device=aa_sub.device)
+    return ~(aa_sub.unsqueeze(-1) == bad).any(dim=-1)
+
+
 def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
-                     per_cell=False, pool_mask=None):
+                     per_cell=False, pool_mask=None, wt_pool_mask=None):
     """Hit mass of the top-q of ``scores``, against ``target_batch``.
 
     ``pool_mask`` is an (len(eval_range), E) boolean COMMON CANDIDATE POOL, and passing
@@ -105,6 +138,14 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     The query's own residue is masked out after the pool is applied, so ``n_valid`` is
     ``|pool| - 1`` per query rather than exactly ``|pool|``; it is still identical across
     models, which is the property that matters.
+
+    ``wt_pool_mask`` is a (B, R) boolean over POSITIONS -- normally
+    :func:`real_wildtype_mask` -- and is intersected into the pool a row at a time, so a
+    position whose query residue is a gap or a stop contributes no candidates at all. It
+    is what stops a model picking ``-123A``, the mirror of what ``pool_mask`` already
+    does for ``A123-``. Like ``pool_mask`` it is model-independent, so ``n_valid`` still
+    agrees across models at the same query; unlike it, it varies BETWEEN queries, which
+    is fine -- the metric only ever compares models within a query.
     """
     target_batch = target_batch.to(scores.device)
     aa_batch = aa_batch.to(scores.device)
@@ -125,11 +166,23 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     # predictions, giving a comparable metric across models with different -inf
     # coverage (e.g. BLOSUM62 vs the from-scratch transformer).
     scores = scores.clone()
+    # The two halves of the pool are intersected BEFORE the unscorable fill, so a cell
+    # about to leave the pool is never filled and never drags the floor down with it.
+    pm = None
     if pool_mask is not None:
         pm = pool_mask.to(scores.device)
         if pm.shape != scores.shape[1:]:
             raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the eval-range "
                              f"score grid {tuple(scores.shape[1:])}")
+        pm = pm.unsqueeze(0).expand_as(scores)
+    if wt_pool_mask is not None:
+        wt = wt_pool_mask.to(scores.device)
+        if wt.shape != scores.shape[:2]:
+            raise ValueError(f"wt_pool_mask {tuple(wt.shape)} does not match the "
+                             f"(batch, eval-range) grid {tuple(scores.shape[:2])}")
+        wt = wt.unsqueeze(-1).expand_as(scores)
+        pm = wt if pm is None else (pm & wt)
+    if pm is not None:
         # Inside the pool, a cell the model cannot score ranks LAST instead of leaving
         # the pool: one finite step below the query's own minimum, so it is never
         # selected and never changes the boundary value, but still counts in n_valid.
@@ -142,8 +195,7 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
             floor = torch.where(torch.isfinite(floor), floor,
                                 torch.zeros_like(floor)).view(-1, 1, 1) - 1.0
             scores = torch.where(unscorable, floor.expand_as(scores), scores)
-        scores = torch.where(pm.unsqueeze(0).expand_as(scores), scores,
-                             torch.full_like(scores, float('nan')))
+        scores = torch.where(pm, scores, torch.full_like(scores, float('nan')))
     scores.scatter_(2, aa_batch_sub.unsqueeze(-1), float('nan'))
     scores = torch.where(
         torch.isneginf(scores),
@@ -159,7 +211,7 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     # tied cells at the boundary. That fraction is the expected count under uniform
     # random tie-breaking, so the metric is seed-free, monotone in q, and comparable
     # across models and baselines regardless of score granularity.
-    if pool_mask is None:
+    if pm is None:
         filled_mask = None
     B = scores.shape[0]
     p_flat = scores.reshape(B, -1).float()

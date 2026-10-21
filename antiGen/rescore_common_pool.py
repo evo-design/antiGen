@@ -52,7 +52,8 @@ from antiGen import ensemble_rules as er
 from antiGen import ensemble_sweep as es
 from antiGen import score_cache as sc
 from antiGen.background_discrimination import rank_fractions, top_q_weight
-from antiGen.eval_utils import RBD_RANGE, real_substitution_mask
+from antiGen.eval_utils import (RBD_RANGE, real_substitution_mask,
+                                real_wildtype_mask)
 from antiGen.list_macro import load_examples, load_mutation_list, load_pssms, summarize
 from antiGen.list_variant_recall import curve
 
@@ -129,10 +130,20 @@ def main():
                          "panel. Restricting is a runtime choice, not a metric one.")
     ap.add_argument("--legacy-pool", action="store_true",
                     help="each model's own emission set, i.e. the published convention")
+    ap.add_argument("--ungrounded-queries", choices=list(es.UNGROUNDED), default=None,
+                    help="what to do with a cell like `-123A`, at a position whose "
+                         "QUERY residue is a gap or a stop (NOTES s52). 'score' is the "
+                         "pre-s52 convention and leaves it a candidate; 'keep' drops it "
+                         "from the pool but keeps its target events in the denominator; "
+                         "'drop' (the default, and 'score' under --legacy-pool) removes "
+                         "both.")
     ap.add_argument("--output-dir", required=True)
     args = ap.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     qtiles = [float(q) for q in args.qtiles.split(",") if q.strip()]
+    # --legacy-pool is the regression against the PUBLISHED CSVs, so it has to default
+    # to the published convention in both halves of the pool, not just the column half.
+    ungrounded = args.ungrounded_queries or ("score" if args.legacy_pool else "drop")
 
     variant = args.variant or datasets.default_variant("sc2")
     ex = load_examples(sorted(glob.glob(os.path.join(args.data_dir,
@@ -172,6 +183,11 @@ def main():
     mode = "LEGACY per-model pool" if args.legacy_pool else "COMMON pool"
     print(f"{mode}: {int(common.sum())} of {R * E} eval-range cells are candidates "
           f"before the per-variant restriction")
+    print(f"ungrounded queries: {ungrounded}  "
+          + {"score": "(pre-s52: `-123A` is a candidate and its events are scored)",
+             "keep": "(`-123A` leaves the pool; its events stay in the denominator)",
+             "drop": "(`-123A` leaves the pool and its events leave the metric)"
+             }[ungrounded])
     for suffix, pool, tgt in variants:
         print(f"  {suffix:34s} pool {int(pool.sum()):5d} cells   targets {int(tgt.sum()):4d}")
 
@@ -187,7 +203,7 @@ def main():
 
     acc = {}            # name -> {(suffix, q): [cell_hits, cell_events]}
 
-    def accumulate(name, s, aa_b, tgt_b):
+    def accumulate(name, s, aa_b, tgt_b, wtm):
         """One SINGLE model. A single map has no normalisation, so the candidate pool
         only has to reach ``rank_fractions``; there is no support for it to perturb."""
         a = acc.setdefault(name, {})
@@ -198,12 +214,24 @@ def main():
                 # and then lets n_valid fall out of whatever the MODEL emits inside it.
                 sv = s.clone()
                 sv[:, ~pool] = float("nan")
-                above, tie, nv = rank_fractions(sv, aa_b, list(range(R)))
-                filled = None
+                # `return_filled` only when a mask is actually in play: with no pool
+                # mask at all nothing is filled, and asking for it would change nothing
+                # -- but `--legacy-pool --ungrounded-queries drop` DOES fill, and
+                # dropping the mask there would let an abstaining model be credited for
+                # cells it declined to score once q is large (s51's leak C).
+                if wtm is None:
+                    above, tie, nv = rank_fractions(sv, aa_b, list(range(R)))
+                    filled = None
+                else:
+                    above, tie, nv, filled = rank_fractions(
+                        sv, aa_b, list(range(R)), return_filled=True, wt_pool_mask=wtm)
             else:
                 above, tie, nv, filled = rank_fractions(
-                    s, aa_b, list(range(R)), pool_mask=pool, return_filled=True)
+                    s, aa_b, list(range(R)), pool_mask=pool, return_filled=True,
+                    wt_pool_mask=wtm)
             t = tgt_b * tmask.unsqueeze(0).float()
+            if ungrounded == "drop":
+                t = t * wtm.unsqueeze(-1).float()
             for q in qtiles:
                 W = top_q_weight(above, tie, nv, q)
                 if filled is not None and filled.any():
@@ -218,6 +246,8 @@ def main():
     for start in range(0, N, args.block):
         stop = min(start + args.block, N)
         aa_b = torch.from_numpy(aa_all[start:stop].astype(np.int64))[:, RBD_RANGE]
+        wtm = (None if ungrounded == "score"
+               else real_wildtype_mask(aa_b, ALLOWED_AAS))
         tgt_b = torch.zeros(stop - start, R, E)
         lo, hi = starts[start], starts[stop]
         if hi > lo:
@@ -231,7 +261,7 @@ def main():
             if m in rule_members:
                 member_blocks[m] = t
             if m in models:
-                accumulate(m, t, aa_b, tgt_b)
+                accumulate(m, t, aa_b, tgt_b, wtm)
         # RULES. The pool a member is normalised over must be the pool the metric ranks
         # it in -- `ensemble_sweep._wt_masked`'s docstring, and the reason the loop cannot
         # be hoisted out of the variant. Applying one rule per block and restricting the
@@ -244,8 +274,11 @@ def main():
         # caught it.
         for suffix, pool, tmask in variants:
             excl = ~pool
-            masked = {m: es._wt_masked(v, aa_b, excl) for m, v in member_blocks.items()}
+            masked = {m: es._wt_masked(v, aa_b, excl, wtm)
+                      for m, v in member_blocks.items()}
             t = tgt_b * tmask.unsqueeze(0).float()
+            if ungrounded == "drop":
+                t = t * wtm.unsqueeze(-1).float()
             for r in rules:
                 name = f"ens_{r.rule_id}"
                 a = acc.setdefault(name, {})
@@ -300,6 +333,21 @@ def main():
     # wild-type mask AFTER the pool fill and so never had the problem; `top_q_weights`
     # receives the scores already wild-type-masked, and the fill resurrected them.
     varr_pool = None if args.legacy_pool else (common & wt_keep)
+
+    # The query-dependent half of the pool, for the ONE query G-J is scored at. The
+    # BA.2 root carries no gap or stop anywhere in the eval range, so this row is
+    # untouched by s52 -- but that is measured here on every run rather than assumed,
+    # because it is a property of the root and not of the convention.
+    root_real = real_wildtype_mask(root.aa_idx[RBD_RANGE].unsqueeze(0), ALLOWED_AAS)[0]
+    n_ungrounded = int((~root_real).sum())
+    print(f"G-J: the variant root has {n_ungrounded} gap/stop residue(s) in the eval "
+          + ("range, so the query-dependent pool is a no-op for this row"
+             if not n_ungrounded else
+             f"range; the query-dependent pool removes {n_ungrounded * 20} cells"))
+    g_root = root_real.unsqueeze(-1).expand(R, E)
+    if ungrounded != "score":
+        varr_pool = g_root.clone() if varr_pool is None else (varr_pool & g_root)
+        target_sets = {k: [m & g_root for m in v] for k, v in target_sets.items()}
     vrows = []
     blocks = {}
     for m in sorted(set(models) | set(rule_members)):
@@ -309,6 +357,8 @@ def main():
     if rules:
         aa_root = torch.from_numpy(aa_all[qi:qi + 1].astype("int64"))[:, RBD_RANGE]
         excl = ~(common & wt_keep) if not args.legacy_pool else None
+        if ungrounded != "score":
+            excl = ~g_root if excl is None else (excl | ~g_root)
         masked_root = {m: es._wt_masked(v, aa_root, excl) for m, v in blocks.items()}
         named += [(f"ens_{r.rule_id}", er.apply(masked_root, r)[0]) for r in rules]
     for name, s2d in named:

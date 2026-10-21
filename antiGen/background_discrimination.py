@@ -103,7 +103,8 @@ HOSTS = "backbone_hosts.csv"
 MANIFEST = "backbone_manifest.json"
 
 
-def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=False):
+def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=False,
+                   wt_pool_mask=None):
     """(above, tie, n_valid): rank fractions over the eval-range pool.
 
     ``scores`` is (B, seq_len, E) or (B, R, E); ``aa_batch`` is (B, seq_len). ``above``
@@ -117,6 +118,12 @@ def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=F
     identity holding: it must mean here exactly what it means in ``compute_hit_rate``,
     or the ensemble path and the published path stop being the same metric. A cell in
     the pool that the model cannot score ranks last; a cell outside it leaves the pool.
+
+    ``wt_pool_mask`` is the (B, R) query-dependent half -- ``eval_utils`` builds it with
+    :func:`~antiGen.eval_utils.real_wildtype_mask` -- and drops every candidate at a
+    position whose query residue is a gap or a stop, so ``-123A`` cannot be selected.
+    The same argument means the same thing in ``compute_hit_rate``, for the same
+    reason.
 
     ``return_filled`` adds a fourth return value: the (B, R, E) mask of in-pool cells the
     model could not score, which were filled to rank last. **A caller using a pool mask
@@ -132,8 +139,17 @@ def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=F
     aa_sub = aa_batch if aa_batch.shape[1] == len(eval_range) else aa_batch[:, eval_range]
     sub = scores[:, eval_range, :] if scores.shape[1] != len(eval_range) else scores
     sub = sub.clone().float()
+    pm = None
     if pool_mask is not None:
-        pm = pool_mask.to(sub.device)
+        pm = pool_mask.to(sub.device).unsqueeze(0).expand_as(sub)
+    if wt_pool_mask is not None:
+        wt = wt_pool_mask.to(sub.device)
+        if wt.shape != sub.shape[:2]:
+            raise ValueError(f"wt_pool_mask {tuple(wt.shape)} does not match the "
+                             f"(batch, eval-range) grid {tuple(sub.shape[:2])}")
+        wt = wt.unsqueeze(-1).expand_as(sub)
+        pm = wt if pm is None else (pm & wt)
+    if pm is not None:
         unscorable = (torch.isnan(sub) | torch.isneginf(sub)) & pm
         filled_mask = unscorable.clone()
         if unscorable.any():
@@ -143,8 +159,7 @@ def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=F
             floor = torch.where(torch.isfinite(floor), floor,
                                 torch.zeros_like(floor)).view(-1, 1, 1) - 1.0
             sub = torch.where(unscorable, floor.expand_as(sub), sub)
-        sub = torch.where(pm.unsqueeze(0).expand_as(sub), sub,
-                          torch.full_like(sub, float('nan')))
+        sub = torch.where(pm, sub, torch.full_like(sub, float('nan')))
     else:
         filled_mask = torch.zeros_like(sub, dtype=torch.bool)
     sub.scatter_(2, aa_sub.unsqueeze(-1), float('nan'))

@@ -58,7 +58,15 @@ import torch
 
 from antiGen import ensemble_rules as er
 from antiGen import score_cache as sc
-from antiGen.eval_utils import real_substitution_mask
+from antiGen.eval_utils import real_substitution_mask, real_wildtype_mask
+
+# How to treat a candidate, or a target event, at a position whose query residue is a
+# gap or a stop -- a mutation like `-123A`. See NOTES s52.
+#   'score' the pre-s52 convention: such cells are candidates and such events are scored
+#   'keep'  they leave the candidate pool, but their events stay in the denominator
+#   'drop'  they leave the pool and their events leave the metric
+UNGROUNDED = ("score", "keep", "drop")
+UNGROUNDED_DEFAULT = "score"
 from antiGen.background_discrimination import rank_fractions, top_q_weight
 from antiGen.backbone_list_eval import summarize, target_matrix
 from antiGen import datasets
@@ -182,8 +190,15 @@ class Substrate:
     """
 
     def __init__(self, *, maps_dir, aa_eval, targets, seen, in_full, observed,
-                 eval_range, members, block=2048):
+                 eval_range, members, block=2048, ungrounded=UNGROUNDED_DEFAULT):
         self.maps_dir = maps_dir
+        # 'score' by default: the backbone substrate (K-L) ranks one cell ACROSS queries
+        # against a deliberately query-INDEPENDENT pool (NOTES s39), so a per-query mask
+        # would reintroduce exactly the confound that row exists to avoid. Only the list
+        # substrate asks for anything else.
+        if ungrounded not in UNGROUNDED:
+            raise ValueError(f"ungrounded={ungrounded!r} not in {UNGROUNDED}")
+        self.ungrounded = ungrounded
         self.aa_eval = aa_eval            # (N, R) long, residue index per eval position
         self.targets = targets            # (N, R, E) float, target counts
         self.seen = seen                  # (R, E) bool, carried in the training window
@@ -216,6 +231,31 @@ class Substrate:
             self._cache[key] = torch.from_numpy(arr)
         return self._cache[key]
 
+    def wt_pool(self, start, stop):
+        """(B, R) True where the query's own residue is a real amino acid, or None.
+
+        The query-dependent half of the candidate pool; see
+        :func:`~antiGen.eval_utils.real_wildtype_mask`. None under ``'score'``, which is
+        the pre-s52 behaviour and what every backbone caller wants.
+        """
+        if self.ungrounded == "score":
+            return None
+        return real_wildtype_mask(self.aa_eval[start:stop], ALLOWED_AAS)
+
+    def targets_block(self, start, stop):
+        """(B, R, E) target counts for this block, with ungrounded events handled.
+
+        Under ``'drop'`` an event at a position the query has no residue at leaves the
+        metric entirely -- numerator AND denominator -- because the cell is not a
+        candidate there and a target that is not a candidate is not a target. That keeps
+        the invariant ``build_variants`` already relies on, that every target is in the
+        pool it is ranked in. Under ``'keep'`` the events stay and are unhittable.
+        """
+        t = self.targets[start:stop]
+        if self.ungrounded != "drop":
+            return t
+        return t * self.wt_pool(start, stop).unsqueeze(-1).to(t.dtype)
+
     def pool_mask(self, pool_name):
         """Cells EXCLUDED from this pool, as an (R, E) bool.
 
@@ -247,7 +287,7 @@ class Substrate:
         return {"report": rep, "select": sel}
 
 
-def _wt_masked(scores, aa_eval_block, pool_mask):
+def _wt_masked(scores, aa_eval_block, pool_mask, wt_pool_mask=None):
     """Apply the query's own residue and the pool mask, so ranks are over candidates only.
 
     Normalisation has to happen over exactly the pool the metric ranks in. Leaving the
@@ -255,11 +295,20 @@ def _wt_masked(scores, aa_eval_block, pool_mask):
     harmless for one model, since only the order inside the candidate set is read, but a
     real perturbation once several members are averaged. ``rank_fractions`` masks them
     again downstream, which is idempotent.
+
+    ``wt_pool_mask`` is the (B, R) query-dependent half of the pool
+    (:func:`~antiGen.eval_utils.real_wildtype_mask`): it drops every cell at a position
+    whose query residue is a gap or a stop. It has to be applied HERE and not only at
+    ranking time, for the reason the pool mask does -- NOTES s51 measured a rule
+    normalised over the wrong support disagreeing with ``ensemble_report`` by up to
+    0.0498.
     """
     s = scores.clone()
     s.scatter_(2, aa_eval_block.unsqueeze(-1), float('nan'))
     if pool_mask is not None:
         s[:, pool_mask] = float('nan')
+    if wt_pool_mask is not None:
+        s[~wt_pool_mask.to(s.device)] = float('nan')
     return s
 
 
@@ -365,9 +414,11 @@ def score_rules(sub, rules, qtiles, *, position_disjoint=False, device="cpu",
         done = 0
         for start, stop in sub.blocks():
             aa_b = sub.aa_eval[start:stop].to(device)
-            tgt_b = sub.targets[start:stop].to(device)
+            tgt_b = sub.targets_block(start, stop).to(device)
             # One masked copy per member, then one normalised stack per normalisation.
-            masked = [_wt_masked(sub.raw(m, start, stop).to(device), aa_b, pmask)
+            wtm = sub.wt_pool(start, stop)
+            wtm = wtm.to(device) if wtm is not None else None
+            masked = [_wt_masked(sub.raw(m, start, stop).to(device), aa_b, pmask, wtm)
                       for m in sub.members]
             valid = [~torch.isnan(x) for x in masked]
             nv = torch.stack([v.reshape(v.shape[0], -1).sum(dim=1).clamp(min=1)
@@ -605,6 +656,13 @@ def add_substrate_args(ap):
     ap.add_argument('--members', default=None, help='comma-separated substrings to keep')
     ap.add_argument('--exclude', default=None, help='comma-separated substrings to drop')
     ap.add_argument('--select-position-disjoint', action='store_true')
+    ap.add_argument('--ungrounded-queries', choices=list(UNGROUNDED),
+                    default=UNGROUNDED_DEFAULT,
+                    help="a cell like `-123A`, at a position whose query residue is a "
+                         "gap or a stop: 'score' keeps it a candidate (the pre-s52 "
+                         "convention), 'keep' drops it from the pool but keeps its "
+                         "target events in the denominator, 'drop' removes both. "
+                         "--substrate list only.")
     ap.add_argument('--query-block', type=int, default=2048)
     return ap
 
@@ -644,9 +702,22 @@ def substrate_from_args(args):
         raise SystemExit(f"--list {label!r} is not among {[l for l, _ in lists]}")
     observed = T.sum(dim=0) > 0
 
+    ungrounded = getattr(args, 'ungrounded_queries', None) or UNGROUNDED_DEFAULT
+    if args.substrate == 'backbone' and ungrounded != 'score':
+        raise SystemExit(
+            "--ungrounded-queries only applies to --substrate list: the backbone row "
+            "ranks a cell across queries against a query-INDEPENDENT pool (NOTES s39), "
+            "and a per-query mask would put the confound back")
     sub = Substrate(maps_dir=maps_dir, aa_eval=aa_eval, targets=T, seen=seen,
                     in_full=in_full, observed=observed, eval_range=eval_range,
-                    members=members, block=args.query_block)
+                    members=members, block=args.query_block, ungrounded=ungrounded)
+    if ungrounded != 'score':
+        g = torch.cat([sub.wt_pool(a, b) for a, b in sub.blocks()])
+        kept = T * g.unsqueeze(-1).to(T.dtype)
+        print(f"  ungrounded={ungrounded}: {int((~g).sum())} of {g.numel()} "
+              f"(query, position) pairs have a gap/stop residue and carry no candidate"
+              f"; {float(T.sum() - kept.sum()):.0f} of {float(T.sum()):.0f} target "
+              f"events sit there")
     for pool_name in POOLS:
         cs = sub.cellsets(pool_name,
                           position_disjoint=bool(getattr(args, 'select_position_disjoint',

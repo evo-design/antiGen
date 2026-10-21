@@ -88,8 +88,10 @@ def percell_for_rules(sub, rules, pool_name, qtiles, device="cpu"):
     acc = {}
     for start, stop in sub.blocks():
         aa_b = sub.aa_eval[start:stop].to(device)
-        tgt_b = sub.targets[start:stop].to(device)
-        masked = [es._wt_masked(sub.raw(m, start, stop).to(device), aa_b, pmask)
+        tgt_b = sub.targets_block(start, stop).to(device)
+        wtm = sub.wt_pool(start, stop)
+        wtm = wtm.to(device) if wtm is not None else None
+        masked = [es._wt_masked(sub.raw(m, start, stop).to(device), aa_b, pmask, wtm)
                   for m in needed]
         valid = [~torch.isnan(x) for x in masked]
         nv = torch.stack([v.reshape(v.shape[0], -1).sum(dim=1).clamp(min=1)
