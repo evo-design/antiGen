@@ -6274,7 +6274,7 @@ untouched without having to opt out.
 
 ---
 
-## 51. One pool for every model: "the top decile" was a different size per rung (2026-10-20)
+## 51. One pool for every model: "the top decile" was a different size per rung (2026-10-20/21)
 
 s50's G-J table reported EVE full FT ahead of every ensemble on the yield row. The
 numerator says otherwise: the nine-member **mean of log-probs caught 98.0 listed cells to
@@ -6379,6 +6379,100 @@ script rather than the new convention.
 with zero `n_cells` / `n_events` mismatches, and the run's own diagnostic correctly
 reporting that under `--legacy-pool` the top decile **still varies** (380.4 / 381.9 /
 422.1) -- the defect, reproduced on demand.
+
+### Measured: what the common pool did to the ordering
+
+Rendered 2026-10-21. Every number below is old (per-model pool) -> new (common pool), from
+the SAME cached maps, so the convention is the only difference. The three mean-ensembles
+of the antiGen family are drawn on all twelve panels; `--` means the row is new.
+
+**Panel C, all listed cells (macro, q = 0.10).** The leader changes.
+
+| | old | new | delta | rank |
+|---|---:|---:|---:|---|
+| **antiGen** | 0.4460 | **0.5350** | **+0.0891** | #4 -> **#1** |
+| Mean of log-probs | -- | 0.5321 | -- | #2 |
+| Mean of ranks | -- | 0.5245 | -- | #3 |
+| Mean of z-scores | -- | 0.5243 | -- | #4 |
+| antiGen as ESM 2 (35M) partial FT | 0.5125 | 0.4987 | -0.0138 | #1 -> #5 |
+| PSSM (root) | 0.3624 | 0.4241 | +0.0617 | #12 -> #10 |
+| substitution matrix | 0.1777 | 0.3111 | **+0.1334** | #24 -> #18 |
+
+**Panel D, de novo.** antiGen loses a little and drops to 3rd behind two means.
+
+| | old | new | delta | rank |
+|---|---:|---:|---:|---|
+| Mean of log-probs | -- | **0.5379** | -- | **#1** |
+| Mean of z-scores | -- | 0.5221 | -- | #2 |
+| antiGen | 0.5089 | 0.4988 | -0.0101 | #1 -> #3 |
+| Mean of ranks | -- | 0.4705 | -- | #4 |
+
+**Panels E/F, recall AUC.** All three means lead both.
+
+| | E old | E new | F old | F new |
+|---|---:|---:|---:|---:|
+| Mean of log-probs | -- | **0.8502** | -- | **0.8440** |
+| Mean of z-scores | -- | 0.8488 | -- | 0.8384 |
+| Mean of ranks | -- | 0.8432 | -- | 0.8307 |
+| antiGen | 0.8209 | 0.8409 (+0.0200) | 0.8235 | 0.8219 (-0.0016) |
+
+**G-J, max yield of the BA.2 top decile (all, 1+).** EVE full FT keeps the row, now on a
+denominator every model shares (381.9 cells, not 381.9-vs-422.1), and the s50 inversion is
+gone: the means no longer catch more cells while scoring lower.
+
+| | old | new | delta |
+|---|---:|---:|---:|
+| antiGen as EVE full FT | 0.2461 | **0.2461** | +0.0000 |
+| Mean of log-probs / z-scores | -- | 0.2409 | -- |
+| Mean of ranks | -- | 0.2357 | -- |
+| antiGen | 0.1516 | 0.2173 | **+0.0657** |
+| PSSM (root) | 0.1688 | 0.2149 | +0.0461 |
+
+**K-L, background lift, CoG-UK all cells (pp).** Smallest movement of any row, as expected:
+its pool only lost the 400 gap/stop cells, and the models that never emitted them do not
+move at all.
+
+| | old | new | delta |
+|---|---:|---:|---:|
+| Tranception (frozen) | 8.24 | **8.24** | +0.00 |
+| antiGen as ESM 2 (35M) partial FT | 5.95 | 6.52 | +0.57 |
+| Mean of z-scores | -- | 5.57 | -- |
+| Mean of ranks | -- | 5.39 | -- |
+| Mean of log-probs | -- | 4.71 | -- |
+
+**The sign test the whole fix rests on.** Every model that already declined to emit gap and
+stop moves by **exactly 0.0000** -- EVE, Tranception, the frozen ESM-2 arms, the DMS panels,
+the MSA Transformers -- because for them the common pool IS their own pool. Only the rungs
+that emitted those columns move, and the composition baselines, which ranked them highest,
+move most. That is the predicted pattern and it is the reason to believe the change did what
+it claims rather than something else.
+
+### s49's headline does not survive, and the direction is worth stating
+
+s49 reported `(logsoftmax, arith)` beating all nine of its own parts on all four panels.
+Under one pool that holds on **D, E and F** but **not on C**, where the mean (0.5321) now
+loses to antiGen (0.5350), its own strongest member. The gain was measured against a field
+in which antiGen was handicapped hardest -- 39.8% of its slots spent on cells that cannot be
+targets -- so a large part of what looked like ensembling value was the pool convention.
+
+What survives is narrower and still real: the means lead both AUC panels outright, and on D
+they lead by +0.039 over antiGen, which clears the 0.028 seed floor. `Mean of ranks` remains
+the weakest of the three on every panel, and on K-L it is below base antiGen, which is the
+`globalz` argument from s50 showing up as a number.
+
+### Gates on the shipped run, all exact
+
+| gate | what | result |
+|---|---|---:|
+| legacy A-F | `--legacy-pool` vs the published macro CSVs, from cache | **6.0e-08** |
+| legacy G-J | same, `list_variant_recall.csv` | **0.000e+00** |
+| legacy K-L | `background_contrast --legacy-pool` vs `background_summary.csv`, 240 rows | **0.000e+00** |
+| cross-job | the two independent paths writing the ensemble rows | **1.20e-07** |
+| yield row | top decile identical across models | **381.9, all 32** |
+
+The cross-job number is the one that matters most here: it was **4.98e-02** on the first
+attempt and is what caught the normalisation-support bug. `fig_coguk_list.R` now also hard-
+errors if `n_selected` varies across models, which it did at 42.0 cells before the fix.
 
 ### Code
 
@@ -6513,10 +6607,37 @@ than a shell pid, so the watch survives whatever happens to the session.
 Also `pkill -f <script>.py` matches the interactive shell wrapper whose command line
 contains that string, and so kills the command issuing it. Kill by PID here.
 
+### State
+
+* **Shipped.** `figs/coguk_list_results.png` and `figs/coguk_list_supp.png` re-rendered
+  2026-10-21 11:24 with the three means on all twelve panels; committed as **91577a0** on
+  `is-multitree` (40 files) and pushed. The figure was inspected, not just produced: six
+  legend groups with `Ensembles` in its own colour, the three bars present in C/D, J, K and
+  L, rank medals agreeing with the tables above, nothing clipped.
+* The five per-job macro CSVs are in `data/evals_sc2_lists_macro/legacy_per_model_pool/`,
+  committed as renames, so the pre-s51 numbers stay in the tree and not only in history.
+  All eight `valsel`/`fix32` rungs are in the common-pool CSV, so the s47 sibling figure
+  still resolves through the glob.
+* **Not committed, deliberately:** the `examples/slurm/train_*.sh` parameterisation, the
+  s46/s47 valsel figures and wrapper, `escape.csv`, `eval_tree.json`. None of them is this
+  arm's work and each wants its own message.
+* Tests: 28 in `test_common_pool.py`; 48 pass across the four files covering the changed
+  code. The full suite has NOT been run end to end since these edits.
+
 ### Open
 
-* K-L is unaffected (it always used a fixed pool), so the background row is the one place
-  where the old and new figures are directly comparable.
+* K-L moved least of any row, but it did move (its pool lost the 400 gap/stop cells), so the
+  old and new figures are no longer directly comparable on ANY row. There is now no panel
+  that can be read across the two conventions.
+* **`globalz` is still unscored**, and it is now the only open question about which mean to
+  prefer on K-L. One CPU pass would settle it.
+* **The s45 all-RBD sibling is stale.** `rbd_all_cells.csv` lists the gap and stop columns
+  (201 each of its 4,422), so under this convention its denominators change and its targets
+  in those columns become uncatchable. It needs its own pass and its own decision about
+  whether those cells should ever have been targets. Not touched here.
+* The backbone siblings (s44, s45) and the q0.05/q0.20 variants still read their own macro
+  directories under the per-model pool. They are internally consistent but are no longer on
+  the same convention as the published figure.
 * The s45 all-RBD sibling takes `rbd_all_cells.csv`, which **does** list the gap and stop
   columns (201 each of its 4,422). Under the common pool those cells are no longer
   candidates, so that figure's denominators change too and its targets in those columns
