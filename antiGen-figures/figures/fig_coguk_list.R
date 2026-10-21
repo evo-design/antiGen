@@ -358,8 +358,6 @@ MODEL_GROUP <- c(
   eve_frozen                                 = "Pandemic Data in Training Window",
   tranception_frozen_both                    = "Pandemic Data in Training Window",
   evcouplings                                = "Pandemic Data in Training Window",
-  pyr0                                       = "Pandemic Data in Training Window",
-  CoVFit                                     = "Pandemic Data in Training Window",
   ## Fitted on the TRAINING examples only (eval.py's _fit /
   ## positional_marginal_counts), so they sit with the rungs that saw the
   ## training window -- and, because this vector's order IS the bar-panel order,
@@ -400,8 +398,6 @@ MODEL_LABEL <- c(
   eve_frozen                                 = "EVE",
   tranception_frozen_both                    = "Tranception",
   evcouplings                                = "EVmutation",
-  pyr0                                       = "PyR0",
-  CoVFit                                     = "CoVFit",
   substitution                               = "Substitution matrix",
   where_times_which                          = "Where × which",
   Omicron_BA1_bind                           = "BA.1 DMS (bind)",
@@ -487,6 +483,13 @@ drop_unrequested_ensemble <- function(df) {
   df[!grepl("^ens_", df$model) | df$model %in% ENSEMBLE, , drop = FALSE]
 }
 
+## Rungs withdrawn from this figure entirely. Unlike the three above, these are
+## dropped by name and in every panel, so they also come out of MODEL_GROUP and
+## MODEL_LABEL below -- otherwise the "report the holes" pass would list them as
+## missing from all twelve metrics on every run.
+DROP_MODELS <- getOption("coguk.drop_models", c("CoVFit", "pyr0"))
+drop_models <- function(df) df[!df$model %in% DROP_MODELS, , drop = FALSE]
+
 
 ## --- Recall: merge the four macro jobs -------------------------------------
 
@@ -514,8 +517,8 @@ macro <- macro[!duplicated(key), ]
 
 ## The 2021-cutoff arm is drawn only where it was asked for (see MT2021 above).
 ## Unasked-for seeds are dropped here rather than left to trip the grouping check.
-macro <- drop_unrequested_ensemble(
-  drop_unrequested_valsel(drop_unrequested_mt2021(macro)))
+macro <- drop_models(drop_unrequested_ensemble(
+  drop_unrequested_valsel(drop_unrequested_mt2021(macro))))
 
 ## One "metric" per (subset, pooling). `melt` would mix the two poolings, so
 ## the long frame is built directly.
@@ -571,8 +574,8 @@ have_varr <- file.exists(varr_path)
 if (have_varr) {
   varr <- read.csv(varr_path)
   varr <- varr[varr$list == LIST, ]
-  varr <- drop_unrequested_ensemble(
-    drop_unrequested_valsel(drop_unrequested_mt2021(varr)))
+  varr <- drop_models(drop_unrequested_ensemble(
+    drop_unrequested_valsel(drop_unrequested_mt2021(varr))))
   varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
                         ifelse(varr$subset == "unseen", "unseen", "all"))
   varr$x <- (varr$step + 1) / 10
@@ -693,8 +696,8 @@ bg_path <- file.path(BG_DIR, "background_summary.csv")
 have_bg <- file.exists(bg_path)
 if (have_bg) {
   bg <- read.csv(bg_path)
-  bg <- drop_unrequested_ensemble(
-    drop_unrequested_valsel(drop_unrequested_mt2021(bg)))
+  bg <- drop_models(drop_unrequested_ensemble(
+    drop_unrequested_valsel(drop_unrequested_mt2021(bg))))
   ## Select the ruler, then rename back to the bare cell-set names so nothing
   ## downstream has to know which one was picked.
   wanted <- bg_cellset(BG_METRICS)
@@ -1001,8 +1004,39 @@ BG_SUPP <- vapply(bg_supp_cells, bg_label, character(1), USE.NAMES = FALSE)
 stopifnot(all(c(RECALL_MAIN, RECALL_SUPP) %in% longform_recall_metrics))
 stopifnot(!have_varr || all(c(VARR_MAIN, VARR_SUPP) %in% longform_varr_metrics))
 
-recall_auc_range <- c(0.35, max(recall_auc_df$value))
-decile_range     <- c(0, max(recall_q10_df$value))
+## Both rows start above zero, and the upper end is the longest bar plus the
+## scale's 5% expansion, so the axis is only as wide as the bars need.
+##
+## A FLOOR CLIPS. `coord_cartesian` does not shorten a bar that ends below xmin,
+## it removes it, leaving the model's y-axis label with nothing beside it -- which
+## reads as missing data rather than as a low score. The check below names
+## whatever that costs on each run rather than letting it pass silently.
+DECILE_FLOOR <- getOption("coguk.decile_floor", 0.10)
+AUC_FLOOR    <- getOption("coguk.auc_floor",    0.50)
+## Per figure, not across both, for the reason `bg_range_for` gives below: the
+## main figure is cell-weighted and the supplement event-weighted, and the
+## event-weighted panels run half again as high (0.86 against 0.53 at the top
+## decile). One shared axis leaves the main figure's bars ending at two thirds
+## of the panel. Still shared across the two panels OF a row, so the shrinkage
+## from all-cells to de novo can be read off the bar lengths.
+decile_range_for <- function(metrics) {
+  c(DECILE_FLOOR, max(recall_q10_df$value[recall_q10_df$metric %in% metrics]))
+}
+auc_range_for <- function(metrics) {
+  c(AUC_FLOOR, max(recall_auc_df$value[recall_auc_df$metric %in% metrics]))
+}
+for (fl in list(list("top decile", recall_q10_df, DECILE_FLOOR),
+                list("recall AUC", recall_auc_df, AUC_FLOOR))) {
+  lost <- fl[[2]][fl[[2]]$value <= fl[[3]], c("model", "metric", "value")]
+  if (nrow(lost) > 0) {
+    cat(sprintf("%-38s %2d bar(s) at or below the %.2f floor and so not drawn:\n",
+                fl[[1]], nrow(lost), fl[[3]]))
+    for (i in seq_len(nrow(lost))) {
+      cat(sprintf("%-38s   %-28s %-34s %.4f\n", "", MODEL_LABEL[[lost$model[i]]],
+                  lost$metric[i], lost$value[i]))
+    }
+  }
+}
 varr_range       <- if (have_varr) c(0, max(varr_max_df$value)) else NULL
 ## Per figure, not across all four cell sets: the supplement's RBD panels and the
 ## main figure's list panels have different spreads, and sharing one axis across
@@ -1022,20 +1056,22 @@ recall_curve_panel <- function(metric, first) {
               titled(paste0("Recall, ", metric)), chance = 1)
 }
 
-decile_bar <- function(metric, first) {
+decile_bar <- function(metric, first, metrics) {
   bar_panel(recall_q10_df, metric, paste0("Recall at ", q_label),
             titled(paste0(q_Noun, ", ", metric)),
-            labels_on_y = first, xrange = decile_range) +
+            labels_on_y = first, xrange = decile_range_for(metrics)) +
     ## Chance, for a metric whose scale is otherwise easy to misread.
     geom_vline(xintercept = QTILE, linetype = "dotted", linewidth = 0.3,
                color = "grey30")
 }
 
-auc_bar <- function(metric, first) {
-  ## Axis starts above zero, unlike the decile row: every rung clears chance by
-  ## a wide margin and a zero-based axis compresses the differences to nothing.
+auc_bar <- function(metric, first, metrics) {
+  ## Both bar rows now start at CHANCE rather than at zero -- 0.1 is the top
+  ## decile a random ranking catches, and 0.5 is the AUC of the chance curve
+  ## recall(q) = q over this q grid, normalised. So the origin is "no better
+  ## than guessing" and a bar's length is the margin over it.
   bar_panel(recall_auc_df, metric, "Recall AUC", titled(paste0("AUC, ", metric)),
-            labels_on_y = first, xrange = recall_auc_range)
+            labels_on_y = first, xrange = auc_range_for(metrics))
 }
 
 varr_curve <- function(metric) {
@@ -1080,9 +1116,11 @@ assemble <- function(recall_metrics, varr_metric, bg_metrics) {
     legend_grob,
     plot_grid(plotlist = Map(recall_curve_panel, recall_metrics, c(TRUE, FALSE)),
               nrow = 1, labels = LETTERS[1:2], rel_widths = c(1.06, 1)),
-    plot_grid(plotlist = Map(decile_bar, recall_metrics, c(TRUE, FALSE)),
+    plot_grid(plotlist = Map(function(m, f) decile_bar(m, f, recall_metrics),
+                             recall_metrics, c(TRUE, FALSE)),
               nrow = 1, labels = LETTERS[3:4], rel_widths = c(1.9, 1)),
-    plot_grid(plotlist = Map(auc_bar, recall_metrics, c(TRUE, FALSE)),
+    plot_grid(plotlist = Map(function(m, f) auc_bar(m, f, recall_metrics),
+                             recall_metrics, c(TRUE, FALSE)),
               nrow = 1, labels = LETTERS[5:6], rel_widths = c(1.9, 1))
   )
   heights <- c(0.14, 1, 1.5, 1.5)
