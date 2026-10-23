@@ -50,8 +50,22 @@ OUTDIR=${OUTDIR:-/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists
 shift || true
 EXTRA=("$@")          # e.g. --multitree-baselines, or --models eve_,simple_
 
+# DATA_DIR / CKPT_DIR are env overrides so the 20-letter arm (NOTES s53) comes off this
+# same script. That arm names its inputs explicitly instead -- --train-examples,
+# --test-examples and --root-counts through EXTRA, because antiGen-data-revised writes
+# the two halves of the corpus as separate files and its count matrix where pssms/
+# used to be -- and then DATA_DIR must be EMPTY. Passing the published --data-dir
+# beside those flags would be a path that is read for nothing, which is the shape of
+# defect s53 spent a section on: an input that is wrong but never fails.
+DATA_DIR=${DATA_DIR-/home/ivan.specht/antiGen-data/output1}
+CKPT_DIR=${CKPT_DIR:-/large_storage/hielab/ispecht/fitness-inference}
+DATA_ARG=()
+[ -n "$DATA_DIR" ] && DATA_ARG=(--data-dir "$DATA_DIR")
+
 echo "Eval range: $RANGE | output suffix: '${SUFFIX}'"
 echo "Quantiles:  $QTILES"
+echo "Data dir:   ${DATA_DIR:-<none: named explicitly in EXTRA>}"
+echo "Ckpt dir:   $CKPT_DIR"
 echo "Output dir: $OUTDIR"
 echo "Extra args: ${EXTRA[*]}"
 
@@ -68,11 +82,11 @@ print(f"preflight OK: torch={torch.__version__} torchvision={torchvision.__versi
       f"transformers={transformers.__version__}")
 PY
 
-python "$REPO/antiGen/list_macro.py" \
+python -u "$REPO/antiGen/list_macro.py" \
     --dataset sc2 \
     --eval-range "$RANGE" \
-    --data-dir /home/ivan.specht/antiGen-data/output1 \
-    --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
+    "${DATA_ARG[@]}" \
+    --checkpoint-dir "$CKPT_DIR" \
     --output-dir "$OUTDIR" \
     --qtiles "$QTILES" \
     --percell-qtile "$PERCELL_Q" \

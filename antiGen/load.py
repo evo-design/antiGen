@@ -287,3 +287,58 @@ def load_pssms(pssm_dir, variant, E):
         print(f"Loaded 0 variant PSSMs from {variant_pssm_dir}")
 
     return pssm_root, pssm_variant
+
+
+def load_counts_matrix(path, allowed_aas):
+    """Read antiGen-data-revised's positional count matrix as an (seq_len, E) tensor.
+
+    The revised generator writes ``counts_<run>.tsv`` where ``pssms/root.csv`` used to
+    be: two header lines (``#sequences``, ``#sites``), then a ``#site`` column header
+    naming the residues, then one row per site. Two differences from the legacy CSV,
+    both handled here rather than by the caller:
+
+    * **Sites are 1-indexed**, matching the mutation positions of the same generator
+      (NOTES s53). They come back 0-indexed, which is the frame the rest of antiGen
+      works in.
+    * **The column order is the file's, not the alphabet's.** The header is read and
+      each column placed at its index in ``allowed_aas``, so a 20-column file read
+      under the 22-token frame leaves gap and stop at zero rather than shifting the
+      last two residues into them.
+
+    A residue in the file that the alphabet does not carry is an error: it is a count
+    that would be silently discarded, and the de novo mask is defined by which cells
+    are nonzero.
+    """
+    with open(path) as fh:
+        rows = [ln.rstrip("\n").split("\t") for ln in fh if ln.strip()]
+    meta = {r[0]: r[1] for r in rows if r[0].startswith("#") and r[0] != "#site"}
+    header = next((r for r in rows if r[0] == "#site"), None)
+    if header is None:
+        raise ValueError(f"{path}: no '#site' column header line")
+    letters = header[1:]
+    bad = sorted(set(letters) - set(allowed_aas))
+    if bad:
+        raise ValueError(
+            f"{path}: counts for residue(s) {bad} that the alphabet "
+            f"'{allowed_aas}' does not carry")
+    col_of = [allowed_aas.index(a) for a in letters]
+
+    body = [r for r in rows if not r[0].startswith("#")]
+    seq_len = int(meta.get("#sites", len(body)))
+    if len(body) != seq_len:
+        raise ValueError(f"{path}: #sites {seq_len} but {len(body)} data rows")
+    counts = torch.zeros(seq_len, len(allowed_aas), dtype=torch.float32)
+    sites = []
+    for r in body:
+        site = int(r[0])
+        sites.append(site)
+        for j, v in enumerate(r[1:]):
+            counts[site - 1, col_of[j]] = float(v)
+    if sorted(sites) != list(range(1, seq_len + 1)):
+        raise ValueError(
+            f"{path}: sites are not 1..{seq_len} exactly "
+            f"(min {min(sites)}, max {max(sites)}, {len(set(sites))} distinct)")
+    print(f"Loaded counts matrix {path}: {tuple(counts.shape)}, "
+          f"{int((counts > 0).sum())} nonzero cells over "
+          f"{meta.get('#sequences', '?')} sequences")
+    return counts

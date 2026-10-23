@@ -57,7 +57,8 @@ from torch.utils.data import DataLoader
 
 from antiGen import datasets
 from antiGen import score_cache as sc
-from antiGen.config import (AlphabetConfig, CodonConfig, ModelConfig, ModelType)
+from antiGen.config import (AlphabetConfig, CodonConfig, LEGACY_AAS, ModelConfig,
+                            ModelType)
 from antiGen.eval import (MutationDataset, config_label, dataset_of_train_args,
                           discover_checkpoints, peek_checkpoint_meta)
 from antiGen import eval_utils as eu
@@ -66,7 +67,7 @@ from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 load_baselines, load_checkpoint,
                                 positional_marginal_counts,
                                 WhereTimesWhichPredictor)
-from antiGen.load import load_examples, load_pssms
+from antiGen.load import load_counts_matrix, load_examples, load_pssms
 from antiGen.models.factory import create_model
 from antiGen.mutation_lists import describe as describe_list, load_mutation_list
 
@@ -231,7 +232,34 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--dataset', default='sc2', choices=sorted(datasets.DATASETS))
-    ap.add_argument('--data-dir', required=True)
+    ap.add_argument('--data-dir', default=None,
+                    help='Directory holding examples_cutoff_*.txt and pssms/. Not '
+                         'needed when --train-examples / --test-examples and '
+                         '--root-counts name every input explicitly.')
+    ap.add_argument('--alphabet', default=LEGACY_AAS,
+                    help='Residue alphabet, which fixes E and the column order of '
+                         'every map. The default is the 22-token frame every '
+                         'published checkpoint and cached score map was written in. '
+                         'Pass STANDARD_AAS (ACDEFGHIKLMNPQRSTVWY) to score the '
+                         '20-letter arm (NOTES s53): a checkpoint of the other width '
+                         'then fails on shape rather than scoring wrongly.')
+    ap.add_argument('--train-examples', action='append', default=None, metavar='PATH',
+                    help='Examples file(s) to take the TRAINING pool from -- only the '
+                         'pre-cutoff records in them are kept. Overrides the '
+                         '--data-dir glob. antiGen-data writes one file carrying both '
+                         'halves; antiGen-data-revised writes a train file and a test '
+                         'file, and the test file still carries the pre-cutoff spine '
+                         'of the tree, which is not the training pool.')
+    ap.add_argument('--test-examples', action='append', default=None, metavar='PATH',
+                    help='Examples file(s) to take the TESTING pool from -- only the '
+                         'post-cutoff records in them are kept.')
+    ap.add_argument('--root-counts', default=None, metavar='TSV',
+                    help="antiGen-data-revised's positional count matrix over the "
+                         "training window, used in place of pssms/root.csv. It is the "
+                         "same quantity -- how often each residue was observed at each "
+                         "site before the cutoff -- and it defines the de novo cut, so "
+                         "it has to come from the same corpus the models were trained "
+                         "on.")
     ap.add_argument('--checkpoint-dir', required=True)
     ap.add_argument('--output-dir', required=True)
     ap.add_argument('--mutation-list', action='append', required=True,
@@ -291,26 +319,55 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    gap_idx, stop_idx = allowed_aas.index('-'), allowed_aas.index('*')
+    gap_idx = allowed_aas.index('-') if '-' in allowed_aas else None
+    stop_idx = allowed_aas.index('*') if '*' in allowed_aas else None
     qtiles = [float(q) for q in args.qtiles.split(',') if q.strip()]
     print(f"Device: {device}")
+    print(f"Alphabet: '{allowed_aas}' (E={E})")
 
     # ── Data ────────────────────────────────────────────────────────────────
     variant = args.variant or datasets.default_variant(args.dataset)
-    examples_files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
-    if not examples_files:
-        raise SystemExit(f"No examples_cutoff_*.txt found in {args.data_dir}")
-    all_examples = load_examples(examples_files[0], allowed_aas, variant)
+    if not args.data_dir and not (args.train_examples and args.test_examples):
+        raise SystemExit("--data-dir, or --train-examples with --test-examples.")
+    if args.train_examples or args.test_examples:
+        if not (args.train_examples and args.test_examples):
+            raise SystemExit("--train-examples and --test-examples go together: "
+                             "one of the two pools would otherwise be empty.")
+        training_examples, testing_examples = [], []
+        for path in args.train_examples:
+            recs = load_examples(path, allowed_aas, variant)
+            kept = [e for e in recs if e.is_training]
+            print(f"  training pool: kept {len(kept)} of {len(recs)} from {path}")
+            training_examples += kept
+        for path in args.test_examples:
+            recs = load_examples(path, allowed_aas, variant)
+            kept = [e for e in recs if not e.is_training]
+            print(f"  testing pool: kept {len(kept)} of {len(recs)} from {path}")
+            testing_examples += kept
+        all_examples = training_examples + testing_examples
+    else:
+        examples_files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
+        if not examples_files:
+            raise SystemExit(f"No examples_cutoff_*.txt found in {args.data_dir}")
+        all_examples = load_examples(examples_files[0], allowed_aas, variant)
+        testing_examples = [e for e in all_examples if not e.is_training]
+        training_examples = [e for e in all_examples if e.is_training]
+    if not training_examples or not testing_examples:
+        raise SystemExit(f"{len(training_examples)} training and "
+                         f"{len(testing_examples)} testing examples; both are needed.")
+    # load_examples checks this within a file; across files it is this script's to make,
+    # and two corpora of different length would otherwise index the same (L, E) grid.
+    seq_lens = {len(e.aa_idx) for e in all_examples}
+    if len(seq_lens) != 1:
+        raise SystemExit(f"examples span several sequence lengths {sorted(seq_lens)}")
     seq_len = len(all_examples[0].aa_idx)
     eval_range = list(range(seq_len)) if args.eval_range == 'full' else (
         list(range(seq_len)) if args.dataset in ('flu', 'rsv_a', 'denv2') else RBD_RANGE)
     print(f"Sequence length {seq_len}; eval range {len(eval_range)} positions "
           f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)")
 
-    testing_examples = [e for e in all_examples if not e.is_training]
-    training_examples = [e for e in all_examples if e.is_training]
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
 
     # ── Lists ───────────────────────────────────────────────────────────────
@@ -390,7 +447,15 @@ def main():
                   f"({sum(ct):.0f} events) over the whole eval range")
         print(f"  query_sha1 {dump_sha1}", flush=True)
 
-    pssm_root, _pssm_variant = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
+    if args.root_counts:
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+        if pssm_root.shape[0] != seq_len:
+            raise SystemExit(f"{args.root_counts}: {pssm_root.shape[0]} sites against "
+                             f"a {seq_len}-residue sequence")
+    elif args.data_dir:
+        pssm_root, _pssm_variant = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
+    else:
+        raise SystemExit("--root-counts, or a --data-dir carrying pssms/root.csv.")
     seen_mask = pssm_root > 0
     variants = build_variants(lists, seen_mask)
     common_pool = (None if args.legacy_pool

@@ -31,6 +31,9 @@ evals_*/
 !antiGen-figures/data/evals_sc2_lists_varrecall/
 !antiGen-figures/data/evals_sc2_mtb/
 !antiGen-figures/data/evals_sc2_lists_macro_backbone/
+# The 20-letter arm on the revised corpus (NOTES s54). Recall rows only -- the
+# yield and background rows of that arm have no substrate yet.
+!antiGen-figures/data/evals_sc2_lists_macro_aa20/
 # The background contrast (the list figures' K-L). Small summary CSVs, not the
 # ~7 MB/model score matrices those are derived from, which stay outside the repo.
 !antiGen-figures/data/evals_sc2_background/

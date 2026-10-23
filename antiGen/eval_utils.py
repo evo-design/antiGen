@@ -742,11 +742,15 @@ def build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx):
     Reads ``OUTPUTS_LEGITIMATE_GAP`` / ``OUTPUTS_LEGITIMATE_STOP`` on the model. Cells
     that are True should be NaN-masked in the model's scores so sentinel/unk-fallback
     values don't get ranked. An all-False mask (both legit) means no masking.
+
+    ``gap_idx`` / ``stop_idx`` may be None, which is what a 20-letter alphabet gives:
+    there is no column to mask, so the question of whether a model emits it legitimately
+    does not arise and the mask is all-False (NOTES s53).
     """
     mask = torch.zeros(seq_len, E, dtype=torch.bool)
-    if not model.OUTPUTS_LEGITIMATE_GAP:
+    if gap_idx is not None and not model.OUTPUTS_LEGITIMATE_GAP:
         mask[:, gap_idx] = True
-    if not model.OUTPUTS_LEGITIMATE_STOP:
+    if stop_idx is not None and not model.OUTPUTS_LEGITIMATE_STOP:
         mask[:, stop_idx] = True
     return mask
 
@@ -791,8 +795,27 @@ def load_baselines(baseline_dir, allowed_aas, seed, pssm_root, global_wt_aa_idx)
             for row in reader:
                 rows.append([float(x) for x in row])
         baseline_tensor = torch.tensor(rows, dtype=torch.float32)
+        # The CSVs are written in the 22-token frame, 20 amino acids then stop then
+        # gap. Read under a narrower alphabet that is a PREFIX of that frame -- which
+        # is what STANDARD_AAS is -- the extra columns are exactly the two this
+        # alphabet has dropped, so they are dropped here too (NOTES s53). Any other
+        # width mismatch is an error: these maps are positional and a silent reshape
+        # would re-label every residue.
+        if baseline_tensor.shape[1] != E:
+            from antiGen.config import LEGACY_AAS
+            if (baseline_tensor.shape[1] == len(LEGACY_AAS)
+                    and LEGACY_AAS.startswith(allowed_aas)):
+                dropped = LEGACY_AAS[E:]
+                baseline_tensor = baseline_tensor[:, :E].contiguous()
+                print(f"  {baseline_name}: dropped the '{dropped}' column(s), "
+                      f"outside the alphabet")
+            else:
+                raise ValueError(
+                    f"{csv_file}: {baseline_tensor.shape[1]} columns against an "
+                    f"alphabet of {E} ('{allowed_aas}'), and the file is not the "
+                    f"22-token frame this alphabet is a prefix of")
         baselines.append((baseline_name, baseline_tensor))
-        print(f"Loaded baseline: {baseline_name} ({baseline_tensor.shape})")
+        print(f"Loaded baseline: {baseline_name} ({tuple(baseline_tensor.shape)})")
 
     # Set negative sentinels to NaN so they're excluded from ranking (matches the
     # -inf handling for model scores). Ties are resolved downstream by the fractional

@@ -7065,3 +7065,227 @@ The antiGen run is **64 s against s47's ~6 min** on the same recipe, which is th
 * The s51 `real_substitution_mask` and the s52 `real_wildtype_mask` become no-ops on a
   20-letter alphabet. They should stay: the published maps still need them, and a pool
   mask that selects everything costs nothing.
+
+## 54. The list panels on the revised corpus: A-F move hardly at all (2026-10-23)
+
+s53's training half has an evaluation half. The nine retrained checkpoints are scored
+against `antiGen-data-revised`'s **test** corpus, over the 20-letter alphabet, and
+`coguk_list_results`' recall rows are re-rendered from it as `coguk_list_aa20`.
+
+**Six panels, not twelve, and the two missing rows are missing by substrate rather than
+by queue.** G-J need a variant count time series (`pssms/<variant>/time_*.csv`) that the
+revised generator does not emit; K-L need a post-cutoff guide tree in Nextstrain JSON
+form, which the revised repo has no equivalent of at all -- its one JSON is the
+pre-cutoff 2020-12-29 ncov build. See **Open**.
+
+### What moves, and it is three things at once
+
+The alphabet, the training corpus and the test corpus all change together, so nothing
+below is a contrast: it is two readings of the same panel definition.
+
+| | published | revised |
+|---|---:|---:|
+| test queries carrying a CoG-UK RBD target | 17,978 | **11,523** |
+| listed target events | 26,129 | **17,740** |
+| observed listed cells (the macro denominator) | 233 | **230** |
+| de novo, observed | 129 | **125** |
+| listed RBD cells absent from the training window | 143 | **142** |
+| candidate pool | 3,801-4,221 per model, then common | **4,020, by construction** |
+
+The **de novo cut** moves with the corpus: it is now `counts_2021_cur.tsv > 0`, the
+revised generator's count matrix over the training window, where the published figure
+reads `pssms/root.csv`. 4,373 nonzero cells against 4,431.
+
+**s51 and s52 are both no-ops here, and that is the point of s53.** The common candidate
+pool is all 4,020 cells (201 x 20) and `real_wildtype_mask` selects every row, because
+the corpus has no gap and no stop anywhere. So this figure comes **straight off
+`list_macro.py`**, with no `rescore_common_pool.py` pass behind it -- the first time
+since s50 that the published convention and the script's own output coincide.
+
+### The test file is 0-indexed now, and the BA.2 root is not the published one
+
+The revised generator was changed to write 0-indexed mutation positions, so
+`_detect_position_base` now returns 0 on both files where s53 measured 1 on the training
+one. **The positions the loader hands a model are identical either way** -- that is what
+s53's two-pass detection is for -- so nothing was retrained.
+
+Two differences that are *not* the indexing, both found rather than announced:
+
+* `examples_2021_cur.txt` was regenerated at **2,934 records / 14,233 child mutations**,
+  against the **2,877 / 14,112** the nine checkpoints' manifests record. The models were
+  trained on the earlier revision of that file. 57 examples, 2%.
+* The **BA.2 root differs from the published one at six positions**, five of them gaps
+  now resolved to residues, and one real: 0-indexed 492 is `Q` in the published corpus
+  and **`R`** here. That is Q493R, which BA.2 carries -- the new root is the correct one,
+  and it is **inside the RBD**, so the BA.2 query a yield row would be computed from is
+  not the published query. This is a reason G-J cannot simply borrow the published
+  variant PSSMs.
+
+The training root differs at one position, 0-indexed 942 (`S` published, `F` here),
+which is the single reference mismatch `antiGen-data-revised/README.md` records, and is
+outside the eval range.
+
+### Code
+
+* `antiGen/load.py` -- `load_counts_matrix(path, allowed_aas)`. Reads the revised count
+  matrix where `pssms/root.csv` used to be: 1-indexed `#site` rows come back 0-indexed,
+  and columns are placed **by residue name from the header**, not by position, so a
+  20-column file read in the 22-token frame leaves gap and stop at zero instead of
+  shifting `W` and `Y` into them. A count for a residue the alphabet does not carry is an
+  error, because a discarded count is a cell wrongly called de novo.
+* `antiGen/eval_utils.py` -- `build_model_gap_stop_mask` takes `gap_idx`/`stop_idx` of
+  `None`; `load_baselines` drops the trailing `*`/`-` columns of the 22-token external
+  maps when the alphabet is a **prefix** of that frame, and raises on any other width.
+* `antiGen/list_macro.py` -- `--alphabet` (default `LEGACY_AAS`, so every published
+  invocation is unchanged), `--train-examples` / `--test-examples` (the revised corpus is
+  two files, and the **test file still carries the 3,902-record pre-cutoff spine of the
+  tree**, which is not the training pool), `--root-counts`, and `--data-dir` now optional.
+* `examples/slurm/eval_sc2_list_macro.sh` -- `DATA_DIR` / `CKPT_DIR` env overrides.
+  `DATA_DIR=` empty omits `--data-dir` entirely rather than passing a path that is read
+  for nothing.
+* `antiGen-figures/figures/fig_coguk_list_aa20.R` -- the driver. `coguk.varr_dir` and
+  `coguk.bg_dir` name directories that **do not exist**, so `fig_coguk_list.R`'s
+  `have_varr` / `have_bg` guards drop G-L; creating either directory is the whole of the
+  change when its substrate is built.
+* `antiGen/tests/test_load_examples.py` -- 6 new tests on the counts reader: sites come
+  back 0-indexed, columns are placed by name and not by order, an out-of-alphabet residue
+  raises, a missing or duplicated site is rejected, and the two readers agree on the same
+  data. Full suite **167 pass** (161 before).
+
+### The regression gate, exact
+
+`load_baselines` and `build_model_gap_stop_mask` sit on the published path, so they were
+shown unchanged before any new number was read. Against `git show HEAD:`, in the 22-token
+frame, on the real `data/baselines` inputs:
+
+| gate | result |
+|---|---:|
+| `load_baselines`, 12 maps, values and NaN pattern | **0.000e+00** |
+| `build_model_gap_stop_mask`, all 4 emission combinations | **identical** |
+| same, under a 20-letter alphabet | **all-False** |
+
+### The job
+
+**3416222**, `gpu_batch`, **1:06:58**, exit `0:0`. 25 rungs, 25 score maps in
+`list_score_maps_aa20` (11,523 x 201 x 20 float32, 185 MB each), no `[skip]`.
+Nine retrained checkpoints, `blosum62` rewritten at 20 letters (`antiGen-train
+--model-type blosum62`, no training), the three factored baselines refitted on the new
+training pool under `--multitree-baselines`, and the fixed external maps.
+
+**Absent: EVE and Tranception, frozen and fine-tuned, and EVmutation.** All five need an
+MSA pretraining pass in the new frame. `fig_coguk_list.R` names them per metric on every
+run rather than dropping them silently. The three **Ensembles** bars are absent too: the
+rules were selected on the published maps and `ensemble_figure_rows.tsv` is not in the
+new directory, so the group does not appear.
+
+### Measured: the panels barely move
+
+Cell-weighted, q = 0.10. s47's three-seed floor on these panels is **0.028-0.035**, so
+read the delta column against that and not against zero.
+
+**Panel C, all listed cells.**
+
+| | published | revised | delta |
+|---|---:|---:|---:|
+| **antiGen** | 0.5147 | **0.5225** | +0.0078 |
+| ESM 2 (35M) partial FT | 0.5033 | 0.5083 | +0.0051 |
+| ESM 2 (35M) LM head FT | 0.4640 | 0.4654 | +0.0015 |
+| Where x which | 0.4070 | 0.4581 | **+0.0511** |
+| PSSM | 0.4296 | 0.4491 | +0.0195 |
+| ESM 2 (650M) partial FT | 0.3935 | 0.3784 | -0.0150 |
+| BLOSUM62 | 0.2380 | 0.2393 | +0.0013 |
+
+**Panel D, de novo.**
+
+| | published | revised | delta |
+|---|---:|---:|---:|
+| **antiGen** | 0.4675 | **0.4732** | +0.0057 |
+| ESM 2 (35M) partial FT | 0.4189 | 0.4399 | +0.0210 |
+| Where x which | 0.3560 | 0.4218 | **+0.0658** |
+| ESM 2 (650M) LM head FT | 0.3493 | 0.3990 | **+0.0497** |
+| EVEscape | 0.3886 | 0.3865 | -0.0021 |
+| ESM 2 (35M) full FT | 0.2804 | 0.3244 | **+0.0439** |
+
+**Of the 92 (model, panel) cells across C-F that both arms carry, 85 move by less than
+0.028.** The seven that clear the seed floor are **all upward**, and concentrated in two
+places: `where_times_which`, which is refitted on the new training pool (+0.0511 on C,
++0.0658 on D), and the under-trained ESM-2 rungs -- 35M full FT (+0.0439 on D, +0.0293 on
+F), 650M LM head (+0.0497 on D), 650M partial FT (+0.0519 on F, +0.0291 on E). **Nothing
+drops by more than 0.0208**, which is PSSM Conservation on C.
+
+That the numbers survive a corpus this different is the result worth recording: the test
+set lost a third of its events and 3 of its 233 cells, the training corpus is 80% the
+size of the published one, the alphabet lost two columns, and the ordering of the drawn
+field is essentially unchanged.
+
+**The medals, checked against the CSV rather than read off the image** (the drawn field
+is 23 rungs, not the published 27, because EVE/Tranception/EVmutation and the ensembles
+are absent):
+
+| panel | 1st | 2nd | 3rd |
+|---|---|---|---|
+| C | antiGen 0.5225 | ESM 2 (35M) partial 0.5083 | ESM 2 (35M) LM head 0.4654 |
+| D | antiGen 0.4732 | ESM 2 (35M) partial 0.4399 | Where x which 0.4218 |
+| E | antiGen 0.8327 | Where x which 0.8220 | ESM 2 (35M) LM head 0.8197 |
+| F | EVEscape 0.8105 | **antiGen 0.7997** | Where x which 0.7958 |
+
+antiGen leads three of the four, and on F it trails EVEscape by 0.0108 -- inside the seed
+floor, as the published figure's F also was. **C's tie is not resolved here**: the
+published figure's C had four predictors within 0.021, and with the three means absent
+this one cannot speak to that at all.
+
+**The event-weighted de novo cut is the one place a published claim does not carry.**
+antiGen's micro on `list_coguk_unseen_fullpool` goes **0.5354 -> 0.6702**. s47 measured
+the seed spread at **0.098** on exactly that cut, so even +0.135 is only about 1.4 seeds,
+but it is the largest single move in the arm and it is in the supplement's panel D.
+
+### The floor clips two bars, and the figure says so
+
+`coord_cartesian(xlim = c(0.10, ...))` removes a bar that ends below the floor rather
+than shortening it. On panel D that is **PSSM at exactly 0.1000** (chance: it is a fixed
+map with no de novo information by construction -- every de novo cell has
+`pssm_root == 0`, so it scores them all identically and collects exactly q) and **ESM 2
+(650M) untrained at 0.0990**. Both are reported by name on every render.
+
+### Inspected, not just produced
+
+`figs/coguk_list_aa20.png` and `figs/coguk_list_aa20_supp.png`, 3300 x 4404, rendered
+2026-10-23 13:47. Six panels labelled A-F, five legend groups, 23 rungs in each bar
+panel, the title suffix on all six and nothing clipped at `coguk.title_size = 9.5`, the
+two floor-clipped bars accounted for above, and the medals as tabled.
+
+### State
+
+* **Shipped.** `figs/coguk_list_aa20{,_supp}.png` + PDFs. The published
+  `coguk_list_results` is **untouched** -- different output names, different input
+  directory, and the published `data/evals_sc2_lists_macro/` was not written to.
+* Rows: `antiGen-figures/data/evals_sc2_lists_macro_aa20/list_macro_summary_aa20.csv`
+  (the `_aa20` tag is load-bearing: `fig_coguk_list.R` globs
+  `^list_macro_summary_.*\.csv$`, which the bare name does not match).
+* Maps: `/large_storage/hielab/ispecht/fitness-inference/list_score_maps_aa20`, 25.
+* **Not committed yet.**
+
+### Open
+
+* **G-J needs a variant count time series.** Derivable from `tree_all_cur.tsv` (dates,
+  `n_matched`) and `sets_all_cur.tsv` (deltas per node) -- the revised test corpus has
+  1 BA.2 root and 35,395 BA.2-descended records, so the tree is there -- but it is a new
+  artefact and its convention has to be gated against `pssms/BA.2/time_*.csv` before
+  anything is read off it. Borrowing the published series is **not** a shortcut: the
+  BA.2 root differs inside the RBD at 493, so the query and the emerged set would come
+  from two different corpora.
+* **K-L needs a backbone reader.** `background_tree.build_backbone` reads a Nextstrain
+  JSON; the revised repo has only the pre-cutoff 2020-12-29 ncov build. Either a reader
+  over the revised tree/sets TSVs, or the published backbone, which puts two corpora in
+  one figure.
+* **EVE, Tranception and EVmutation are five MSA pretraining passes**, and until they
+  land the medals rank a 23-rung field. EVE full FT was 4th on the published C (0.4768)
+  and Tranception 3rd on its D (0.4613), so their absence is not cosmetic.
+* **The checkpoints predate the current training file** by 57 examples (above). Cheap to
+  settle -- the nine jobs are ~2 h of GPU in total -- and worth settling before anything
+  from this arm is quoted as "trained on the revised corpus".
+* **The ensembling arm has not been re-run.** The maps exist (`list_score_maps_aa20`), so
+  it is `ensemble_sweep.py` plus `ensemble_report.py` and no forward pass -- but the
+  rules must be re-selected on the new val cells, not carried over.
+* `manifest.json` in `ckpt_stage_aa20` is now `blosum62`'s, the last writer. Pre-existing
+  (s53), and each checkpoint carries its own recipe.

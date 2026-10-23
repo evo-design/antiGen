@@ -18,7 +18,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from antiGen.config import LEGACY_AAS, STANDARD_AAS
-from antiGen.load import load_examples
+from antiGen.load import load_counts_matrix, load_examples, load_pssms
 
 #            0123456789
 ROOT_SEQ = "MKTAYIAKQR"
@@ -180,3 +180,98 @@ def test_inconsistent_sequence_lengths_are_rejected():
         ]))
         with pytest.raises(ValueError, match="inconsistent sequence lengths"):
             load_examples(path, STANDARD_AAS, "none")
+
+
+# ── load_counts_matrix ──────────────────────────────────────────────────────────
+# antiGen-data-revised writes its positional count matrix where antiGen-data wrote
+# pssms/root.csv, and the eval reads it for one thing: which cells were observed in the
+# training window, i.e. the de novo cut. Two differences from the legacy CSV -- 1-indexed
+# sites and a column order that is the file's rather than the alphabet's -- and both of
+# them are silent if read wrongly.
+
+def _counts_file(tmp, letters, rows, n_sites=None, n_seq=100, name="counts.tsv"):
+    path = os.path.join(tmp, name)
+    with open(path, "w") as f:
+        f.write(f"#sequences\t{n_seq}\n")
+        f.write(f"#sites\t{n_sites if n_sites is not None else len(rows)}\n")
+        f.write("#site\t" + "\t".join(letters) + "\n")
+        for site, vals in rows:
+            f.write(f"{site}\t" + "\t".join(str(v) for v in vals) + "\n")
+    return path
+
+
+def test_counts_sites_come_back_zero_indexed():
+    """Site 1 of the file is row 0 of the tensor."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _counts_file(tmp, ["A", "C"], [(1, [7, 0]), (2, [0, 3]), (3, [0, 0])])
+        m = load_counts_matrix(p, "AC")
+        assert m.shape == (3, 2)
+        assert m[0, 0] == 7 and m[1, 1] == 3
+        assert m[2].sum() == 0
+
+
+def test_counts_columns_are_placed_by_name_not_by_order():
+    """A 20-column file read in the 22-token frame leaves gap and stop at zero.
+
+    Positionally, the file's last two columns would land on ``*`` and ``-``; by name
+    they land where their residues are. Nothing else distinguishes the two readings,
+    which is why this is tested rather than observed.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        letters = list(STANDARD_AAS)
+        vals = list(range(1, 21))
+        p = _counts_file(tmp, letters, [(1, vals)])
+        m = load_counts_matrix(p, LEGACY_AAS)
+        assert m.shape == (1, 22)
+        for j, a in enumerate(STANDARD_AAS):
+            assert m[0, LEGACY_AAS.index(a)] == vals[j]
+        assert m[0, LEGACY_AAS.index("*")] == 0
+        assert m[0, LEGACY_AAS.index("-")] == 0
+
+
+def test_counts_for_a_residue_outside_the_alphabet_are_an_error():
+    """A discarded count is a cell wrongly called de novo, so it raises by name."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _counts_file(tmp, ["A", "C", "X"], [(1, [1, 2, 3])])
+        with pytest.raises(ValueError, match=r"\['X'\]"):
+            load_counts_matrix(p, STANDARD_AAS)
+
+
+def test_counts_with_a_missing_site_is_rejected():
+    """#sites and the row count must agree; a short file is not read as a short protein."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _counts_file(tmp, ["A"], [(1, [1]), (2, [2])], n_sites=3)
+        with pytest.raises(ValueError, match="#sites 3 but 2 data rows"):
+            load_counts_matrix(p, "A")
+
+
+def test_counts_with_a_duplicated_site_is_rejected():
+    """The right number of rows over the wrong set of sites still has to fail."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _counts_file(tmp, ["A"], [(1, [1]), (1, [2]), (3, [3])])
+        with pytest.raises(ValueError, match="sites are not 1..3 exactly"):
+            load_counts_matrix(p, "A")
+
+
+def test_counts_matches_the_legacy_csv_on_the_same_data():
+    """The two readers agree, which is what makes one a substitute for the other.
+
+    ``load_pssms`` reads the legacy CSV by column POSITION (``usecols``), so this also
+    pins that the revised file's header order is the alphabet's -- if it were not, only
+    the by-name reader would be right and this test would fail.
+    """
+    import csv as _csv
+    with tempfile.TemporaryDirectory() as tmp:
+        letters = list(STANDARD_AAS)
+        rows = [(i + 1, [(i * 7 + j) % 5 for j in range(20)]) for i in range(4)]
+        tsv = _counts_file(tmp, letters, rows)
+        pssm_dir = os.path.join(tmp, "pssms")
+        os.makedirs(os.path.join(pssm_dir, "V"))
+        with open(os.path.join(pssm_dir, "root.csv"), "w", newline="") as f:
+            w = _csv.writer(f)
+            w.writerow(["pos"] + letters)
+            for site, vals in rows:
+                w.writerow([site - 1] + vals)
+        a = load_counts_matrix(tsv, STANDARD_AAS)
+        b, _ = load_pssms(pssm_dir, "V", len(STANDARD_AAS))
+        assert torch.equal(a, b)
