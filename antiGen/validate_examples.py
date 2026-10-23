@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import argparse
 
+from antiGen.config import LEGACY_AAS
 from antiGen.load import load_examples
 
-ALPHABET = "ACDEFGHIKLMNPQRSTVWY*-"
+# The widest alphabet antiGen has ever written, so a file in either frame validates.
+# Training now defaults to the 20 standard residues (antiGen-train --alphabet).
+ALPHABET = LEGACY_AAS
 
 
 def validate(path, variant=None, alphabet=ALPHABET):
@@ -43,7 +46,8 @@ def validate(path, variant=None, alphabet=ALPHABET):
     n_child = sum(int(e.mat.sum().item()) for e in examples)
 
     if n_train == 0:
-        raise SystemExit("No TRAINING examples found — training needs at least one.")
+        raise SystemExit("No training-window examples found (TRAINING / POST_CUTOFF: False) "
+                         "— training needs at least one.")
 
     print(f"OK: {n} examples | seq_len={seq_len} | training={n_train} testing={n_test} "
           f"| variant={variant!r}: roots={n_root} descended={n_desc} | child mutations={n_child}")
@@ -57,7 +61,9 @@ def main():
     ap = argparse.ArgumentParser(description="Validate an antiGen examples_cutoff_*.txt file.")
     ap.add_argument("examples", help="Path to an examples_cutoff_*.txt file")
     ap.add_argument("--variant", default=None, help="Variant name to count roots/descent for")
-    ap.add_argument("--alphabet", default=ALPHABET, help="Amino-acid alphabet (default: 22-token)")
+    ap.add_argument("--alphabet", default=ALPHABET,
+                    help="Amino-acid alphabet (default: the 22-token frame, which accepts "
+                         "a 20-residue file too)")
     args = ap.parse_args()
     validate(args.examples, args.variant, args.alphabet)
     print("Validation passed.")

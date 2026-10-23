@@ -14,6 +14,20 @@ def _default_plmc_binary() -> Optional[str]:
     return os.environ.get("PLMC_BINARY") or shutil.which("plmc")
 
 
+# ── Alphabets ─────────────────────────────────────────────────────────────────
+#
+# The model alphabet. antiGen trains and scores over the 20 standard amino acids:
+# the training data carries no gap and no stop, so there is no column for either.
+STANDARD_AAS = "ACDEFGHIKLMNPQRSTVWY"
+
+# The 22-token alphabet the published checkpoints and the cached evaluation maps were
+# built on, where index 20 is stop `*` and 21 is gap `-`. Those checkpoints store their
+# own `AlphabetConfig`, so loading one restores this without anyone naming it; the
+# constant exists so the eval path and `--alphabet` can say which alphabet they mean
+# instead of repeating the literal. Not a default anywhere.
+LEGACY_AAS = "ACDEFGHIKLMNPQRSTVWY*-"
+
+
 class ModelType(str, Enum):
     """Supported model architectures."""
     FITNESS_PREDICTOR = "fitness_predictor"
@@ -40,10 +54,12 @@ class AlphabetConfig:
 
     Attributes:
         nucleotides: Allowed nucleotide characters.
-        amino_acids: Allowed amino acid characters including special tokens.
+        amino_acids: Allowed amino acid characters. Defaults to the 20 standard
+            residues; pass ``LEGACY_AAS`` to work in the 22-token frame the
+            published checkpoints use.
     """
     nucleotides: str = "ACGT-"
-    amino_acids: str = "ACDEFGHIKLMNPQRSTVWY*-"
+    amino_acids: str = STANDARD_AAS
 
     @property
     def vocab_size(self) -> int:

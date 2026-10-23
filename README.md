@@ -106,7 +106,9 @@ output_<dataset>/
   pssms/<variant>/time_*.csv      # PSSM of all sequences in the testing window up through the cutoff time specified in the file name
 ```
 
-Each example within `examples_cutoff_*.txt` holds a sequence, its `TRAINING`/`TESTING` designation, whether it is the root example of or is descended from a supplied variant of interest, and the substitutions observed in that sequence's children (the training target).
+Each example within `examples_cutoff_*.txt` holds a sequence, its `TRAINING`/`TESTING` designation (newer generators write `POST_CUTOFF: True|False`, which the reader takes as the same fact), whether it is the root example of or is descended from a supplied variant of interest, and the substitutions observed in that sequence's children (the training target). A `(position, residue)` pair listed more than once is a count: two children carrying that mutation.
+Mutation positions may be 0- or 1-indexed; the reader detects which from the file (each record's
+`MUTATION_FROM_PARENT` has to land on its own sequence) and returns them 0-indexed either way.
 `antiGen-validate-examples <file> [--variant V]` checks a file is well-formed (single consistent
 sequence length, alphabet `ACDEFGHIKLMNPQRSTVWY*-`, in-range positions, ≥1 training example). The
 Quickstart above generates a miniature example of this format from the toy inputs in
@@ -129,6 +131,13 @@ first (Part 1) and placed it under `$FITNESS_DATA_ROOT`:
 | `--rsv-a` | RSV-A F | A.D.1.6 | 74 | full sequence |
 | `--denv2` | Dengue 2 envelope | 2II_F.1.1.2_annotated | 191 | full sequence |
 
+**Alphabet.** antiGen trains over the **20 standard amino acids** — there is no gap and no
+stop column, because the training data carries neither. The published checkpoints were
+trained in the older 22-token frame `ACDEFGHIKLMNPQRSTVWY*-`, where index 20 is stop and 21
+is gap; `--alphabet ACDEFGHIKLMNPQRSTVWY*-` trains in that frame for data that still has
+them. A checkpoint stores the alphabet it was trained on, so `antiGen-infer` and
+`antiGen-eval` reload it without being told.
+
 ```bash
 # built-in dataset: resolve the file from $FITNESS_DATA_ROOT via a shortcut
 export FITNESS_DATA_ROOT=/path/to/antiGen-data      # holds output1/, output_flu_full_cutoff12/, ...
@@ -136,7 +145,7 @@ antiGen-train --flu --cutoff 12 --model-type transformer --output-dir ./checkpoi
 
 # your own data: point --examples straight at a file you generated in Part 1
 # (no $FITNESS_DATA_ROOT, no shortcut — works for any protein/pathogen). seq_len is read from
-# the file (alphabet is the standard 22 AAs); add --variant <label> if it has a variant of interest.
+# the file; add --variant <label> if it has a variant of interest.
 antiGen-train --examples ./mydata/examples_cutoff_5.txt \
     --model-type transformer --d-model 128 --num-layers 2 \
     --epochs 64 --batch-size 64 --lr 1e-4 --output-dir ./checkpoints
@@ -203,8 +212,8 @@ toy_root,0,M,C,0.00164760
 ```
 
 `prob` is the inferred probability of each possible amino acid substitution relative to the
-query (including premature stop codons `*` and gaps `-`, i.e. point indels). Use `--format wide`
-for a position × amino-acid matrix, and `--drop-gap-stop` to exclude the `-`/`*` columns.
+query. Use `--format wide` for a position × amino-acid matrix. `--drop-gap-stop` excludes the
+`-`/`*` columns, and is a no-op on a model trained over the 20 standard residues.
 
 **Length / alignment.** antiGen operates on a **fixed, aligned coordinate frame**: provide
 query sequences aligned to the training reference (same length and alignment).

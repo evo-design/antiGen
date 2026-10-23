@@ -11,6 +11,7 @@ import torch
 
 from antiGen.config import (
     AlphabetConfig,
+    LEGACY_AAS,
     GatedFitnessConfig,
     ModelConfig,
     ModelType,
@@ -38,7 +39,7 @@ def _make_config(seq_len: int, data_dir: str | None = None, path: str | None = N
     return ModelConfig(
         model_type=ModelType.PSSM,
         seq_len=seq_len,
-        alphabet=AlphabetConfig(),
+        alphabet=AlphabetConfig(amino_acids=LEGACY_AAS),
         pssm=PSSMConfig(data_dir=data_dir, path=path),
     )
 
@@ -132,7 +133,7 @@ def test_gated_xfmr_pssm_static_dispatch():
         config = ModelConfig(
             model_type=ModelType.GATED_FITNESS_PREDICTOR,
             seq_len=seq_len,
-            alphabet=AlphabetConfig(),
+            alphabet=AlphabetConfig(amino_acids=LEGACY_AAS),
             transformer=TransformerConfig(d_model=32, nhead=4, num_layers=1),
             pssm=PSSMConfig(data_dir=tmp),
             gated=GatedFitnessConfig(
@@ -156,7 +157,7 @@ def test_gated_xfmr_pssm_uncertainty_dispatch():
         config = ModelConfig(
             model_type=ModelType.GATED_FITNESS_PREDICTOR,
             seq_len=seq_len,
-            alphabet=AlphabetConfig(),
+            alphabet=AlphabetConfig(amino_acids=LEGACY_AAS),
             transformer=TransformerConfig(d_model=32, nhead=4, num_layers=1),
             pssm=PSSMConfig(data_dir=tmp),
             gated=GatedFitnessConfig(

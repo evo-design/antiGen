@@ -16,7 +16,9 @@ from datetime import datetime
 import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from antiGen.config import ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config, EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig, SubstitutionConfig, GatedFitnessConfig
+from antiGen.config import (ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config,
+                            EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig,
+                            SubstitutionConfig, GatedFitnessConfig, STANDARD_AAS, LEGACY_AAS)
 from antiGen.models.factory import create_model
 from antiGen.load import load_examples
 from antiGen.batching import LengthBucketBatchSampler
@@ -78,6 +80,12 @@ def parse_args():
                              'Overrides dataset routing. More than one file trains a single '
                              'model jointly on all of them; each file is one "source" '
                              'phylogeny and may have its own sequence length (esm2 only).')
+    parser.add_argument('--alphabet', type=str, default=STANDARD_AAS,
+                        help=f'Amino-acid alphabet, one character per output column '
+                             f'(default: the 20 standard residues, {STANDARD_AAS}). '
+                             f'The published checkpoints were trained in the 22-token '
+                             f'frame {LEGACY_AAS}, where index 20 is stop and 21 is gap; '
+                             f'pass that to train on data that still carries them.')
     parser.add_argument('--num-workers', type=int, default=4,
                         help='DataLoader worker processes (0 for small CPU runs)')
     parser.add_argument('--max-batch-tokens', type=int, default=0,
@@ -446,9 +454,11 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    print(f"Alphabet size: {E}")
+    if len(set(allowed_aas)) != E:
+        raise SystemExit(f"--alphabet has repeated characters: {allowed_aas!r}")
+    print(f"Alphabet: {allowed_aas} (size {E})")
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")

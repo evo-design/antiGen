@@ -18,7 +18,7 @@ pytest.importorskip("evcouplings", reason="EVcouplings tests require the evcoupl
 pytestmark = pytest.mark.skipif(shutil.which("plmc") is None,
                                 reason="EVcouplings integration requires the external plmc binary")
 
-from antiGen.config import AlphabetConfig, EVcouplingsConfig, ModelConfig, ModelType
+from antiGen.config import AlphabetConfig, EVcouplingsConfig, ModelConfig, ModelType, LEGACY_AAS
 from antiGen.models.evcouplings_fitness_predictor import EVcouplingsFitnessPredictor, _SENTINEL
 
 REFERENCE_SEQ = "ACDEFGHIKLMNPQR"
@@ -70,7 +70,7 @@ def _make_predictor(fasta_path, metadata_path):
     config = ModelConfig(
         model_type=ModelType.EVCOUPLINGS,
         seq_len=SEQ_LEN,
-        alphabet=AlphabetConfig(),
+        alphabet=AlphabetConfig(amino_acids=LEGACY_AAS),
         evcouplings=EVcouplingsConfig(
             msa_path=fasta_path,
             metadata_path=metadata_path,

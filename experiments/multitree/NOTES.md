@@ -6878,3 +6878,190 @@ shipped it.
   supplement at 3 cells and 1. Left alone because the row's pool is query-independent by
   design (s39), but a reader comparing the supplement's K-L to its A-F should know the
   two are on different conventions.
+
+---
+
+## 53. Twenty letters: the alphabet loses gap and stop, and the reader gains a dialect (2026-10-22)
+
+The model alphabet becomes the **20 standard amino acids**. `antiGen-data-revised`
+resolves every (node, site) to a real residue before it writes an example, so the new
+training corpus carries no `-` and no `*` anywhere -- there is nothing for those two
+columns to predict, and s51/s52 spent two sections removing their effects from the
+metric after the fact. This retires that at the source for everything trained from here.
+
+This section is the **training** half. The published checkpoints and every cached
+evaluation map are still in the 22-token frame, and the test corpus is still being
+generated, so `eval.py` and the `list_*` / `background_*` modules are untouched.
+
+### The corpus, measured rather than taken on trust
+
+`~/antiGen-data-revised/output/sc2-2021/train/examples_2021_cur.txt`:
+
+| | value |
+|---|---:|
+| records | **2,877** |
+| sequence length | 1,273, one value |
+| alphabet actually used | `ACDEFGHIKLMNPQRSTVWY`, **no `-`, no `*`, no `X`** |
+| child mutations | **14,112** = the parsimony score |
+| records with a repeated `(pos, alt)` | 9 (largest cell: 23) |
+| records with an empty child list | 0 |
+| `POST_CUTOFF: False` | all 2,877 |
+
+Against the published `output1/examples_cutoff_1.txt`: 3,648 TRAINING examples at the
+same L = 1,273 over 22 letters. So the new corpus is 79% the size of the old training
+half and carries a comparable mutation load.
+
+### Two dialect differences, and one of them is silent
+
+`antiGen-data-revised` writes the same record structure with two changes. One fails
+loudly, one does not, and the second is the reason this section exists.
+
+**`POST_CUTOFF: True|False` in place of `TRAINING`/`TESTING`.** `load.py` tested
+`line == "TRAINING"`, so every record came back testing and the training pool was
+empty. That fails, but late and with a confusing message. `_parse_split_label` now takes
+both and **raises on anything else**, rather than reading an unrecognised label as "not
+training".
+
+**Mutation positions are 1-indexed.** The legacy generator writes them 0-indexed, and
+so does the `forecast2021` file the revised repo names as its target -- `K,309,E` there
+against `K,310,E` here, `407,I` against `408,I`. Everything downstream of the loader is
+0-indexed (`RBD_RANGE` is 330..530 in those coordinates), so reading the new file
+unchanged would have shifted every mutation one residue along **without failing**: the
+file is self-consistent, the positions are in range, and a model trained on it would
+have learned a coherent, wrong map. It is the same class of defect as s51's pool
+convention -- arithmetic that is wrong rather than code that is broken.
+
+The corpus is consistent in its own frame: the count matrix `counts_2021_cur.tsv` is
+1-indexed too (`#site` runs 1..1273), so this is a convention the revised repo holds
+throughout, not a corrupted file.
+
+### It is detected, not guessed, and the file carries the evidence
+
+`MUTATION_FROM_PARENT` is `from,pos,to` against the record's **own** sequence, so every
+non-root record votes: base b is viable only if `seq[pos - b] == to`. A file is accepted
+only when one base explains **every** record and the other does not; both failing is an
+error naming the two tallies. On the new corpus 2,876 of 2,876 records fit base 1 and
+**0** fit base 0, which is not a close call. Positions come back 0-indexed either way.
+
+The fallback matters only for a file of one record, where there is no
+`MUTATION_FROM_PARENT` to check: the position range decides (`max >= seq_len` forces
+1-indexed), and a range that fits both keeps the 0-indexed reading.
+
+A **repeated `(pos, alt)` is a count**, which the reader already did -- it adds 1.0 per
+line and ignores the legacy third field -- and is now tested rather than incidental.
+
+### The regression: bit-exact on three legacy files
+
+The rewrite is a two-pass parse (the base is a property of the whole file), so the old
+path had to be shown unchanged before any new number was believed.
+
+| file | examples | result |
+|---|---:|---|
+| `output1/examples_cutoff_1.txt` | 171,248 | **bit-exact** |
+| `forecast2021/examples_ncov@2021-01-01_train.txt` | 347 | **bit-exact** |
+| `antiGen-data/example/out/examples_cutoff_0.6.txt` | 3 | **bit-exact** |
+
+on `aa_idx`, `mat`, `parent_mutation` and all four flags, against `git show HEAD:`'s
+reader.
+
+### Code
+
+* `antiGen/config.py` -- `STANDARD_AAS` (20) and `LEGACY_AAS` (22, index 20 stop, 21
+  gap). `AlphabetConfig.amino_acids` now defaults to the former. The literal is no
+  longer repeated in the training path.
+* `antiGen/load.py` -- `_parse_split_label`, `_detect_position_base`, and a two-pass
+  `load_examples` that checks the sequence length, rejects an out-of-alphabet residue by
+  name, and prints which base it found.
+* `antiGen/train.py` -- `--alphabet`, defaulting to `STANDARD_AAS`. The 22-token frame is
+  one flag away for data that still carries gap and stop.
+* `antiGen/models/factory.py`, four test modules -- the places that meant the 22-token
+  frame specifically now say `LEGACY_AAS` instead of relying on a default that moved.
+* `antiGen/tests/test_load_examples.py` -- **12 tests**: both dialects describe the same
+  tree, an unrecognised split label raises, a 1-indexed file comes back 0-indexed
+  whichever alphabet it is read under, a repeated cell is a count, a file fitting neither
+  base is rejected, and the single-record fallback.
+
+Full suite: **161 pass** (149 before, 12 new).
+
+### What this does to the numbers, before any model runs
+
+`compute_probs` softmaxes over `L x E` and masks the query's own residue, so the uniform
+reference moves from `log(1273 x 21) = 10.19` to `log(1273 x 19) = 10.09` nats. Every
+NLL in this arm is against a 10% smaller candidate set and is **not comparable to a
+published one**. The first batch of the transformer run reads 10.35, which is the
+initialisation sitting just above uniform, as it should.
+
+### The jobs
+
+Nine, the published roster re-run on the new corpus with the recipes unchanged --
+`examples/slurm/train_{transformer,esm2_{noft,frozen,partial,full},esm2_650m_*}.sh`,
+which s52's parameterisation already made reusable, with `--examples` passed through
+`EXTRA` and `OUT_DIR` pointed at
+`/large_storage/hielab/ispecht/fitness-inference/ckpt_stage_aa20` so nothing lands
+beside the 3,315 published artefacts.
+
+The 650M scripts ask for 48 h and must stay on `gpu_batch`; `--partition=gpu,gpu_batch`
+is rejected outright, because `gpu`'s limit is 1 day. The 35M and transformer scripts ask
+for 24 h and take both, per s47.
+
+### Six of nine have landed, and train loss is all they can say
+
+Train loss only -- there is no validation set in this arm, for the reason under **Open**
+-- so these say the runs trained, and nothing about which arm forecasts better. The
+uniform reference is **10.09** nats (`log(1273 x 19)`), not the published 10.19.
+
+| job | arm | elapsed | ep 0 | ep 31 |
+|---|---|---:|---:|---:|
+| 3406501 | antiGen `simple_d128_n2` | 1:04 | 9.487 | **7.641** |
+| 3406502 | ESM-2 35M noft | 0:13 | -- | -- |
+| 3406503 | ESM-2 35M frozen | 12:50 | 8.749 | **7.232** |
+| 3406504 | ESM-2 35M partial FT | 21:34 | 8.648 | **7.045** |
+| 3406505 | ESM-2 35M full FT | 40:30 | 9.241 | **6.934** |
+| 3406506 | ESM-2 650M noft | 0:15 | -- | -- |
+| 3406507 | ESM-2 650M frozen | running | | |
+| 3406508 | ESM-2 650M partial FT | running | | |
+| 3406509 | ESM-2 650M full FT | running | | |
+
+All six exited `0:0`. The two `noft` arms are `--epochs 0`, so they write the untrained
+head and stop; 13 and 15 seconds is the whole job.
+
+Within the 35M family the ordering is full < partial < frozen, which is the order of
+trainable parameters (33.5M / 11.3M / 232k) and is what a training loss alone would be
+expected to say. The transformer sits above all three here and yet led the single-model
+field on the published panel C (s52: 0.5147, against ESM-2 35M partial FT's 0.4987 under
+s51's pool), so this column does not order the arms on anything the figure reports. It
+also disagrees with the published ordering, where the per-model pool had ESM-2 partial
+ahead of antiGen on C (0.5125 / 0.4460) until s51 removed the pool artefact.
+
+The antiGen run is **64 s against s47's ~6 min** on the same recipe, which is the corpus:
+2,877 examples where the published one had 3,648 and 360 batches per epoch.
+
+### Open
+
+* **There is no validation signal in these runs.** Every record is `POST_CUTOFF: False`,
+  so `--val-mode file` leaves `val_loaders` empty and the per-epoch baselines, the
+  hit-rate curve and `--save-best` all skip. The runs stop at the published epoch budget,
+  which is the published recipe, but nothing in them would catch a bad epoch. The clean
+  in-window alternative is `--val-mode random --val-frac 0.1`, which s47 measured as a
+  null for antiGen and negative for ESM-2, at the cost of 10% of the training pool.
+* **The 1-indexing is a difference between two repos that both claim the legacy format.**
+  The reader absorbs it; the generator is the better place to fix it, and until one of
+  them moves, `forecast2021` and `sc2-2021` disagree about what `310` means.
+* **Eval is still 22-token**, in `eval.py`, `list_macro.py`, `list_variant_recall.py`,
+  `background_discrimination.py`, `rescore_common_pool.py`, `ensemble_*` and
+  `antiGen-figures/R/common.R`. A 20-column checkpoint meeting one of them fails on
+  shape rather than scoring wrongly, which is the right way round, but the test corpus
+  will need all of them.
+* **`manifest.json` is one file per output directory**, so nine jobs sharing `OUT_DIR`
+  leave the last writer's. Pre-existing -- the published runs did the same -- and the
+  recipe is in each checkpoint, but it means the directory-level manifest is not a
+  record of the arm.
+* **`noft` and `frozen` are the same filename but for the timestamp.** Both are
+  `--freeze-backbone --finetune-layers 0 --lr 0.001`, so `run_prefix` is
+  `esm2_<model>_lr0.001_<ts>` for both and the two 35M checkpoints differ by **11
+  seconds** of start time. The checkpoints themselves are not ambiguous --
+  `train_args.epochs` is 0 against 32, and that is what discovery should read -- but
+  nothing in the name says which is which. Also pre-existing.
+* The s51 `real_substitution_mask` and the s52 `real_wildtype_mask` become no-ops on a
+  20-letter alphabet. They should stay: the published maps still need them, and a pool
+  mask that selects everything costs nothing.

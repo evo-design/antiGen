@@ -6,7 +6,7 @@ from typing import Any, Optional, Union
 
 import torch
 
-from antiGen.config import ExperimentConfig, ModelConfig, ModelType, AlphabetConfig, TransformerConfig
+from antiGen.config import ExperimentConfig, ModelConfig, ModelType, AlphabetConfig, TransformerConfig, LEGACY_AAS
 from antiGen.models.base import BaseFitnessPredictor
 
 
@@ -165,7 +165,7 @@ def _convert_legacy_checkpoint(checkpoint: dict[str, Any]) -> ModelConfig:
             model_type=ModelType.FITNESS_PREDICTOR,
             seq_len=ma["seq_len"],
             alphabet=AlphabetConfig(
-                amino_acids="ACDEFGHIKLMNPQRSTVWY*-",
+                amino_acids=LEGACY_AAS,
             ),
             transformer=TransformerConfig(
                 d_model=ma["d_model"],
@@ -186,7 +186,7 @@ def _convert_legacy_checkpoint(checkpoint: dict[str, Any]) -> ModelConfig:
         seq_len=N // 3,
         alphabet=AlphabetConfig(
             nucleotides="ACGT-",
-            amino_acids="ACDEFGHIKLMNPQRSTVWY*-",
+            amino_acids=LEGACY_AAS,
         ),
         transformer=TransformerConfig(
             d_model=d_model,

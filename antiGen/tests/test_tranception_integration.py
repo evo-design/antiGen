@@ -11,7 +11,7 @@ from pathlib import Path
 import torch
 
 
-from antiGen.config import AlphabetConfig, TranceptionConfig, ModelConfig, ModelType
+from antiGen.config import AlphabetConfig, TranceptionConfig, ModelConfig, ModelType, LEGACY_AAS
 from antiGen.models.tranception_fitness_predictor import (
     TranceptionFitnessPredictor, _SENTINEL, TRANCEPTION_Q,
 )
@@ -64,7 +64,7 @@ def _make_predictor(fasta_path, metadata_path, direction="both"):
     config = ModelConfig(
         model_type=ModelType.TRANCEPTION,
         seq_len=SEQ_LEN,
-        alphabet=AlphabetConfig(),
+        alphabet=AlphabetConfig(amino_acids=LEGACY_AAS),
         tranception=TranceptionConfig(
             msa_path=fasta_path,
             metadata_path=metadata_path,

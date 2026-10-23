@@ -27,6 +27,62 @@ def _match_variant(label, variant):
     return label == variant or f"({variant})" in label
 
 
+def _parse_split_label(line, filepath):
+    """Return True if this record is in the training window.
+
+    Two generators write this field. The original antiGen-data tool writes the bare
+    word ``TRAINING`` or ``TESTING``; antiGen-data-revised writes
+    ``POST_CUTOFF: True``/``False``, which is the same fact negated. Anything else is
+    an error rather than a silent False, because reading an unrecognised label as
+    "not training" empties the training pool and the run fails much later with a
+    confusing message.
+    """
+    if line in ("TRAINING", "TESTING"):
+        return line == "TRAINING"
+    if line.startswith("POST_CUTOFF:"):
+        value = line.split(":", 1)[1].strip()
+        if value in ("True", "False"):
+            return value == "False"
+    raise ValueError(
+        f"{filepath}: expected 'TRAINING'/'TESTING' or 'POST_CUTOFF: True|False' "
+        f"where the train/test split label belongs, got {line!r}")
+
+
+def _detect_position_base(records, seq_len, filepath):
+    """Return 0 or 1: the index of the first residue in this file's mutation positions.
+
+    antiGen-data writes 0-indexed positions; antiGen-data-revised writes 1-indexed
+    ones, matching the 1-indexed ``#site`` column of its count matrix. The rest of
+    antiGen is 0-indexed throughout (``RBD_RANGE`` is 330..530 in those coordinates),
+    so one of the two has to be shifted, and guessing wrong moves every mutation one
+    residue along without failing.
+
+    It is not guessed. ``MUTATION_FROM_PARENT`` is ``from,pos,to`` against the
+    record's own sequence, so each non-root record votes for whichever base puts
+    ``to`` at ``pos``; a file is accepted only if one base explains every record and
+    the other does not. With no such evidence -- a file of one record -- the position
+    range decides, and a range that fits both bases falls back to 0.
+    """
+    fits = {0: 0, 1: 0}
+    for seq, pos, alt in records:
+        for base in (0, 1):
+            j = pos - base
+            if 0 <= j < seq_len and seq[j] == alt:
+                fits[base] += 1
+    n = len(records)
+    if n:
+        unambiguous = [b for b in (0, 1) if fits[b] == n]
+        if len(unambiguous) == 1:
+            return unambiguous[0]
+        if not unambiguous:
+            raise ValueError(
+                f"{filepath}: MUTATION_FROM_PARENT does not match the record's own "
+                f"sequence under either 0- or 1-indexed positions "
+                f"({fits[0]}/{n} and {fits[1]}/{n} records fit). The file is "
+                f"inconsistent; run antiGen-validate-examples on it.")
+    return None
+
+
 def load_examples(filepath, allowed_aas, variant, source=None):
     """Load pre-computed training/testing examples from a text file.
 
@@ -34,14 +90,22 @@ def load_examples(filepath, allowed_aas, variant, source=None):
     IS_VARIANT_ROOT and IS_DESCENDED_FROM_VARIANT fields, matching the
     variant name either as the full clade label or inside parentheses.
 
+    Accepts both generators' dialects of the format: ``TRAINING``/``TESTING`` or
+    ``POST_CUTOFF:`` for the split label, and 0- or 1-indexed mutation positions,
+    which are detected from the file and returned 0-indexed either way. Repeated
+    ``(pos, alt)`` entries under MUTATIONS_TO_CHILDREN are counts: each one adds 1 to
+    that cell of the mutation matrix.
+
     Returns a list of Example objects.
     """
     E = len(allowed_aas)
-    examples = []
 
     with open(filepath, 'r') as f:
         lines = f.readlines()
 
+    # Pass 1: parse to plain Python. Positions stay as written, because which base
+    # they are in is a property of the file and is only knowable once it is all read.
+    raw = []
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -71,11 +135,11 @@ def load_examples(filepath, allowed_aas, variant, source=None):
         else:
             parts = mut_line.split(",")
             ref_aa, pos, alt_aa = parts[0], int(parts[1]), parts[2]
-            parent_mutation = (pos, allowed_aas.index(alt_aa))
+            parent_mutation = (pos, alt_aa)
 
-        # TRAINING or TESTING
+        # TRAINING / TESTING, or POST_CUTOFF:
         i += 1
-        is_training = lines[i].strip() == "TRAINING"
+        is_training = _parse_split_label(lines[i].strip(), filepath)
 
         # IS_DESCENDED_FROM_VARIANT:
         i += 1  # "IS_DESCENDED_FROM_VARIANT:"
@@ -99,38 +163,86 @@ def load_examples(filepath, allowed_aas, variant, source=None):
 
         # Full AA sequence
         seq = lines[i].strip()
-        seq_len = len(seq)
-        aa_idx = torch.tensor(
-            [allowed_aas.index(c) for c in seq], dtype=torch.long
-        )
 
         # MUTATIONS_TO_CHILDREN:
         i += 1  # "MUTATIONS_TO_CHILDREN:"
         i += 1
-        mat = torch.zeros(seq_len, E, dtype=torch.float32)
+        muts = []
         while i < len(lines) and lines[i].strip():
             parts = lines[i].strip().split(",")
-            pos, alt_aa = int(parts[0]), parts[1]
-            mat[pos, allowed_aas.index(alt_aa)] += 1.0
+            muts.append((int(parts[0]), parts[1]))
             i += 1
 
+        raw.append(dict(seq=seq, muts=muts, is_training=is_training,
+                        parent_id=parent_id, parent_mutation=parent_mutation,
+                        is_testing_root=is_testing_root,
+                        is_descended_from_variant=is_descended_from_variant))
+        i += 1
+
+    if not raw:
+        return []
+
+    seq_lens = {len(r["seq"]) for r in raw}
+    if len(seq_lens) != 1:
+        raise ValueError(f"{filepath}: inconsistent sequence lengths {sorted(seq_lens)}")
+    seq_len = seq_lens.pop()
+
+    bad = sorted({c for r in raw for c in r["seq"]} - set(allowed_aas))
+    if bad:
+        raise ValueError(
+            f"{filepath}: sequence characters {bad} are outside the alphabet "
+            f"'{allowed_aas}'. Pass --alphabet to train in a wider frame.")
+    bad = sorted({a for r in raw for _, a in r["muts"]} - set(allowed_aas))
+    if bad:
+        raise ValueError(
+            f"{filepath}: mutation residues {bad} are outside the alphabet "
+            f"'{allowed_aas}'. Pass --alphabet to train in a wider frame.")
+
+    base = _detect_position_base(
+        [(r["seq"], r["parent_mutation"][0], r["parent_mutation"][1])
+         for r in raw if r["parent_mutation"] is not None],
+        seq_len, filepath)
+    all_pos = [p for r in raw for p, _ in r["muts"]]
+    all_pos += [r["parent_mutation"][0] for r in raw if r["parent_mutation"] is not None]
+    if base is None:
+        # Nothing to check MUTATION_FROM_PARENT against; let the range decide, and
+        # keep the 0-indexed reading when both are possible.
+        base = 1 if all_pos and max(all_pos) >= seq_len else 0
+    if all_pos and not (base <= min(all_pos) and max(all_pos) < seq_len + base):
+        raise ValueError(
+            f"{filepath}: mutation positions {min(all_pos)}..{max(all_pos)} fall outside "
+            f"{base}..{seq_len + base - 1} for a {seq_len}-residue sequence")
+
+    # Pass 2: tensors, with positions shifted to the 0-indexed frame the rest of
+    # antiGen works in.
+    aa_to_idx = {c: j for j, c in enumerate(allowed_aas)}
+    examples = []
+    for r in raw:
+        aa_idx = torch.tensor([aa_to_idx[c] for c in r["seq"]], dtype=torch.long)
+        mat = torch.zeros(seq_len, E, dtype=torch.float32)
+        for pos, alt_aa in r["muts"]:
+            # A repeated (pos, alt) is a count, not a duplicate: two children of this
+            # node carry the same mutation.
+            mat[pos - base, aa_to_idx[alt_aa]] += 1.0
+        pm = r["parent_mutation"]
         examples.append(Example(
             aa_idx=aa_idx,
             mat=mat,
-            is_training=is_training,
-            parent_id=parent_id,
-            parent_mutation=parent_mutation,
-            is_testing_root=is_testing_root,
-            is_descended_from_variant=is_descended_from_variant,
+            is_training=r["is_training"],
+            parent_id=r["parent_id"],
+            parent_mutation=None if pm is None else (pm[0] - base, aa_to_idx[pm[1]]),
+            is_testing_root=r["is_testing_root"],
+            is_descended_from_variant=r["is_descended_from_variant"],
             source=source,
         ))
 
-        i += 1
-
     n_testing_roots = sum(1 for ex in examples if ex.is_testing_root)
     n_variant_desc = sum(1 for ex in examples if ex.is_descended_from_variant)
-    print(f"Loaded {len(examples)} examples from {filepath}")
-    print(f"  {n_testing_roots} variant testing root(s), {n_variant_desc} variant-descended for '{variant}'")
+    n_train = sum(1 for ex in examples if ex.is_training)
+    print(f"Loaded {len(examples)} examples from {filepath} "
+          f"(L={seq_len}, {base}-indexed positions)")
+    print(f"  {n_train} training, {len(examples) - n_train} testing; "
+          f"{n_testing_roots} variant testing root(s), {n_variant_desc} variant-descended for '{variant}'")
     return examples
 
 
