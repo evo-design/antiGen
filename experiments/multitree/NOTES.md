@@ -7289,3 +7289,137 @@ two floor-clipped bars accounted for above, and the medals as tabled.
   rules must be re-selected on the new val cells, not carried over.
 * `manifest.json` in `ckpt_stage_aa20` is now `blosum62`'s, the last writer. Pre-existing
   (s53), and each checkpoint carries its own recipe.
+
+## 55. EVE and Tranception on the revised corpus: the MSA now comes with it (2026-10-23)
+
+Four of s54's five missing rungs. `antiGen-data-revised` writes an MSA beside the
+examples it generated, from the same sequences, so the pandemic MSA stops being a
+tree-independent input and becomes part of the corpus.
+
+### `--metadata` was required, and for this MSA it is unavailable
+
+`--msa` and `--metadata` were both mandatory for `eve`, `tranception` and
+`evcouplings`. The metadata TSV does one thing: `load_date_filter` keeps the strains
+whose collection date is before `--date-cutoff`, so the generative model is not
+pretrained on the test window. `msa_2021_cur.fasta` is **already restricted to the
+training window** -- it holds the 351,410 sequences `counts_2021_cur.tsv` counts,
+exactly -- and there is no metadata beside it, because the headers carry no parsable
+dates (`OL549280` has none at all).
+
+So the path is optional now, and **omitting it is a claim about the file, not a
+convenience**. A FASTA carries no dates. An unfiltered *pandemic* MSA passed this way
+would pretrain on the test window and nothing downstream could detect it -- not the
+checkpoint, not the eval, not the figure. That is why it is never the default and why
+the empty `METADATA=` in the job scripts carries the warning rather than the code.
+
+**The size is the same, which is what makes the two arms comparable at all.**
+
+| | sequences |
+|---|---:|
+| `spike.fasta`, all records | 9,335,628 |
+| passing the published filter (`< 2020-12-22`) | **348,990** |
+| `msa_2021_cur.fasta`, as given | **351,410** |
+
++0.7%. The pretraining corpus is the same size, so the published 24 h / 256 G envelope
+holds -- which matters because the sequence weighting is **O(N^2)**, chunked 1000 x 1000
+on the GPU, and is most of the wall clock at this N.
+
+### The coordinate frames line up, checked rather than assumed
+
+Measured on the real file before any GPU time:
+
+| | |
+|---|---|
+| records | 351,410, **every one 1,273 residues** |
+| reference row | `Wuhan/IPBCAMS-WH-01/2019`, **no gap, no `X`** |
+| reference vs the examples root | **1 difference**, 0-indexed 942 (`S` here, `F` there) |
+| columns after reference-gap removal | **1,273 / 1,273** |
+| focus columns (< 30% gaps) | **1,273 / 1,273**, first 0, last 1,272 |
+| one-hot | `(N, 1273, 20)` |
+
+So `_focus_to_aligned` is the identity and the MSA's frame is the examples' frame. The
+one mismatch at 942 is the single reference difference
+`antiGen-data-revised/README.md` records, and is outside `RBD_RANGE`.
+
+The MSA carries `-` and `X`; both map to -1 through `EVE_ALPHABET` and are handled by
+the existing gap logic, as they were for the published MSA.
+
+### The alphabet needed nothing
+
+EVE's and Tranception's internal alphabet is already `ACDEFGHIKLMNPQRSTVWY`, and the
+internal <-> external mapping is built from `config.alphabet.amino_acids`, so at 20
+letters it is the identity and the head emits 20 columns. `OUTPUTS_LEGITIMATE_GAP` /
+`_STOP` are both False on these models and now mask nothing, because there is no column
+to mask (s54).
+
+### Code
+
+* `antiGen/train.py` -- `--metadata` optional for all three MSA model types; `--msa`
+  still required. Empty string is treated as absent, so an override that cannot *unset*
+  a flag has a second way out. `date_cutoff` is recorded as `""` in the checkpoint
+  config when no filter ran, which is where a later reader can tell the two apart.
+* `antiGen/models/{eve,tranception,evcouplings}_fitness_predictor.py` --
+  `_load_and_filter_msa` takes the MSA as given when no metadata path is set, and says
+  so in the log. All three, because the function is a copy in each and leaving one
+  behind would be worse than touching a model this section does not train.
+* The same three -- **a filter that leaves only the reference row now raises.** This is
+  the hazard the optional path creates, and it was found by asking what would happen if
+  `METADATA` kept its published default against this MSA: the strain names would match
+  nothing, `read_msa_fasta` keeps `msa[0]` whatever the filter says, and the run would
+  pretrain on **one sequence** and exit clean. Nothing downstream could tell. The
+  message names both tallies -- strains passing the date filter, and sequences surviving
+  the header match -- because "the cutoff is too early" and "this metadata is for
+  another file" need different fixes.
+* `examples/slurm/train_{eve,tranception}.sh` -- `MSA` / `METADATA` env overrides
+  beside `DATA_DIR` / `OUT_DIR`. The header comment that said the MSA inputs are "NOT
+  tree-dependent, so they are not parameterised" was true and has stopped being true;
+  it now says why.
+* `antiGen/tests/test_msa_date_filter.py` -- **24 tests, eight per loader**: metadata
+  filters by date, no metadata takes every sequence (for `None` and `""`), the fixture
+  is one the filter actually bites on (a guard on the other two), `--max-seqs` still
+  subsamples and still keeps the reference row first, a **missing** metadata file raises
+  instead of falling through to "no filter" (`--metadata /typo.tsv`), metadata belonging
+  to another MSA raises, an over-early cutoff reaching the same degenerate state raises
+  too, and the guard does **not** fire on a genuinely one-sequence MSA used as given.
+
+Full suite: **191 pass** (167 before).
+
+### The four jobs
+
+**3417095-3417098**, `gpu`, 24 h, 256 G, into `ckpt_stage_aa20`:
+
+| job | rung | group in the figure |
+|---|---|---|
+| 3417095 | `eve_ft_lr0.0001` | antiGen Finetunes |
+| 3417096 | `eve_frozen` | Pandemic Data in Training Window |
+| 3417097 | `tranception_ft_both_lr0.0001` | antiGen Finetunes |
+| 3417098 | `tranception_frozen_both` | Pandemic Data in Training Window |
+
+The recipe is the published one unchanged -- `--lr 0.0001 --epochs 32 --batch-size 32
+--cutoff 1.0 --ignore-dead-ends`, EVE `pretrain_steps` 400,000 and Tranception's
+150,000 (neither is on the CLI), `theta` 0.01, `max_seqs` 0 -- with `--examples`,
+`DATA_DIR`, `MSA` and an empty `METADATA` pointed at the revised corpus.
+
+**The frozen rungs pay the pretraining a second time.** `skip_training` is true for
+`eve --freeze-backbone` and `tranception --freeze-backbone`, so those two jobs are a
+pretraining pass and a save, with `global_step = 0`. There is no `--init-from`, so they
+re-derive a VAE / LM rather than reusing the fine-tune's. That is also what the
+published pair did -- `eve_frozen` (20260623_005149) and `eve_ft` (20260623_015024) are
+separately pretrained an hour apart -- so each rung stays an independent draw, and the
+convention is preserved rather than quietly improved.
+
+### Open
+
+* **EVmutation is the fifth hole and is not submitted.** `evcouplings` is eval-only
+  (`skip_training`) and its loader now takes the same optional metadata, so it is one
+  more job on the same inputs -- but it was not asked for and it is a `plmc` rebuild,
+  which s51 recorded as the slowest thing in this pipeline.
+* **Nothing is scored yet.** When the four land, `list_macro.py` re-runs over the same
+  substrate; the existing `evals_sc2_lists_macro_aa20` rows are keyed by model, so the
+  job resumes and scores only the new rungs. The figure then redraws with 27 rungs and
+  the medals are recomputed over a field that is no longer missing its MSA models.
+* **The checkpoints still predate the current `examples_2021_cur.txt`** for the nine
+  s53 rungs (s54, 2,877 against 2,934 examples). These four do not -- they are trained
+  on the current file -- so until the nine are re-run the arm mixes two revisions of
+  the training corpus by one row of the figure. Worth settling before anything from it
+  is quoted.

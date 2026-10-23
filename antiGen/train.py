@@ -155,7 +155,15 @@ def parse_args():
     parser.add_argument('--msa', type=str, default=None,
                         help='Path to pandemic MSA FASTA (required for evcouplings/eve)')
     parser.add_argument('--metadata', type=str, default=None,
-                        help='Path to metadata TSV with strain/date columns (required for evcouplings/eve)')
+                        help='Path to metadata TSV with strain/date columns, used to '
+                             'restrict the MSA to sequences collected before '
+                             '--date-cutoff. OMIT IT when the MSA is already restricted '
+                             'to the training window -- antiGen-data-revised writes one '
+                             'per run beside the examples it generated from the same '
+                             'sequences -- and every sequence in the file is then used. '
+                             'Omitting it on an MSA that is NOT so restricted leaks the '
+                             'test window into pretraining, which nothing downstream '
+                             'can detect, so it is never the default.')
     parser.add_argument('--max-seqs', type=int, default=0,
                         help='Max MSA sequences for evcouplings/eve/tranception (0=unlimited)')
     parser.add_argument('--evc-pseudo-count', type=float, default=0.5,
@@ -623,17 +631,22 @@ def main():
         model = create_model(model_config, device)
         print(f"Model: PSSM log(count+1) (no training, eval only) — source: {data_dir}/pssms/root.csv")
     elif args.model_type == 'evcouplings':
-        if args.msa is None or args.metadata is None:
-            raise ValueError("--msa and --metadata are required for evcouplings model type")
-        date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
-        print(f"EVcouplings: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
+        if args.msa is None:
+            raise ValueError("--msa is required for evcouplings model type")
+        if not args.metadata:
+            date_cutoff = ""
+            print(f"EVcouplings: MSA used as given -- no --metadata, so no date filter. "
+                  f"The file must already be restricted to the training window.")
+        else:
+            date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
+            print(f"EVcouplings: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
         model_config = ModelConfig(
             model_type=ModelType.EVCOUPLINGS,
             seq_len=seq_len_aa,
             alphabet=alphabet_config,
             evcouplings=EVcouplingsConfig(
                 msa_path=args.msa,
-                metadata_path=args.metadata,
+                metadata_path=args.metadata or "",
                 date_cutoff=date_cutoff,
                 max_seqs=args.max_seqs,
                 pseudo_count=args.evc_pseudo_count,
@@ -642,17 +655,22 @@ def main():
         model = create_model(model_config, device)
         print("Model: EVcouplings mean-field DCA (no training, eval only)")
     elif args.model_type == 'eve':
-        if args.msa is None or args.metadata is None:
-            raise ValueError("--msa and --metadata are required for eve model type")
-        date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
-        print(f"EVE: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
+        if args.msa is None:
+            raise ValueError("--msa is required for eve model type")
+        if not args.metadata:
+            date_cutoff = ""
+            print(f"EVE: MSA used as given -- no --metadata, so no date filter. "
+                  f"The file must already be restricted to the training window.")
+        else:
+            date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
+            print(f"EVE: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
         model_config = ModelConfig(
             model_type=ModelType.EVE,
             seq_len=seq_len_aa,
             alphabet=alphabet_config,
             eve=EVEConfig(
                 msa_path=args.msa,
-                metadata_path=args.metadata,
+                metadata_path=args.metadata or "",
                 date_cutoff=date_cutoff,
                 freeze_backbone=args.freeze_backbone,
                 max_seqs=args.max_seqs,
@@ -661,17 +679,22 @@ def main():
         model = create_model(model_config, device)
         print(f"Model: EVE VAE, freeze_backbone={args.freeze_backbone}")
     elif args.model_type == 'tranception':
-        if args.msa is None or args.metadata is None:
-            raise ValueError("--msa and --metadata are required for tranception model type")
-        date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
-        print(f"Tranception: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
+        if args.msa is None:
+            raise ValueError("--msa is required for tranception model type")
+        if not args.metadata:
+            date_cutoff = ""
+            print(f"Tranception: MSA used as given -- no --metadata, so no date filter. "
+                  f"The file must already be restricted to the training window.")
+        else:
+            date_cutoff = args.date_cutoff or datasets.date_cutoff_str(dataset_name, args.cutoff)
+            print(f"Tranception: date cutoff = {date_cutoff} (MRCA + {args.cutoff} years)")
         model_config = ModelConfig(
             model_type=ModelType.TRANCEPTION,
             seq_len=seq_len_aa,
             alphabet=alphabet_config,
             tranception=TranceptionConfig(
                 msa_path=args.msa,
-                metadata_path=args.metadata,
+                metadata_path=args.metadata or "",
                 date_cutoff=date_cutoff,
                 freeze_backbone=args.freeze_backbone,
                 max_seqs=args.max_seqs,
