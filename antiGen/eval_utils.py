@@ -308,8 +308,15 @@ def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
     was_training = model.training
     model.eval()
     vocab = model.config.alphabet.vocab_size
-    stop_idx = model.config.alphabet.amino_acids.index('*')
-    mask_stop = not getattr(model, 'OUTPUTS_LEGITIMATE_STOP', True)
+    # A 20-letter alphabet has no stop column, so there is nothing to mask and the
+    # question of whether the model emits one legitimately does not arise -- the same
+    # reasoning as `build_model_gap_stop_mask` (NOTES s53/s56). Until s56 this read
+    # `.index('*')` unconditionally and raised `ValueError: substring not found`; it
+    # survived s53 only because that arm's `--val-mode file` left every validation
+    # loader empty, so this function was never called.
+    aas = model.config.alphabet.amino_acids
+    stop_idx = aas.index('*') if '*' in aas else None
+    mask_stop = stop_idx is not None and not getattr(model, 'OUTPUTS_LEGITIMATE_STOP', True)
 
     per_source, total_loss, total_n = {}, 0.0, 0.0
     for name, loader in loaders_by_source.items():

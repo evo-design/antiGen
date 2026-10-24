@@ -11,10 +11,14 @@ the column one, it is model-independent at every query, an ungrounded position
 contributes no candidates at all, the three implementations still agree under it, the
 target-handling modes do what they say, and passing no mask is bit-exact with s51.
 """
+import os
+import tempfile
+
 import pytest
 import torch
 
 import antiGen.ensemble_sweep as es
+from antiGen.config import LEGACY_AAS, STANDARD_AAS
 from antiGen.background_discrimination import rank_fractions, top_q_weight
 from antiGen.eval_utils import (compute_hit_rate, real_substitution_mask,
                                 real_wildtype_mask)
@@ -226,3 +230,63 @@ def test_wrong_shaped_mask_is_rejected():
         compute_hit_rate(s, _targets([]), aa, eval_range=list(range(R)),
                          pool_mask=POOL,
                          wt_pool_mask=torch.ones(B + 1, R, dtype=torch.bool))
+
+
+# ── The alphabet of a cached map directory (NOTES s56) ──────────────────────────
+# `ensemble_sweep` built every mask from a module constant, so a 20-letter map
+# directory would have been read in the 22-token frame: the pool mask would drop two
+# columns that are not there, and `alt` would name every residue one along. Neither
+# fails on shape once the masks agree with each other, so the alphabet is read from the
+# maps and then checked against them.
+
+def _fake_maps(tmp, n_res, alphabet=None):
+    """A map directory with one model, written the way score_cache writes one."""
+    import json
+    import numpy as np
+    from antiGen import score_cache as sc
+    os.makedirs(tmp, exist_ok=True)
+    w = sc.MapWriter(tmp, "m", 2, 3, n_res)
+    w.write_batch(0, np.zeros((2, 3, n_res), dtype=np.float32))
+    w.close(manifest_sha1="x", extra={"n_queries": 2, "eval_range_len": 3})
+    man = {"seq_len": 10, "eval_range": [0, 1, 2]}
+    if alphabet is not None:
+        man["args"] = {"alphabet": alphabet}
+    with open(os.path.join(tmp, "query_manifest.json"), "w") as f:
+        json.dump(man, f)
+    return man
+
+
+def test_map_alphabet_comes_from_the_manifest():
+    from antiGen.ensemble_sweep import alphabet_of_maps
+    with tempfile.TemporaryDirectory() as tmp:
+        man = _fake_maps(tmp, 20, alphabet=STANDARD_AAS)
+        assert alphabet_of_maps(tmp, man) == STANDARD_AAS
+
+
+def test_a_manifest_without_an_alphabet_falls_back_to_the_legacy_frame():
+    """Every map directory dumped before the flag existed is the 22-token frame."""
+    from antiGen.ensemble_sweep import alphabet_of_maps
+    with tempfile.TemporaryDirectory() as tmp:
+        man = _fake_maps(tmp, 22)
+        assert alphabet_of_maps(tmp, man) == LEGACY_AAS
+
+
+def test_an_alphabet_that_disagrees_with_the_maps_is_refused():
+    """The check that makes the fallback safe: width is verified against a map file."""
+    from antiGen.ensemble_sweep import alphabet_of_maps
+    with tempfile.TemporaryDirectory() as tmp:
+        man = _fake_maps(tmp, 20, alphabet=STANDARD_AAS)
+        with pytest.raises(SystemExit, match="20 residue columns"):
+            alphabet_of_maps(tmp, man, LEGACY_AAS)
+    with tempfile.TemporaryDirectory() as tmp:
+        man = _fake_maps(tmp, 22)          # legacy maps, mislabelled as 20
+        with pytest.raises(SystemExit, match="22 residue columns"):
+            alphabet_of_maps(tmp, man, STANDARD_AAS)
+
+
+def test_an_override_wins_over_the_manifest_when_they_agree_in_width():
+    from antiGen.ensemble_sweep import alphabet_of_maps
+    with tempfile.TemporaryDirectory() as tmp:
+        man = _fake_maps(tmp, 20, alphabet=STANDARD_AAS)
+        other = "ACDEFGHIKLMNPQRSTVWX"
+        assert alphabet_of_maps(tmp, man, other) == other

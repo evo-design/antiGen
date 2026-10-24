@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=train_eve
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu_batch_high_mem,gpu_batch,gpu
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=256G

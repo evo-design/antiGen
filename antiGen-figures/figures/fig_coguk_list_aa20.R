@@ -66,8 +66,29 @@
 ##         figs/coguk_list_aa20_supp.png  (+ .pdf)
 ## ---------------------------------------------------------------------------
 
+## THE THIRTEENTH BAR (NOTES s56). `coguk_list_aa20` draws one rung the published figure
+## has no counterpart for: base antiGen trained ten times, each stopping at the epoch a
+## random validation holdout chose, combined as the mean of the ten runs' log-probs. It
+## replaces the published arm's fixed 32-epoch budget, which was chosen on nothing.
+##
+## It arrives through the ENSEMBLE group, because that is what the machinery calls a
+## combination of cached maps -- but its members are NOT drawn on this figure, so the
+## group's standing caveat ("an ensemble bar sits beside its own parts") does not apply
+## and its noun would mislead. Hence the renamed group and its own colour.
+##
+## READ IT AS ONE BAR MOVING THREE THINGS AT ONCE, not as "selection is worth X". It
+## differs from the base antiGen rung in the epoch, in the 10% of the training pool each
+## run holds out, and in being an average of ten predictors rather than one. s47
+## measured the first two on the published corpus and found the selection effect
+## (+0.014 / +0.010 on C/D) smaller than the seed spread (0.035 / 0.028) and the data
+## cost sometimes larger than it -- which is why that arm needed its `fix32` control and
+## why this bar is not a decomposition either. The control that would isolate the
+## ensembling is ten FIXED-32 runs on the same ten splits, averaged the same way; see
+## that section's Open.
 options(
   coguk.macro_dir    = "data/evals_sc2_lists_macro_aa20",
+  coguk.ensemble_group = "antiGen, val-selected x10",
+  coguk.ensemble_color = "#0096c7",
   ## Deliberately absent -- see the header. Named rather than left at the
   ## published default, which would draw the old corpus's rows under this
   ## figure's title.

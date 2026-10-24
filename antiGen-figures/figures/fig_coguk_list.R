@@ -260,7 +260,14 @@ if (length(setdiff(VALSEL, names(VALSEL_KNOWN))) > 0) {
 ##
 ## Names are `ens_<rule_id>`, a canonical hash of the rule, so two searches arriving at
 ## the same combination collapse to one row rather than appearing as two.
-ENSEMBLE_GROUP <- "Ensembles"
+## The group name and colour are options, because "Ensembles" is the right noun only
+## when the members are themselves drawn. An arm whose bar combines runs that are NOT on
+## the figure -- the ten val-selected antiGen draws of NOTES s56, say -- is a single
+## predictor as far as a reader is concerned, and calling it an ensemble beside bars that
+## are not its parts says the opposite of what the caveat above means. Defaults are the
+## published strings, so the published figure is unchanged.
+ENSEMBLE_GROUP <- getOption("coguk.ensemble_group", "Ensembles")
+ENSEMBLE_COLOR <- getOption("coguk.ensemble_color", "#bc6c25")
 ## The default is not "draw none", it is "draw what THIS figure's own macro directory
 ## says". `ensemble_figure_rows.tsv` is written by `antiGen/ensemble_report.py` beside
 ## the CSV it scored, so a directory carrying ensemble rows draws them and one that does
@@ -449,7 +456,7 @@ if (length(ENSEMBLE) > 0) {
   MODEL_GROUP <- c(MODEL_GROUP, setNames(rep(ENSEMBLE_GROUP, length(ENSEMBLE)), ENSEMBLE))
   MODEL_LABEL <- c(MODEL_LABEL, setNames(lab, ENSEMBLE))
   GROUP_LEVELS <- c(GROUP_LEVELS, ENSEMBLE_GROUP)
-  GROUP_COLORS <- c(GROUP_COLORS, setNames("#bc6c25", ENSEMBLE_GROUP))
+  GROUP_COLORS <- c(GROUP_COLORS, setNames(ENSEMBLE_COLOR, ENSEMBLE_GROUP))
 }
 
 ## The val-selection arm, on the same terms and for the same reasons. A third

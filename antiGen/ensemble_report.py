@@ -307,7 +307,7 @@ def main():
                             rule_id=rule.rule_id, label=fig_labels[rule.rule_id],
                             pool=pool_name,
                             pos1=sub.eval_range[int(r_i)] + 1,
-                            alt=es.ALLOWED_AAS[int(c_i)],
+                            alt=sub.alphabet[int(c_i)],
                             k_events=float(ce_full[r_i, c_i]),
                             ensemble=float(ens_q[qtiles[0]][j]),
                             incumbent=float(mem_q[incumbent][qtiles[0]][j]),

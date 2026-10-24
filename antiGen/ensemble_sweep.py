@@ -71,7 +71,7 @@ from antiGen.background_discrimination import rank_fractions, top_q_weight
 from antiGen.backbone_list_eval import summarize, target_matrix
 from antiGen import datasets
 from antiGen.background_tree import build_backbone
-from antiGen.load import load_pssms
+from antiGen.load import load_counts_matrix, load_pssms
 from antiGen.mutation_lists import load_mutation_list
 
 SWEEP = "ensemble_sweep.csv"
@@ -190,8 +190,14 @@ class Substrate:
     """
 
     def __init__(self, *, maps_dir, aa_eval, targets, seen, in_full, observed,
-                 eval_range, members, block=2048, ungrounded=UNGROUNDED_DEFAULT):
+                 eval_range, members, block=2048, ungrounded=UNGROUNDED_DEFAULT,
+                 alphabet=ALLOWED_AAS):
         self.maps_dir = maps_dir
+        # The residue alphabet the cached maps were written in, which fixes E and the
+        # column order of every mask built below. It is a property of the MAPS, not a
+        # choice made here (NOTES s56): a 20-letter map read in the 22-token frame would
+        # mask the wrong two columns and index `alt` one residue along.
+        self.alphabet = alphabet
         # 'score' by default: the backbone substrate (K-L) ranks one cell ACROSS queries
         # against a deliberately query-INDEPENDENT pool (NOTES s39), so a per-query mask
         # would reintroduce exactly the confound that row exists to avoid. Only the list
@@ -240,7 +246,7 @@ class Substrate:
         """
         if self.ungrounded == "score":
             return None
-        return real_wildtype_mask(self.aa_eval[start:stop], ALLOWED_AAS)
+        return real_wildtype_mask(self.aa_eval[start:stop], self.alphabet)
 
     def targets_block(self, start, stop):
         """(B, R, E) target counts for this block, with ungrounded events handled.
@@ -266,7 +272,7 @@ class Substrate:
         target, since none of the 247 listed RBD cells is a gap or a stop. See
         ``eval_utils.real_substitution_mask`` and NOTES s51.
         """
-        drop = ~real_substitution_mask(self.seen.shape[0], ALLOWED_AAS,
+        drop = ~real_substitution_mask(self.seen.shape[0], self.alphabet,
                                        device=self.seen.device)
         return drop if pool_name == "fullpool" else (drop | self.seen)
 
@@ -347,11 +353,44 @@ def build_backbone_substrate(args):
     return bb, T, aa_eval, seen, eval_range, members, seq_len
 
 
+def alphabet_of_maps(maps_dir, man, override=None):
+    """The residue alphabet a cached map directory was written in.
+
+    ``list_macro.py`` records its whole argument namespace in the query manifest, so a
+    directory dumped after NOTES s53 names its own alphabet and nothing has to be told.
+    A directory dumped BEFORE that flag existed has no such key, and every one of those
+    is the 22-token frame -- which is why the fallback is a fallback and not a guess.
+
+    The length is then checked against what a map file actually holds, because that is
+    the thing a wrong answer here corrupts: a 20-column map read as 22 would mask the
+    wrong two columns and name every ``alt`` one residue along, and nothing downstream
+    fails on shape once the masks agree with each other.
+    """
+    recorded = (man.get("args") or {}).get("alphabet")
+    alphabet = override or recorded or ALLOWED_AAS
+    whence = ("--alphabet" if override else
+              "the query manifest" if recorded else
+              "the pre-s53 default, which this manifest does not record")
+    models = sc.list_models(maps_dir)
+    if models:
+        with open(sc.sidecar_path(maps_dir, models[0])) as fh:
+            side = json.load(fh)
+        e_on_disk = int(side["shape"][2])
+        if e_on_disk != len(alphabet):
+            raise SystemExit(
+                f"{maps_dir}: the maps hold {e_on_disk} residue columns but the "
+                f"alphabet is {len(alphabet)} ('{alphabet}'). Pass --alphabet to name "
+                f"the frame these maps were written in.")
+    print(f"Map alphabet: '{alphabet}' (E={len(alphabet)}) -- from {whence}")
+    return alphabet
+
+
 def build_list_substrate(args):
     """The attached-tree substrate, from ``list_macro.py --dump-scores``."""
     man = sc.read_query_manifest(args.maps_dir)
     eval_range = man["eval_range"]
-    E = len(ALLOWED_AAS)
+    alphabet = alphabet_of_maps(args.maps_dir, man, getattr(args, 'alphabet', None))
+    E = len(alphabet)
     aa_full, (qi, po, al, ct) = sc.read_queries(args.maps_dir)
     pos_of = {p: i for i, p in enumerate(eval_range)}
     N, R = aa_full.shape[0], len(eval_range)
@@ -361,16 +400,24 @@ def build_list_substrate(args):
     rows = np.array([pos_of[p] for p in po[keep]], dtype=np.int64)
     T[torch.from_numpy(qi[keep].astype(np.int64)), torch.from_numpy(rows),
       torch.from_numpy(al[keep].astype(np.int64))] += torch.from_numpy(ct[keep])
-    pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"),
-                              man.get("variant") or datasets.default_variant("sc2"), E)
+    if getattr(args, 'root_counts', None):
+        pssm_root = load_counts_matrix(args.root_counts, alphabet)
+    elif args.data_dir:
+        pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"),
+                                  man.get("variant") or datasets.default_variant("sc2"), E)
+    else:
+        raise SystemExit("--root-counts, or a --data-dir carrying pssms/root.csv: the "
+                         "de novo cut is defined by which cells the training window "
+                         "carried, and it has to come from the corpus the members were "
+                         "trained on.")
     seen = (pssm_root > 0)[eval_range, :]
     members = sc.list_models(args.maps_dir)
     if not members:
         raise SystemExit(f"no cached maps in {args.maps_dir}")
-    return man, T, aa_eval, seen, eval_range, members
+    return man, T, aa_eval, seen, eval_range, members, alphabet
 
 
-def load_lists(specs, eval_range, seq_len):
+def load_lists(specs, eval_range, seq_len, alphabet=ALLOWED_AAS):
     """-> (R, E) bool mask per --mutation-list, restricted to the eval range."""
     pos_of = {p: i for i, p in enumerate(eval_range)}
     out = []
@@ -378,8 +425,8 @@ def load_lists(specs, eval_range, seq_len):
         if '=' not in item:
             raise SystemExit(f"--mutation-list wants LABEL=PATH, got {item!r}")
         label, path = item.split('=', 1)
-        cells, report = load_mutation_list(path, ALLOWED_AAS, seq_len, label=label)
-        m = torch.zeros(len(eval_range), len(ALLOWED_AAS), dtype=torch.bool)
+        cells, report = load_mutation_list(path, alphabet, seq_len, label=label)
+        m = torch.zeros(len(eval_range), len(alphabet), dtype=torch.bool)
         for pos, aa in cells:
             if pos in pos_of:
                 m[pos_of[pos], aa] = True
@@ -644,7 +691,20 @@ def add_substrate_args(ap):
     ap.add_argument('--substrate', choices=['backbone', 'list'], required=True)
     ap.add_argument('--background-dir', help='backbone substrate: the scores_*.npz dir')
     ap.add_argument('--maps-dir', help='list substrate: the --dump-scores dir')
-    ap.add_argument('--data-dir', required=True, help='for pssms/root.csv (the seen mask)')
+    ap.add_argument('--data-dir', default=None,
+                    help='for pssms/root.csv (the seen mask). Not needed when '
+                         '--root-counts names the count matrix directly.')
+    ap.add_argument('--alphabet', default=None,
+                    help='Residue alphabet the cached maps were written in. The default '
+                         'is read from the query manifest, which list_macro.py records, '
+                         'falling back to the 22-token frame for a map directory dumped '
+                         'before that flag existed. Only pass it to name a frame the '
+                         'manifest does not.')
+    ap.add_argument('--root-counts', default=None, metavar='TSV',
+                    help="antiGen-data-revised's positional count matrix over the "
+                         "training window, used in place of pssms/root.csv. It defines "
+                         "the de novo cut, so it has to come from the corpus the "
+                         "members were trained on.")
     ap.add_argument('--tree-json'); ap.add_argument('--ref-json')
     ap.add_argument('--segment', default='S')
     ap.add_argument('--cutoff', type=float, default=1.0)
@@ -674,11 +734,11 @@ def substrate_from_args(args):
             if not getattr(args, need):
                 raise SystemExit(f"--substrate backbone needs --{need.replace('_', '-')}")
         _bb, T, aa_eval, seen, eval_range, members, seq_len = build_backbone_substrate(args)
-        maps_dir = args.background_dir
+        maps_dir, alphabet = args.background_dir, ALLOWED_AAS
     else:
         if not args.maps_dir:
             raise SystemExit("--substrate list needs --maps-dir")
-        man, T, aa_eval, seen, eval_range, members = build_list_substrate(args)
+        man, T, aa_eval, seen, eval_range, members, alphabet = build_list_substrate(args)
         maps_dir, seq_len = args.maps_dir, man["seq_len"]
 
     if args.members:
@@ -695,7 +755,7 @@ def substrate_from_args(args):
     print(f"Substrate {args.substrate}: {aa_eval.shape[0]} queries, "
           f"{len(eval_range)} eval positions, {len(members)} members")
 
-    lists = load_lists(args.mutation_list, eval_range, seq_len)
+    lists = load_lists(args.mutation_list, eval_range, seq_len, alphabet)
     label = args.list or lists[0][0]
     in_full = dict(lists).get(label)
     if in_full is None:
@@ -710,7 +770,8 @@ def substrate_from_args(args):
             "and a per-query mask would put the confound back")
     sub = Substrate(maps_dir=maps_dir, aa_eval=aa_eval, targets=T, seen=seen,
                     in_full=in_full, observed=observed, eval_range=eval_range,
-                    members=members, block=args.query_block, ungrounded=ungrounded)
+                    members=members, block=args.query_block, ungrounded=ungrounded,
+                    alphabet=alphabet)
     if ungrounded != 'score':
         g = torch.cat([sub.wt_pool(a, b) for a, b in sub.blocks()])
         kept = T * g.unsqueeze(-1).to(T.dtype)
