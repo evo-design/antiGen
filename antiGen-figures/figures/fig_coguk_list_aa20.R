@@ -53,6 +53,13 @@
 ##        tree/sets TSVs or the published backbone, which would be a second
 ##        corpus in one figure.
 ##
+## ONE PREDICTOR HERE IS NOT ON THE PUBLISHED FIGURE AT ALL: `BA2_escape_LYCoV1404`,
+## the LY-CoV1404 (bebtelovimab) antibody-escape DMS on a BA.2 background, built from
+## `escape.csv` by `experiments/multitree/make_escape_baseline.py` and drawn in the Deep
+## Mutational Scans group (NOTES s64). Read its panels C/D against its neighbours and its
+## panels E/F with the coverage caveat beside its label in `fig_coguk_list.R`: it measures
+## half the candidate pool, which caps its recall curve at 0.8391 and so its AUC.
+##
 ## WHICH RUNGS ARE PRESENT. The nine retrained checkpoints (antiGen, and ESM-2
 ## 35M/650M at each of noft / LM head / partial / full), BLOSUM62 rewritten at 20
 ## letters, the three data-derived composition baselines fitted on the new

@@ -8364,3 +8364,127 @@ concatenates, gating that the rule_ids are disjoint and that both runs scored th
   and nothing else. So this corpus has the means' select numbers and no baseline to read
   them against. One more sweep with nine one-member rules closes it, and it should be
   closed before any +0.02 off panels E/F is quoted as a general improvement.
+
+## 64. An antibody-escape DMS joins the scans: LY-CoV1404 on BA.2 (2026-10-24)
+
+`escape.csv` in the repo root -- the Bloom-lab escape-calculator shape, one row per
+(condition, site, mutation) with a `mut_escape` fraction -- becomes a fixed (L, E)
+baseline map and a sixth bar in the figure's **Deep Mutational Scans** group. One
+condition, `LY-CoV1404 - BA2`: the escape fraction of each substitution from
+bebtelovimab, measured on a BA.2 background. It is a deep mutational scan, so it joins
+that group; it gets its own label, because escape is not what the other four measure.
+
+### The frame and the background are detected, not assumed
+
+The table numbers sites **1-indexed**; everything downstream of `load.py` is 0-indexed.
+Reading it one residue along would have produced a file that is self-consistent, in
+range, and wrong -- the defect class s53 spent a section on, and the reason
+`make_escape_baseline.py` detects the offset instead of taking it.
+
+The table carries a `wildtype` column, so every site votes. Against the **BA.2 root**
+streamed out of the revised test corpus by its `IS_VARIANT_ROOT` flag (the record
+`forward_variant_root.py` finds, and found the same way so a regenerated corpus cannot
+point this at another node):
+
+| offset | wildtypes matched |
+|---|---:|
+| `site - 1` | **173 / 173** |
+| `site + 0` | 6 / 173 |
+
+Not a close call, and it identifies the **background** as well as the frame: the same
+check against a Wuhan-era root would fail, because this table's wildtypes are BA.2's. The
+script refuses unless one offset explains *every* site and the other does not.
+
+The result lands on rows **330-530**, which is exactly where the four published DMS maps
+live, and writes the 22-token frame they use, so the trailing stop and gap columns are
+dropped by `load_baselines` under a 20-letter alphabet (s53) and one file serves both.
+
+### The sentinel is load-bearing, and negatives are refused rather than clamped
+
+`load_baselines` maps every **negative** cell to NaN, not just the -1 the published maps
+write. So -1 means "not measured" and a measured **zero** is kept and ranks last, which
+is the right reading of "this substitution does not escape". A table carrying negative
+escape values would have them silently read as missing -- so the script **errors** on one
+instead of clamping, because clamping changes a measurement and the right transform
+depends on what a negative means in the source. This table's minimum is +0.002981, so
+nothing is affected; the guard is for the next table.
+
+### It covers half the pool, and that caps the AUC rather than the top decile
+
+2,023 of the 4,020 candidate cells, 173 of 201 RBD positions. `compute_hit_rate` keeps an
+unscored cell **in the pool, ranked last**, so one map's gaps cannot shrink everyone's
+denominator (the s51 property) -- but they do cap the map's own curve.
+
+| q | LY-CoV1404 escape | BA.2 DMS (expr) | EVEscape |
+|---|---:|---:|---:|
+| 0.1 | 0.2261 | 0.2399 | 0.3586 |
+| 0.3 | 0.5217 | 0.6957 | 0.7694 |
+| 0.5 | 0.8000 | 0.9304 | 0.9429 |
+| 0.6 | **0.8391** | 0.9783 | 0.9696 |
+| 0.9 | **0.8391** | 0.9957 | 1.0000 |
+
+**The plateau is exactly its coverage of the target set**: 193 of the 230 observed listed
+cells have a measurement, 193/230 = **0.8391**, and the curve reaches that at q = 0.6 and
+never moves again. So:
+
+* **Panels C and D are comparable.** At q = 0.1 the decile is ~402 cells and fits inside
+  the 2,023 it measures; it is not truncated.
+* **Panels E and F are not.** Their AUC charges this rung for coverage as well as for
+  ranking, and reading its 0.6373 / 0.6726 against a map that scores every cell is
+  reading two different things. Recorded beside the label in `fig_coguk_list.R` rather
+  than only here, because that is where someone will be when they wonder.
+
+### Where it lands
+
+Cell-weighted, q = 0.10, against the group it joins.
+
+| predictor | C | D | E | F |
+|---|---:|---:|---:|---:|
+| EVEscape | 0.3586 | 0.3865 | 0.8057 | 0.8105 |
+| BA.1 DMS (expression) | 0.2757 | 0.3200 | 0.7658 | 0.7596 |
+| BA.2 DMS (expression) | 0.2399 | 0.3009 | 0.7653 | 0.7602 |
+| **LY-CoV1404 escape** | **0.2261** | **0.2800** | **0.6373** | **0.6726** |
+| BA.1 DMS (bind) | 0.2217 | 0.1200 | 0.6180 | 0.5448 |
+| BA.2 DMS (bind) | 0.2203 | 0.1520 | 0.6319 | 0.5660 |
+
+21st of 30 single models on C, 14th on D. It beats both **bind** maps on every panel and
+sits below both **expression** maps; EVEscape, which is also an escape-motivated score
+but covers the whole pool, is well clear of it. Nothing else on the figure reorders.
+
+### The job, and the gate that matters
+
+**3428348**, `gpu`, **44 s**, exit `0:0`. `list_macro` resumed over the 29 models already
+in the directory and scored the one new map; 52 maps in the cache.
+
+* `candidate pool: common -- 4020 of 4020 cells` on **both** this run and s62's, so
+  adding a half-covered map did **not** shrink the shared pool. That was the thing worth
+  checking before anything else: it is precisely the s51 failure.
+* Every pre-existing row is **bit-identical** to the committed file -- 1,044 shared
+  (model, variant, qtile) cells, worst |delta| **0.00e+00**, `n_cells` and `n_events`
+  unchanged, 0 rows lost, 36 added.
+* `coguk_list_results` re-renders **byte-identical** (`776aa91c...`, `49cc10be...`). Its
+  stdout now names the new rung as missing on all four metrics, which is the designed
+  "report the holes" behaviour and the same treatment EVmutation gets.
+
+### Code
+
+* `experiments/multitree/make_escape_baseline.py` -- the generator. `--condition` is
+  required when a table holds more than one, since one map is one predictor.
+* `data/baselines/BA2_escape_LYCoV1404.csv` -- 1,273 x 22, rows 330-530 populated.
+* `antiGen-figures/figures/fig_coguk_list.R` -- `MODEL_GROUP` / `MODEL_LABEL`, with the
+  coverage caveat.
+* `antiGen-figures/figures/fig_coguk_list_aa20.R` -- the header note.
+
+### Open
+
+* **One antibody, one background.** This is bebtelovimab on BA.2, not an escape panel.
+  The escape calculator's other conditions are more maps on the same code path --
+  `--condition` names each -- and a per-antibody mean would be a different predictor
+  again, not a sixth bar.
+* **The published figure has not scored it.** The map is in `data/baselines/`, so the
+  next published `list_macro` run picks it up; until then `coguk_list_results` reports
+  it as a hole. Scoring it there is one job and would put it on both figures.
+* **The AUC panels need a coverage-aware reading or a coverage-matched comparison.** The
+  honest alternative is to report this rung at q = 0.1 only, or to restrict every rung to
+  the 2,023 cells it measures and recompute the row -- which is a different panel, not a
+  footnote, and is not done here.

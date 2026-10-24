@@ -388,6 +388,7 @@ MODEL_GROUP <- c(
   Omicron_BA1_expr                           = "Deep Mutational Scans",
   Omicron_BA2_bind                           = "Deep Mutational Scans",
   Omicron_BA2_expr                           = "Deep Mutational Scans",
+  BA2_escape_LYCoV1404                       = "Deep Mutational Scans",
 
   EVEscape                                   = "Pre-Pandemic Data Only",
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "Pre-Pandemic Data Only",
@@ -421,6 +422,22 @@ MODEL_LABEL <- c(
   Omicron_BA1_expr                           = "BA.1 DMS (expression)",
   Omicron_BA2_bind                           = "BA.2 DMS (bind)",
   Omicron_BA2_expr                           = "BA.2 DMS (expression)",
+  ## Antibody-escape DMS rather than a binding/expression phenotype: the escape
+  ## fraction of each substitution from LY-CoV1404 (bebtelovimab), measured on a
+  ## BA.2 background. Same group, because it is a deep mutational scan; its own
+  ## label, because what it measures is not what the other four measure.
+  ##
+  ## IT COVERS HALF THE POOL, and that caps its AUC rather than its top decile.
+  ## The source table measures 2,023 of the 4,020 candidate cells (173 of 201 RBD
+  ## positions), and `compute_hit_rate` keeps an unscored cell in the pool ranked
+  ## LAST so one map's gaps cannot shrink everyone's denominator. At q = 0.1 the
+  ## decile is ~402 cells and fits inside what it measures, so panels C/D compare
+  ## it on the same terms as its neighbours. Its recall curve then PLATEAUS at
+  ## 0.8391 from q = 0.6 on -- exactly the 193 of 230 observed listed cells it has
+  ## a measurement for -- so panels E/F charge it for coverage as well as for
+  ## ranking, and its AUC is not comparable with a map that scores every cell
+  ## (NOTES s64).
+  BA2_escape_LYCoV1404                       = "BA.2 DMS (LY-CoV1404 escape)",
   EVEscape                                   = "EVEscape",
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), untrained",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), untrained",
