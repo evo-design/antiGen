@@ -8217,3 +8217,150 @@ measured rather than predicted. The two runs selecting epoch 6 are the two with 
 largest holdouts, the same pattern s56 found in antiGen's ten. Partial arms on disk:
 `35m_frozen` 6 of 10, `35m_full` 2, `650m_partial` 1; `train_esm2_valsel10.sh` skips a
 run that already has a `_best.pt`, so a restart resumes rather than redoes.
+
+## 63. The nine-member ensembles on the revised corpus: AUC survives, the top decile does not (2026-10-24)
+
+s54 left the three **Ensembles** bars off `coguk_list_aa20` because the rules had been
+selected on the published maps and two of the nine members had no map on this corpus at
+all. s62 scored EVE and Tranception here, so the family can be formed. It is now drawn,
+and the figure carries **32 rungs in seven legend groups**.
+
+### The rules are carried, and the carry is checked rather than asserted
+
+The family is nine parameter-free rules -- `pctile` / `logsoftmax` / `zscore` x `arith` /
+`max` / `min` -- over base antiGen, EVE full FT, Tranception full FT and the six ESM-2
+arms. The published figure draws the three **arithmetic** ones, a choice s49/s50 made on
+the published corpus's SELECT cells. Carrying that choice here is importing a selection
+made elsewhere, which is what s54's Open warned about, so all nine were re-scored on
+**this corpus's** select cells (889 observed off-list RBD cells, 590 de novo) before
+anything was drawn.
+
+| rule | SELECT q0.1 | SELECT AUC | SELECT de novo q0.1 | REPORT C q0.1 |
+|---|---:|---:|---:|---:|
+| **Mean of z-scores** | **0.3500** | **0.7920** | 0.3817 | 0.5056 |
+| **Mean of log-probs** | **0.3459** | **0.7908** | 0.3812 | 0.5026 |
+| **Mean of ranks** | **0.3374** | **0.7901** | **0.3854** | 0.4957 |
+| Min of ranks | 0.3372 | 0.7666 | 0.3347 | 0.4441 |
+| Min of z-scores | 0.3370 | 0.7667 | 0.3412 | 0.4477 |
+| **Max of log-probs** | 0.3329 | 0.7763 | 0.3126 | **0.5172** |
+| Max of z-scores | 0.3176 | 0.7564 | 0.3078 | 0.5069 |
+| Min of log-probs | 0.3134 | 0.7453 | 0.3239 | 0.4504 |
+| Max of ranks | 0.3108 | 0.7532 | 0.2974 | 0.4928 |
+
+**The three means take the top three places on select, on both cuts and on the AUC**, so
+selecting here would have selected the same three. The carry is legitimate on this corpus
+and that is now measured.
+
+**The last column is the argument for the whole protocol, stated in one row.** On the
+cells the figure REPORTS, `Max of log-probs` (0.5172) beats every mean. Selecting on the
+reported cells would therefore have drawn a different rule -- the one that happens to
+suit the reported set, which is exactly what selecting on disjoint cells exists to
+prevent. It is cheap to state this when the two columns agree; it is worth having when
+they do not.
+
+### The result: the ensembling gain splits by panel
+
+Against the **best of the nine members**, which is base antiGen on all four panels, on
+both corpora. Seed floor 0.035 (C/E) and 0.028 (D/F).
+
+| | C published | **C revised** | D published | **D revised** |
+|---|---:|---:|---:|---:|
+| best member | 0.5147 | 0.5225 | 0.4675 | 0.4732 |
+| Mean of ranks | +0.0059 | **-0.0268** | +0.0026 | **-0.0099** |
+| Mean of log-probs | +0.0110 | **-0.0199** | +0.0571 | **-0.0061** |
+| Mean of z-scores | +0.0008 | **-0.0169** | +0.0411 | **-0.0013** |
+
+| | E published | **E revised** | F published | **F revised** |
+|---|---:|---:|---:|---:|
+| best member | 0.8343 | 0.8327 | 0.8092 | 0.7997 |
+| Mean of ranks | +0.0044 | **+0.0079** | +0.0115 | **+0.0217** |
+| Mean of log-probs | +0.0109 | **+0.0110** | +0.0250 | **+0.0277** |
+| Mean of z-scores | +0.0080 | **+0.0117** | +0.0191 | **+0.0276** |
+
+**On the AUC panels the gain survives the corpus change and is slightly larger.** On the
+top decile it **changes sign**: all three means now sit below base antiGen on C and on D.
+Every number in both tables is inside the seed floor except published D's +0.0571, so
+what this really says is that the ensembling gain was never large on these panels and is
+now not even positive where the figure's headline is read.
+
+A candidate mechanism, not a measurement: **two of the nine members lost a lot on exactly
+these two panels in s62** -- EVE full FT -0.0495 (C) / -0.0828 (D), Tranception full FT
+-0.0116 / -0.0589 -- and an unweighted mean of nine carries both. The AUC panels, where
+those two moved by -0.008 and -0.013, are where the gain survives. That is consistent and
+it is not established; separating it needs the members held fixed, which no run here does.
+
+### The medals, and panel F changes hands
+
+| panel | 1st | 2nd | 3rd |
+|---|---|---|---|
+| C | antiGen 10x val-sel 0.5451 | antiGen 0.5225 | ESM 2 (35M) partial 0.5083 |
+| D | antiGen 10x val-sel 0.5083 | antiGen 0.4732 | **Mean of z-scores 0.4719** |
+| E | **Mean of z-scores 0.8444** | **Mean of log-probs 0.8437** | **Mean of ranks 0.8406** |
+| F | **Mean of log-probs 0.8274** | **Mean of z-scores 0.8273** | **Mean of ranks 0.8214** |
+
+The means sweep E and F outright, and on F they displace **EVEscape** (0.8105), which had
+led that panel on the published figure and on this one through s62. C and D are unchanged
+from s62 but for the third medal on D.
+
+### Two groups, because one noun cannot be right for both
+
+All five combination bars arrive through the ENSEMBLE machinery. The nine-member
+mixtures' members ARE bars in these panels, so the standing caveat applies: an ensemble
+bar sits beside its own parts. s56's and s57's bars combine ten runs that are **not**
+drawn, so it does not. They are now separate legend groups with separate colours --
+published orange for **Ensembles**, blue for **Val-selected, averaged over 10 holdouts**.
+
+* `antiGen/ensemble_report.py` -- an optional `figure_group` per rule, written as a third
+  column of `ensemble_figure_rows.tsv`. Set on all rules or none, because a partly
+  grouped file would put the ungrouped rows in the figure's fallback group silently,
+  which is the one thing the column exists to prevent.
+* `antiGen-figures/figures/fig_coguk_list.R` -- the TSV reader takes 2 or 3 columns, each
+  row's group is its own or `ENSEMBLE_GROUP`, and `coguk.ensemble_colors` maps group to
+  colour with `ENSEMBLE_COLOR` as the fallback. **The published figure re-renders
+  byte-identical through this**: `coguk_list_results.png` md5 `776aa91ceabf648d713a61cd1f2edd7b`
+  and `coguk_list_supp.png` `49cc10be9037e8673e6028ad630312df`, unchanged, and `git
+  status` reports neither as modified.
+* `examples/slurm/ensembles9_aa20.sh` -- the job.
+
+### The first attempt reported the right numbers against the wrong incumbent
+
+One run over all eleven rules was taken first, and its bar values were correct -- but
+`ensemble_report`'s auto-added **"panel incumbent" is the max over every member whose map
+the run loaded**, and a combined run loads the ten `vs10Antigen` runs and the ten hybrid
+blends as well as the nine. So the family's contrasts came back against
+`vs10Antigen_s4`: the best of ten unlabelled runs of a *different arm*, chosen by
+maximum. Nothing on the figure was wrong; the file a reader consults for intervals was.
+
+The job now reports each arm against its own member set -- the family against its nine,
+the two carried rules against the eleven and sixteen rungs s56/s57 used -- and
+concatenates, gating that the rule_ids are disjoint and that both runs scored the same
+`n_cells` on all 18 (variant, qtile) keys. Two further gates, both **0.00e+00**:
+
+* the nine rules' rows from the 9-member run against the 11-rule run's, 198 cells --
+  so a rule's score does not depend on which other members were loaded, and the first
+  attempt's values were right;
+* the two carried rules against the **committed** file, 36 cells -- so replacing the
+  directory's ensemble CSV loses nothing of s56/s57.
+
+### State
+
+* **Shipped.** `figs/coguk_list_aa20{,_supp}.png` + PDFs, and the four ensemble files in
+  `data/evals_sc2_lists_macro_aa20/`: 11 rules in the CSV and the contrasts, **5 rows in
+  `ensemble_figure_rows.tsv`**. Reported whole, drawn in part -- the published shape, and
+  the six losers stay in the data.
+* The published `coguk_list_results` is untouched and gated above.
+
+### Open
+
+* **EVmutation remains the only hole** in the figure's roster, unchanged from s62.
+* **The top-decile sign flip is not attributed.** The members-held-fixed experiment --
+  re-forming the family on the published corpus with the two MSA rungs swapped for their
+  revised retrains, one at a time -- is the thing that would attribute it, and it is
+  cached-map arithmetic with no GPU.
+* **s49's transfer finding is NOT re-checked here.** That section measured the means'
+  gain as specific to the curated list -- base antiGen alone won three of the four
+  off-list cuts on the published corpus -- and the comparison needs the single members'
+  select rows, which `--rules-json` does not produce: this sweep scored the nine rules
+  and nothing else. So this corpus has the means' select numbers and no baseline to read
+  them against. One more sweep with nine one-member rules closes it, and it should be
+  closed before any +0.02 off panels E/F is quoted as a general improvement.

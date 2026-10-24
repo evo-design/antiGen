@@ -70,19 +70,31 @@
 ##         figs/coguk_list_aa20_supp.png  (+ .pdf)
 ## ---------------------------------------------------------------------------
 
-## THE TWO EXTRA BARS (NOTES s56, s57). `coguk_list_aa20` draws one rung the published figure
-## has no counterpart for: base antiGen trained ten times, each stopping at the epoch a
-## random validation holdout chose, combined as the mean of the ten runs' log-probs. It
-## replaces the published arm's fixed 32-epoch budget, which was chosen on nothing.
+## FIVE COMBINATION BARS IN TWO GROUPS, and the split is the point rather than a
+## cosmetic one. All five arrive through the ENSEMBLE machinery, because that is what
+## combines cached maps; they are not the same kind of object and one noun cannot be
+## right for both.
 ##
-## s57 adds a second bar on the same protocol: a weighted blend of `where_times_which`
-## and the root PSSM, the weight chosen on each of ten holdouts and the ten blends
-## averaged. Both arrive through the ENSEMBLE group, because that is what the machinery
-## calls a combination of cached maps -- but neither's members are drawn on this figure,
-## so the group's standing caveat ("an ensemble bar sits beside its own parts") does not
-## apply and its noun would mislead. Hence the renamed group and its own colour. The
-## group name names the PROTOCOL rather than either model, since the two bars share it
-## and nothing else.
+## "Ensembles" (NOTES s63) is the published family: the nine-member roster mixture --
+## base antiGen, EVE full FT, Tranception full FT and the six ESM-2 arms -- under the
+## three arithmetic rules, mean of ranks / log-probs / z-scores. Every one of those nine
+## members IS a bar in these panels, so the standing caveat applies in full: an ensemble
+## bar sits beside its own parts, and comparing it with its neighbours is comparing a
+## thing with the things it is made of. The family could not be drawn here until s62
+## scored EVE and Tranception on this corpus, which is why it arrives three sections
+## after the rest of the figure. The rules are the published ones and the choice of the
+## three MEANS was re-checked on this corpus's own select cells before being carried --
+## they take the top three places there, so selecting here would have selected the same
+## three (s63).
+##
+## "Val-selected, averaged over 10 holdouts" (NOTES s56, s57) is a different claim:
+## base antiGen trained ten times, each stopping at the epoch a random validation holdout
+## chose, combined as the mean of the ten runs' log-probs -- replacing the published
+## arm's fixed 32-epoch budget, which was chosen on nothing -- and s57's weighted blend
+## of `where_times_which` and the root PSSM on the same protocol. NEITHER'S MEMBERS ARE
+## DRAWN HERE, so the caveat above does not apply to them and would say the opposite of
+## what it means. The group name names the PROTOCOL rather than either model, since the
+## two bars share it and nothing else.
 ##
 ## READ IT AS ONE BAR MOVING THREE THINGS AT ONCE, not as "selection is worth X". It
 ## differs from the base antiGen rung in the epoch, in the 10% of the training pool each
@@ -95,8 +107,13 @@
 ## that section's Open.
 options(
   coguk.macro_dir    = "data/evals_sc2_lists_macro_aa20",
-  coguk.ensemble_group = "Val-selected, averaged over 10 holdouts",
-  coguk.ensemble_color = "#0096c7",
+  ## One colour per group, since the two say different things. The published
+  ## ensemble orange for the roster mixtures, and a blue for the val-selected
+  ## arms -- those ARE antiGen-family predictors, and the colour should say so.
+  ## Each row's group comes from the third column of `ensemble_figure_rows.tsv`;
+  ## a group with no entry here falls back to `coguk.ensemble_color`.
+  coguk.ensemble_colors = c("Ensembles"                              = "#bc6c25",
+                            "Val-selected, averaged over 10 holdouts" = "#0096c7"),
   ## Deliberately absent -- see the header. Named rather than left at the
   ## published default, which would draw the old corpus's rows under this
   ## figure's title.

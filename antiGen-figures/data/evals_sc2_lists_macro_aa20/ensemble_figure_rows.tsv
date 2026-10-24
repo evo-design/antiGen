@@ -1,2 +1,5 @@
-ens_8a91fbbf88	antiGen, 10x val-selected epoch (mean of log-probs)
-ens_69de905310	Where x which + PSSM hybrid, 10x val-selected blend
+ens_7c8cf5c991	Mean of ranks	Ensembles
+ens_7fa79cecaa	Mean of log-probs	Ensembles
+ens_7530180874	Mean of z-scores	Ensembles
+ens_8a91fbbf88	antiGen, 10x val-selected epoch (mean of log-probs)	Val-selected, averaged over 10 holdouts
+ens_69de905310	Where x which + PSSM hybrid, 10x val-selected blend	Val-selected, averaged over 10 holdouts

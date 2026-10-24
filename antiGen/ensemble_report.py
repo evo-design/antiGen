@@ -186,11 +186,18 @@ def main():
         specs = json.load(f)
     if isinstance(specs, dict):
         specs = [specs]
-    rules, fig_labels = [], {}
+    rules, fig_labels, fig_groups = [], {}, {}
     for spec in specs:
         spec = dict(spec)
         spec.pop("family", None)
         flab = spec.pop("figure_label", None)
+        # The legend group this rule's bar belongs to. "Ensembles" is the right noun only
+        # when a bar's members are drawn on the same figure, and one report may now carry
+        # both kinds at once: the nine-member roster mixtures, whose parts ARE bars, and
+        # the val-selected arms of NOTES s56/s57, whose ten runs are not. Optional, so a
+        # rule file that does not set it writes the two-column file every reader of this
+        # TSV already expects.
+        fgrp = spec.pop("figure_group", None)
         r = er.Rule(family="frozen", **{k: (tuple(v) if isinstance(v, list) else v)
                                         for k, v in spec.items()})
         if r.rule_id in fig_labels:
@@ -199,7 +206,15 @@ def main():
             raise SystemExit(f"two specs collapse to the same rule {r.rule_id}: "
                              f"{r.label}")
         fig_labels[r.rule_id] = flab or args.figure_label or r.label
+        if fgrp:
+            fig_groups[r.rule_id] = fgrp
         rules.append(r)
+    if fig_groups and len(fig_groups) != len(rules):
+        # A partly-grouped file would write some rows with a group and some without, and
+        # the figure would silently put the ungrouped ones in its fallback group -- which
+        # is the one thing the column exists to prevent.
+        raise SystemExit(f"figure_group is set on {len(fig_groups)} of {len(rules)} "
+                         f"rules; set it on all of them or on none")
     print(f"\n{len(rules)} frozen rule(s):")
     for r in rules:
         print(f"  {r.rule_id}  {r.label}  ({len(r.members)} members) "
@@ -338,7 +353,9 @@ def main():
     # hand-copied hash, so the bar drawn is provably the rule that was scored.
     with open(os.path.join(args.output_dir, ROWS), "w") as f:
         for rule in rules:
-            f.write(f"ens_{rule.rule_id}\t{fig_labels[rule.rule_id]}\n")
+            grp = fig_groups.get(rule.rule_id)
+            f.write(f"ens_{rule.rule_id}\t{fig_labels[rule.rule_id]}"
+                    f"{chr(9) + grp if grp else ''}\n")
     print(f"\nWrote {SUMMARY} ({len(summary_rows)} rows), {CONTRASTS} "
           f"({len(contrast_rows)}), {PERCELL} ({len(percell_rows)}), {ROWS} "
           f"in {args.output_dir}")

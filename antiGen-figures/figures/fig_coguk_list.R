@@ -274,11 +274,21 @@ ENSEMBLE_COLOR <- getOption("coguk.ensemble_color", "#bc6c25")
 ## not is untouched -- which is what keeps the backbone, valsel and all-RBD siblings
 ## clear of this group without any of them having to opt out of it. An explicit
 ## `coguk.ensemble` still overrides, and `character(0)` still disables.
+## A THIRD COLUMN, when present, names each row's legend group, because one directory
+## may now carry both kinds of bar at once: the roster mixtures, whose members ARE drawn
+## here and to which the caveat above applies, and a val-selected arm whose runs are not
+## drawn and to which it does not. Two columns is the published shape and keeps every row
+## in ENSEMBLE_GROUP, so no existing figure moves.
 ens_rows_default <- local({
   f <- file.path(MACRO_DIR, "ensemble_figure_rows.tsv")
-  if (!file.exists(f)) NULL
-  else read.delim(f, header = FALSE, col.names = c("id", "label"),
-                  stringsAsFactors = FALSE)
+  if (!file.exists(f)) return(NULL)
+  d <- read.delim(f, header = FALSE, stringsAsFactors = FALSE)
+  if (ncol(d) < 2 || ncol(d) > 3)
+    stop("ensemble_figure_rows.tsv must have 2 or 3 columns, found ", ncol(d))
+  names(d) <- c("id", "label", "group")[seq_len(ncol(d))]
+  if (is.null(d$group)) d$group <- NA_character_
+  d$group[!nzchar(d$group)] <- NA_character_
+  d
 })
 ENSEMBLE <- getOption("coguk.ensemble",
                       if (is.null(ens_rows_default)) character(0) else ens_rows_default$id)
@@ -450,13 +460,28 @@ if (length(MT2021) > 0) {
 ## antiGen's blue, because a mixture is not an antiGen model -- it may contain DMS
 ## panels and composition baselines, and colouring it as antiGen would assert
 ## otherwise.
+## Each row's group is its own when the TSV named one, and ENSEMBLE_GROUP otherwise, so
+## a file that carries both kinds gets one legend block per kind instead of one noun that
+## is wrong for half of them. `coguk.ensemble_colors` gives those named groups their
+## colours; a group with no entry falls back to ENSEMBLE_COLOR.
 if (length(ENSEMBLE) > 0) {
   lab <- if (length(ENSEMBLE_LABELS) == length(ENSEMBLE)) ENSEMBLE_LABELS else
     paste0("Ensemble ", substr(ENSEMBLE, 5, 10))
-  MODEL_GROUP <- c(MODEL_GROUP, setNames(rep(ENSEMBLE_GROUP, length(ENSEMBLE)), ENSEMBLE))
+  grp <- getOption("coguk.ensemble_groups",
+                   if (!is.null(ens_rows_default) &&
+                       nrow(ens_rows_default) == length(ENSEMBLE))
+                     ens_rows_default$group else NA_character_)
+  grp <- rep(grp, length.out = length(ENSEMBLE))
+  grp[is.na(grp)] <- ENSEMBLE_GROUP
+  ens_colors <- getOption("coguk.ensemble_colors", character(0))
+  MODEL_GROUP <- c(MODEL_GROUP, setNames(grp, ENSEMBLE))
   MODEL_LABEL <- c(MODEL_LABEL, setNames(lab, ENSEMBLE))
-  GROUP_LEVELS <- c(GROUP_LEVELS, ENSEMBLE_GROUP)
-  GROUP_COLORS <- c(GROUP_COLORS, setNames(ENSEMBLE_COLOR, ENSEMBLE_GROUP))
+  for (g in unique(grp)) {
+    GROUP_LEVELS <- c(GROUP_LEVELS, g)
+    GROUP_COLORS <- c(GROUP_COLORS,
+                      setNames(if (g %in% names(ens_colors)) ens_colors[[g]]
+                               else ENSEMBLE_COLOR, g))
+  }
 }
 
 ## The val-selection arm, on the same terms and for the same reasons. A third
