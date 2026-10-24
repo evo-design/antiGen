@@ -58,9 +58,13 @@
 ## letters, the three data-derived composition baselines fitted on the new
 ## training pool (PSSM, PSSM Conservation, substitution matrix, where x which,
 ## codon), and the fixed external maps, whose `*`/`-` columns are dropped on
-## load. ABSENT: EVE and Tranception, frozen and fine-tuned, and EVmutation --
-## all five need an MSA pretraining pass in the new frame. `fig_coguk_list.R`
-## prints the holes per metric on every run rather than dropping them silently.
+## load. EVE and Tranception, frozen and fine-tuned, were four more MSA
+## pretraining passes and are now drawn (NOTES s55 trained them, s62 scored
+## them): `antiGen-data-revised` writes the MSA beside the examples it generated,
+## already restricted to the training window, so the pandemic MSA is part of this
+## corpus rather than a tree-independent input. ABSENT: EVmutation alone, which is
+## the fifth pass and a `plmc` rebuild. `fig_coguk_list.R` prints the holes per
+## metric on every run rather than dropping them silently.
 ##
 ## Output: figs/coguk_list_aa20.png   figs_vector/coguk_list_aa20.pdf
 ##         figs/coguk_list_aa20_supp.png  (+ .pdf)

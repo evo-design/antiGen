@@ -1,6 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name=train_eve
-#SBATCH --partition=gpu_batch_high_mem,gpu_batch,gpu
+#SBATCH --partition=gpu_batch,gpu
+# gpu_batch and gpu share one pool of ten nodes, disjoint from the *_high_mem
+# pool. The high-mem partitions are deliberately NOT listed: on 2026-10-23 their
+# two idle nodes (GPU1034, GPU115A) failed every launch with
+#   namespace_p_join: open failed for /media/8TBNVME/scratch/<jobid>/.ns
+# -- the job_container plugin cannot make its namespace because the node-local
+# NVMe scratch is not there -- so the job is requeued and HELD. They are idle
+# because of it, and the scheduler prefers idle nodes, so listing those
+# partitions sends every job straight at a node that cannot run it.
+#SBATCH --exclude=GPU1034,GPU115A
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=256G

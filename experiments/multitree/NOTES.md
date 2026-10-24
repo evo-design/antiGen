@@ -7591,3 +7591,629 @@ roster's nine, so the bar is a known combination rule and not a new one.
   afternoon -- `launch_failed_requeued_held`, reproduced with throwaway probes at 160 G
   and 256 G on `gpu_batch_high_mem,gpu_batch,gpu`, while the same resource spec on
   `evo_gpu_priority` queued normally. The four s55 EVE/Tranception jobs are stuck on it.
+
+## 58. The variant root, scored by the s56 ensemble: one forward pass, one CSV (2026-10-23)
+
+**On the numbering.** s57 is the where x which / PSSM blend arm, committed as 59794f0 and
+named as `NOTES s57` by `fig_coguk_list_aa20.R`'s header, but never written up here. This
+section and the next were appended as 57 and 58 before that was noticed and are renumbered
+to 58 and 59; s57 is left for the arm that already claims it.
+
+A whole-spike forward pass of s56's ten val-selected antiGens on the **test corpus'
+variant root**, combined by the published rule and written out cell by cell. No metric,
+no figure -- this is the predictor's map on one query, in a form something else can read.
+
+### Which example, and how it was found
+
+`antiGen-data-revised`'s test corpus carries the flag directly, so the root is **found by
+the flag and not by an id**: one streaming pass over
+`output/sc2-2021/test/examples_all_cur.txt` looking for an `IS_VARIANT_ROOT:` block whose
+label matches the dataset variant under `load._match_variant`. Exactly one record does,
+and more or fewer is an error rather than a first hit:
+
+| | |
+|---|---|
+| `EXAMPLE_ID` | **32082** |
+| `PARENT_EXAMPLE_ID` | 32078 |
+| `MUTATION_FROM_PARENT` | `T,18,I` -- T19I in 1-indexed spike numbering |
+| `POST_CUTOFF` | True |
+| clade label | `21L (BA.2)` |
+| length | 1,273, alphabet within `ACDEFGHIKLMNPQRSTVWY` |
+
+Two independent checks that the frame is the one everything else uses: the record's own
+`MUTATION_FROM_PARENT` puts `I` at **0-indexed** 18, and 0-indexed 492 is **`R`** --
+Q493R, the one real difference s54 found between this BA.2 root and the published one,
+and the reason a published variant PSSM cannot be borrowed for this query.
+
+### The predictor is s56's bar, assembled by s56's code
+
+The ten `_best.pt` of `valsel10_aa20/antigen_vs_s{0..9}`, each the epoch its own random
+holdout chose, combined by `logsoftmax` / `arith` / `union_min` -- the published "Mean of
+log-probs". The combination calls `ensemble_rules.normalize` / `resolve_nan` / `pool`
+rather than re-deriving them, so the rule is the same object the figure's bar is, and the
+triple is checked against `ensemble_rules.LEGAL` before anything is loaded.
+
+Wild-type cells are NaN, exactly as `ensemble_sweep._wt_masked` writes them. At 20 letters
+there is no gap or stop column, so every member emits every candidate cell and
+`union_min` has nothing to impute -- checked rather than assumed (the script aborts if the
+members' valid sets differ).
+
+**The one difference from the figure's bar is the support**, and it is a deliberate one:
+this normalises over the whole 1,273 x 20 grid where `ensemble_sweep` normalises over the
+201-position RBD eval range. Within a query those differ by **one constant per member**,
+so the mean differs by a constant and the ordering inside the RBD cannot move.
+
+### That claim is measured, not reasoned about
+
+The root's genotype is in the shared map cache (`list_score_maps_aa20` holds it at query
+indices 4110, 9140 and 9241 -- three test examples with an identical sequence), so the
+figure's own RBD-restricted ensemble can be built from the cached `vs10Antigen_s*` maps
+and compared against the new one on the same cells:
+
+| | |
+|---|---:|
+| cells compared (201 x 19) | **3,819** |
+| offset (figure - full-grid), mean | 2.22499347 |
+| offset, **sd** | **9.3e-07** |
+| ranks identical | all but one adjacent pair, max rank difference **1** |
+
+A constant to within float32 noise, and the single swap is a tie resolved differently by
+two float32 paths. The two are the same predictor on this query.
+
+### The output
+
+`experiments/multitree/out/variant_root_ensemble.csv`, 4.4 MB, **24,187 rows** =
+1,273 x 19, one per candidate substitution, wild type absent by construction:
+
+`example_id, pos0, pos1, ref_aa, alt_aa, ens_logprob, ens_prob, ens_rank, logprob_s0..s9`
+
+`pos0` is the corpus' 0-indexed position and `pos1` the 1-indexed spike numbering.
+`ens_logprob` is the mean of the ten members' log-probs; `ens_prob` is its renormalised
+exponential, which is the members' **normalised geometric mean** and sums to 1 over the
+24,187 candidates. The ten member columns are carried so the mean is re-derivable without
+the checkpoints -- verified: `max |ens_logprob - mean(members)|` is 2.6e-06, and each
+member's own column exponentiates to 1.000000.
+`variant_root_ensemble_manifest.json` beside it records the example id, the rule, the
+alphabet and the ten checkpoint paths.
+
+**The top of the map, for orientation only** (1-indexed, ensemble probability):
+
+| | | | | |
+|---|---|---|---|---|
+| L5F 1.22e-02 | Q677H 6.45e-03 | D80Y 6.00e-03 | S98F 5.67e-03 | L18F 5.17e-03 |
+| A222V 4.81e-03 | Q675H 4.77e-03 | H49Y 4.71e-03 | T572I 4.41e-03 | Q613H 4.31e-03 |
+
+Every one of the ten is a recurrent spike substitution and **none is in the RBD**, which
+is what a whole-spike softmax over a model trained on whole-spike branch mutations should
+look like; the RBD-restricted reading of the same map is the figure's, and this file
+carries both.
+
+### The same map subset to the RBD, which is a choice of support and not a filter
+
+`--support rbd` restricts the rule to `eval_utils.RBD_RANGE` -- the 201 positions
+330-530, 0-indexed -- and writes `out/variant_root_ensemble_rbd.csv`, **3,819 rows**
+= 201 x 19.
+
+It is **not** a row filter of the whole-spike file, because `logsoftmax` normalises
+*inside* its support: a cell's log-prob here is conditioned on "a mutation somewhere in
+the RBD" where the other file conditions on "a mutation somewhere in spike". That is
+exactly the support `ensemble_sweep` gives the figure's bar. The two differ by one
+constant per member and so by one constant after the mean -- measured at **2.22499309,
+sd 8.7e-07** over the 3,819 shared cells -- so no ordering moves, and the whole-spike
+`ens_logprob_spike` / `ens_prob_spike` / `ens_rank_spike` are carried alongside so the
+two files join. That join is exact: max difference 0.000e+00 on all three columns and
+`ref_aa` equal on every row.
+
+**Under the matching support it is the figure's ensemble, now without the offset.** Same
+comparison as above against the cached `vs10Antigen_s*` maps: 3,819 cells, **max
+|difference| 3.8e-06**, ranks identical but for the same single adjacent tie. `ens_prob`
+sums to 1 over the RBD, and the RBD holds **0.1050** of the ensemble's whole-spike
+mutational mass against 201/1273 = 0.158 of the positions.
+
+Top of the RBD map (1-indexed, RBD-conditioned probability):
+
+| | | | | |
+|---|---|---|---|---|
+| A520S 3.63e-02 | P384L 2.90e-02 | A522V 2.71e-02 | A522S 2.56e-02 | S494P 2.35e-02 |
+| V367F 2.08e-02 | N439K 2.02e-02 | L452R 2.00e-02 | A484S 1.80e-02 | G446V 1.69e-02 |
+
+`A484S` reads as it does because the BA.2 root already carries E484A, which is the kind
+of thing the 1-indexed column is there to make visible.
+
+### Code
+
+* `experiments/multitree/forward_variant_root.py` -- the script, CPU, ~1 min end to end
+  (the streaming scan of the 110 MB test file is most of it). `combine(maps, support)`
+  is the whole of the spike/RBD difference; `--support` selects it and the rows written.
+  Not packaged. **The whole-spike CSV re-renders byte-identical (md5) through the
+  refactor that added the flag.**
+
+### State
+
+* **Shipped.** `out/variant_root_ensemble.csv` and `out/variant_root_ensemble_rbd.csv`,
+  each with a manifest recording the support, the eval range, the rule and the ten
+  checkpoint paths. Nothing in `antiGen-figures` was written to and no published
+  artefact was touched.
+* **Not committed yet.**
+
+### Open
+
+* **This is one query and no metric.** Nothing here says the ensemble is right about
+  this root; s56's intervals already say it is not established on the panels.
+* The three cache rows with the root's genotype are three distinct test examples, not a
+  duplicated row -- worth knowing if anything ever weights queries by genotype.
+
+## 59. Four named test examples, scored on the RBD by the same ensemble (2026-10-23)
+
+s58's RBD pass, asked of four records by id instead of by the variant-root flag:
+**43436, 43541, 45703, 45766**. `forward_variant_root.py` grew `--example-ids` and a
+batch dimension; everything else -- the ten members, the rule, the support, the masking
+-- is s58 unchanged.
+
+### What the four are, which the corpus says and this section does not assume
+
+All four are `POST_CUTOFF: True` and `21L (BA.2),True` under `IS_DESCENDED_FROM_VARIANT`,
+and none carries `IS_VARIANT_ROOT`.
+
+| id | parent | mutation from parent | RBD differences from the BA.2 root |
+|---:|---:|---|---:|
+| 43436 | 43433 | R21T | 13 |
+| 43541 | 43436 | **L455S** | 14 |
+| 45703 | 44043 | V1104L | 16 |
+| 45766 | 45763 | **Q493E** | 15 |
+
+The shared 13 are `I332V D339H K356T R403K V445H G446S N450D L452W N460K N481K A484K
+F486P R493Q` -- the BA.2.86 RBD signature -- so these are JN.1-era backgrounds, not BA.2
+ones. 43541 adds L455S, 45703 adds R346T and F456L, 45766 carries those two and swaps
+R493Q for **R493E**. **43541 is 43436 plus exactly L455S**, which is what its own
+`MUTATION_FROM_PARENT` says and is the one pair here that isolates a single RBD
+substitution in the background.
+
+Two of the four mutate inside the RBD and two outside it (R21T, V1104L), which is worth
+knowing before reading any contrast between them.
+
+**The position base is checked on the selected records**, not inherited from s54:
+`check_position_base` runs `load._detect_position_base`'s vote over just the records this
+script pulls, because nothing here goes through `load_examples` and a corpus regenerated
+1-indexed would shift the `pos0` column silently. 4/4 fit base 0.
+
+### The output
+
+`experiments/multitree/out/test_examples_ensemble_rbd.csv`, **15,276 rows** = 4 x 3,819,
+same schema as `variant_root_ensemble_rbd.csv` with `example_id` now varying. Everything
+is **per query**: the softmax, the ranks and the candidate count. Each query's `ens_prob`
+sums to 1 over its own 3,819 RBD cells, and the RBD's share of that query's whole-spike
+mass is 0.1057 / 0.1056 / 0.1060 / 0.1070 -- against 0.1050 at the BA.2 root.
+
+### Gated against the figure's cached maps, and the gate's own mistake is the finding
+
+All four genotypes are among the 11,523 queries in `list_score_maps_aa20`, so the
+figure's RBD ensemble can be rebuilt from the cached `vs10Antigen_s*` maps and compared
+cell for cell:
+
+| id | cache rows with this genotype | cells | max abs diff | max rank diff |
+|---:|---:|---:|---:|---:|
+| 43436 | 1 | 3,819 | 3.8e-06 | 1 |
+| 43541 | 2 | 3,819 | 3.8e-06 | 0 |
+| 45703 | 1 | 3,819 | 2.9e-06 | 1 |
+| 45766 | 1 | 3,819 | 3.8e-06 | 0 |
+
+float32, with the same single adjacent tie swap s58 saw.
+
+**The first run of this gate matched queries on the RBD genotype alone and two of the
+four came back disagreeing by 2-3e-02, max rank difference 31.** That was the gate being
+wrong, not the maps: the model reads the whole 1,273-residue sequence, so two test
+examples with an identical RBD and different flanks have genuinely different RBD maps,
+and the cache held 24 and 125 such rows for 43436 and 45703. Matching on the full
+genotype resolves all four to float32. Recorded because any future join into this cache
+has the same trap: **the key is the whole sequence, never the eval range.**
+
+### Code
+
+* `experiments/multitree/forward_variant_root.py` -- `--example-ids`, `scan_records`
+  (which replaces `find_variant_root` and returns records in the order asked for, erroring
+  on a missing id), `check_position_base`, and a batch dimension through `combine` so the
+  softmax and the ranks are per query. **Both s58 CSVs re-render byte-identical (md5)
+  through it**, which is the regression this refactor needed.
+
+### State
+
+* **Shipped.** `out/test_examples_ensemble_rbd.csv` + manifest. s58's two files are
+  unchanged on disk. Nothing in `antiGen-figures` was touched.
+* **Not committed yet.**
+
+### Open
+
+* **No metric and no contrast.** This is four maps; the 43436/43541 pair is set up to
+  isolate L455S but nothing here reads it that way.
+
+## 60. Four named cells, ranked by every bar of `coguk_list_aa20` (2026-10-23)
+
+Where does each rung of the twenty-letter list figure put a named substitution, inside
+the RBD, given a named background? Four (background, cell) pairs, 25 bars, one CSV. No
+model was run: the figure's own map cache already holds every rung's 201 x 20 eval-range
+map for all 11,523 CoG-UK test queries, so the whole job is picking the right query row
+and ranking inside it.
+
+### The four cells, and which background each is asked in
+
+| cell | background | what the background is |
+|---|---:|---|
+| L455S | 43436 | s59's pair: **43541 is 43436 plus exactly L455S** |
+| F456L | 43541 | |
+| R346T | 43541 | |
+| Q493E | 45703 | |
+
+The backgrounds are the ones asked for, and two of the three are not the parent of the
+record that carries the cell. **43436 -> 43541 is the one exact single-substitution
+step**: the corpus' own `MUTATION_FROM_PARENT` says `L,454,S` and the two sequences
+differ at that position and nowhere else. 45703 differs from 43541 at four positions --
+I70V, R346T, F456L, V1104L -- so it is 43541 plus the two RBD cells asked about here
+*and* two substitutions outside the RBD. 45766, the record that actually carries Q493E,
+is not used as a background and is not 45703 plus that cell either: it also reverts
+346T to R and V70 to I.
+
+Every one of the four is a real candidate in its background -- the script aborts if the
+background already carries the alternate residue, which is what would make the cell
+masked out of the pool rather than ranked in it.
+
+### The ranking is the figure's, not a new one
+
+`background_discrimination.rank_fractions`, the same path `compute_hit_rate` ranks on,
+called with the two pool halves the 20-letter arm passes: `real_substitution_mask`,
+which at 20 letters is every column, and `real_wildtype_mask`, which at 20 letters is
+every row. So the denominator is **3,819 for every rung** -- 201 x 20 minus the query's
+own residue at each position -- and a cell a model cannot score ranks last *inside* that
+pool rather than shrinking it. That matters here: EVEscape's map has 25-28 holes at these
+queries and the BA.2 DMS panels 18, so a per-model pool would have given them a smaller
+denominator and a flattering rank. None of the four cells asked about is itself a hole.
+
+**Ties are reported, not broken.** `rank_best` is 1 + the cells scored strictly higher;
+`rank_mean` is the midpoint of the tied block. The difference is the whole story for the
+coarse rungs: PSSM gives L455S rank 400 **of a tied block of 3,420** -- that cell is
+absent from the training window, as is Q493E, and the PSSM has one value for all of
+them. A single argsort rank would have printed 400 and hidden that.
+
+### The query row is found by the WHOLE genotype
+
+s59's trap, and the reason that section exists: two test examples with an identical RBD
+and different flanks have genuinely different RBD maps. Matching is on all 1,273
+residues. 43436 and 45703 land on one cache row each; **43541 lands on two** (5951 and
+6731), and every rung's two rows are checked to agree -- NaN pattern included -- before
+the first is used. Max disagreement **0.0** on all 43 maps read.
+
+### Two gates, both exact
+
+* **Against s59's independent forward pass.** `test_examples_ensemble_rbd.csv` was
+  produced by loading the ten checkpoints and running them, not from the cache. Its
+  `ens_rank` for the four cells is **654 / 183 / 66 / 327**, and the cache path's
+  `rank_best` for the `ens_8a91fbbf88` bar is the same four numbers. That is a check on
+  the query lookup, the rule and the ranking at once.
+* **Against a second implementation.** A separately written ranking -- fill unscorable
+  cells to one below the query minimum, NaN the wild type, count strictly-greater --
+  over all 23 cached rungs x 4 cells: **92/92 agree** on `n_candidates`, `rank_best` and
+  `n_tied`.
+
+### The output
+
+`experiments/multitree/out/named_cell_ranks.csv`, **100 rows = 25 bars x 4 cells**,
+cell-major with each block in the figure's own bar order:
+
+`example_id, pos0, pos1, ref_aa, alt_aa, mutation, model, figure_label, figure_group,
+score, unscorable, rank_best, rank_mean, n_tied, n_candidates, frac_above, pct_from_top,
+in_top_decile`
+
+`score` is the rung's raw cached value, which is on a different scale for every rung and
+is carried only so a rank can be traced back. `in_top_decile` is `top_q_weight` at
+q = 0.1 -- the figure's panel E/F selection, fractional inside the boundary tie block, and
+zeroed on an unscorable cell exactly as the metric zeroes it.
+
+`rank_best`, with `(rank_mean)` where the cell sits in a tie block, and **bold** where
+the cell is selected in the figure's top decile:
+
+| bar | L455S in 43436 | F456L in 43541 | R346T in 43541 | Q493E in 45703 |
+|---|---:|---:|---:|---:|
+| antiGen | 403 | **199** | **98** | 512 |
+| antiGen as ESM 2 (35M) partial FT | 1100 | **78** | **56** | 609 |
+| antiGen as ESM 2 (35M) LM head FT | 585 | **221** | **40** | 688 |
+| antiGen as ESM 2 (35M) full FT | 1609 | 1869 | **276** | 744 |
+| antiGen as ESM 2 (650M) partial FT | 895 | **277** | **66** | 1429 |
+| antiGen as ESM 2 (650M) LM head FT | 664 | **129** | **30** | 944 |
+| antiGen as ESM 2 (650M) full FT | 878 | **307** | **41** | **357** |
+| PSSM | 400 (2109.5) | **157 (163.5)** | **141 (144.0)** | 401 (2110.0) |
+| PSSM Conservation | 780 (798.5) | 1673 (1729.5) | **229 (238.0)** | 1084 (1093.0) |
+| MSA Transformer | **130** | 1550 | 1198 | 2589 |
+| MSA Trans. (BA.2 eval) | **143** | 1707 | 1718 | 2855 |
+| MSA Trans. (XFG eval) | **212** | 1505 | 1779 | 3013 |
+| Substitution matrix | 662 (667.5) | **1 (8.0)** | 1411 (1414.5) | 1345 (1347.0) |
+| Where x which | 620 | **172** | 831 | 1102 |
+| BA.1 DMS (bind) | 817 | 2183 | **65** | **340** |
+| BA.1 DMS (expression) | **152** | 1377 | **285** | 1027 |
+| BA.2 DMS (bind) | 452 | 2247 | **105** | 1305 |
+| BA.2 DMS (expression) | **44** | 1402 | **161** | 562 |
+| EVEscape | **356 (357.0)** | 645 (646.5) | **17** | **208** |
+| ESM 2 (35M), untrained | 1274 | 448 | **370** | 1425 |
+| ESM 2 (650M), untrained | 1292 | 552 | **96** | 2136 |
+| BLOSUM62 | 1816 (2307.0) | 415 (677.0) | 940 (1380.0) | **53 (109.0)** |
+| Codon table | 1278 (1374.5) | **1 (8.0)** | 1278 (1375.5) | **130 (524.5)** |
+| antiGen, 10x val-selected (mean of log-probs) | 654 | **183** | **66** | **327** |
+| Where x which + PSSM hybrid, 10x val-selected | 679 | **136** | **259** | 1178 |
+
+The two rank-1s are the same tie: F456L is one nucleotide away, and both the codon table
+and the substitution matrix put every such cell at the top of a 15-wide block. Read the
+coarse rungs' `rank_mean`, not their `rank_best`.
+
+### The roster is read from the figure, not restated
+
+`figure_models` takes the macro CSV's models, removes `coguk.drop_models` (CoVFit, pyr0),
+and reads the labels, the groups and the group ORDER out of `fig_coguk_list.R` itself, so
+a rung that is relabelled or regrouped there cannot be described differently here; a
+model in the CSV with no group in the R source is an error rather than a default. The two
+ENSEMBLE bars have no cached map of their own -- they are a rule over cached members --
+and are rebuilt by `ensemble_rules.apply`, with each rule's `rule_id` asserted against the
+id in `ensemble_figure_rows.tsv`, so a changed member list cannot quietly become a
+different bar.
+
+### Code
+
+* `experiments/multitree/rank_named_cells.py` -- CPU, ~20 s warm (43 cached maps read).
+  `--cells 43436:455S,...` names the pairs; the optional reference residue in a cell
+  spec is checked against the background rather than assumed.
+
+### State
+
+* **Shipped.** `out/named_cell_ranks.csv` + manifest (the cells, the cache rows, the
+  pool, the rule of each ensemble bar). Nothing in `antiGen-figures` was written to and
+  the s58/s59 files are unchanged on disk.
+* **Not committed yet.**
+
+### Open
+
+* **No metric, and no claim about any of these cells.** A rank is where a rung put one
+  cell in one background; nothing here says which rung is right, and s56's intervals
+  already say the ensemble bar is not established on the panels.
+* The backgrounds are three test records, not three clean one-step contrasts -- only
+  43436 -> 43541 is one. Anything read as "the effect of the background" would have to
+  deal with I70V and V1104L.
+
+## 61. The six ESM-2 finetunes on s56's protocol: submitted, nothing measured (2026-10-23)
+
+s56 replaced base antiGen's fixed 32-epoch budget with an epoch chosen on a random
+validation holdout, ten times on ten holdouts, averaged as the mean of the ten runs'
+log-probs. This applies the same protocol to the **six trained ESM-2 rungs** of
+`coguk_list_aa20` -- the group that figure calls "antiGen Finetunes" -- so the bar it
+already carries for antiGen has counterparts for the comparators. **Training is running;
+nothing below is a result.**
+
+The two `noft` rungs are excluded because they are `--epochs 0`: there is no epoch to
+select, and no run to average.
+
+### The budget stays at 32, which is where this departs from s56 and why
+
+s56 gave antiGen 96 epochs, for a stated reason that does not transfer: antiGen's
+held-out minimum sat at **28 of 32** (s46's probe) and at **46-49 of 64** (s47's clean
+split), so a 32-epoch ceiling would have reported a truncated search. The ESM-2 minima
+are early -- s46 measured 35M partial at **5**, 650M partial at **7**, 35M frozen at
+**14** of 32, and s47's clean in-window split put 35M partial at **7**. The revised
+corpus is 80% of the published one and a 10% holdout leaves ~72% of the published steps
+per epoch, so a published epoch 14 lands near 19 here. Still interior, and the published
+recipe is therefore kept rather than deviated from on no evidence.
+
+**That is a prediction, so the job checks it.** The tail of each training job reads every
+run's `*_val_metrics_by_epoch.json`, prints the selected epoch and NLL, and **fails the
+job if any run selects the last epoch** -- which is what a binding budget looks like, and
+which would mean the bar rests on a truncated search. Verified on s56's run 0 before
+being trusted: the extractor returns epoch 87 / 7.4410 / last 95, reproducing that
+section's table.
+
+### The recipes are not restated, and the stems carry the arm
+
+* `examples/slurm/train_esm2_valsel10.sh ARM` runs one arm N times by invoking **that
+  arm's own published SLURM script** as a shell script, with the val-selection flags
+  appended through its `EXTRA=("$@")` passthrough and `OUT_DIR` per run. Those scripts
+  say in their own comments that the passthrough exists so a retrain "reuses this exact
+  recipe instead of a fork that would drift", and copying six sets of
+  `--freeze-backbone` / `--finetune-layers` / `--batch-size` / `--lr` into a new script
+  is that fork. The nine s53 retrains went through the same door. One consequence worth
+  knowing: extra arguments land **after** the recipe's own, so `--epochs 2` shortens a
+  smoke test, argparse keeping the last occurrence.
+* Split seed `i`, init seed `100 + i`, `--val-mode random --val-frac 0.1 --save-best`,
+  one directory per run -- s56's convention unchanged. Split-seed 0 holds out the same
+  **854 mutations** as s56's did, which is the splitter agreeing with itself across arms.
+* **The staging stem has to name the arm, not just the seed.** `eval.config_label`
+  appends `_frozen` / `_partial4` / `_full` to an esm2 prefix **from the checkpoint's own
+  config**, so a stem of `vs10Esm35_s0` would yield three distinct member *labels* -- and
+  three colliding *filename* prefixes, which `discover_checkpoints` groups by, keeping
+  only the newest. Two of the three 35M arms would have vanished silently. Hence
+  `vs10Esm35Partial_s0`, whose label comes back `vs10Esm35Partial_s0_partial4`.
+
+### The scoring stage reports eight rules, not six
+
+`examples/slurm/score_esm2_valsel10.sh` stages the 60 checkpoints, scores them into the
+shared `list_score_maps_aa20` cache, and reports every rule in **one** `ensemble_report`
+pass. The widening from one arm to six is where it differs from `score_valsel10.sh`, and
+not only in arithmetic: the macro directory the figure reads holds exactly one
+`ensemble_figure_rows.tsv` and one `list_macro_summary_ensemble.csv`, and
+`ensemble_report` **writes both wholesale**. A report over the six new rules alone would
+not add six bars -- copied in, it would **replace s56's antiGen bar and s57's hybrid bar**
+with them. So the rule file carries those two rules as well, their members being in the
+same cache, and one report writes one internally consistent set of files.
+
+Every rule is `logsoftmax` / `arith` / `union_min`, the published "Mean of log-probs"
+(`querypool_arm/rules9.json`). None is selected here; the eight are fixed in advance and
+reported whole. Member names are **checked against the dumped maps** before the rule file
+is written, and a miss aborts the job by name: a rule whose member is absent is a bar
+built on fewer runs than it claims.
+
+### The jobs
+
+Submitted 2026-10-23 21:53. Estimates are the s53 single-run elapsed x 10 x 0.9 (the
+90% split), the s53 runs being the same recipes on the same corpus.
+
+| job | arm | runs x est. | wall estimate |
+|---|---|---|---|
+| 3421208 | 35M LM head FT | 10 x 12:49 | ~1.9 h |
+| 3421209 | 35M partial FT | 10 x 21:34 | ~3.2 h |
+| 3421210 | 35M full FT | 10 x 40:30 | ~6.1 h |
+| 3421211 | 650M LM head FT | 10 x 2:19:37 | ~21 h |
+| 3421212 | 650M partial FT | 10 x 2:51:17 | ~26 h |
+| 3421213 | 650M full FT | 10 x 4:40:51 | ~42 h |
+
+~100 GPU-hours in total, and 3421213 is why that job asks for 96 h rather than the
+published scripts' 48. A smoke run (`N=1`, `--epochs 2`, 35M frozen) was taken first and
+threw the budget check as it should have, epoch 1 of 2 being the last one; s56 lost all
+ten of its runs to a bug that fired after the model was built, which is the argument for
+spending two minutes on that.
+
+### Two broken nodes, mistaken for the s56 partition fault
+
+Five of the six came back `launch_failed_requeued_held` within a minute -- the symptom
+s56 recorded as "the non-priority GPU partitions could not launch jobs for this account".
+It is **not** that. `slurmd` on the allocated node:
+
+    error: namespace_p_join: open failed for /media/8TBNVME/scratch/<jobid>/.ns:
+           No such file or directory
+
+on **GPU115A** (three jobs) and **GPU1034** (two). Both were `idle` in `sinfo` throughout
+and kept taking jobs, so a resubmission would have hit them again. Released with
+`scontrol update JobId=... ExcNodeList=GPU115A,GPU1034` and all six are queued or running
+normally. Worth checking against the s56 observation: a node-local scratch fault that
+Slurm does not drain the node for looks exactly like an account-level partition problem
+from `squeue`.
+
+### Open
+
+* **Nothing is measured.** Six bars, their decompositions (members vs mean, as s56 did),
+  and the figure re-render all wait on the training.
+* **The same three-things-at-once caveat as s56 applies to every one of these bars**: the
+  epoch, the 10% each run holds out, and being an average of ten. s47 measured the first
+  two for 35M partial on the published corpus and found selection moving the figure
+  metric the **wrong way** (-0.024 / -0.018 on C/D) while buying 0.055 of NLL. If that
+  sign holds here, the ensembling has to beat it before any of these bars moves up --
+  which makes this the arm most likely to produce a null, and the reason to run it.
+* The s56 control -- ten **fixed-32** runs on the same ten splits, averaged the same way,
+  isolating the ensembling from the data cost -- is still not run, now for seven arms
+  rather than one.
+
+## 62. EVE and Tranception drawn on the revised corpus: four rungs, no reordering (2026-10-24)
+
+s55 trained the four MSA rungs and left them unscored; s54 left `coguk_list_aa20` with
+five named holes. Four of the five are now filled. **The figure draws 29 rungs, and
+nothing in the medals moves.**
+
+### The four landed overnight
+
+Resubmitted as **3419183-3419186** after the s56 partition trouble (s55 recorded them as
+3417095-98, which never launched). All four `COMPLETED 0:0` into `ckpt_stage_aa20`, on
+the revised MSA with `METADATA` empty -- the log line for all four reads
+`metadata = <none: the MSA is taken as already window-restricted>`, which is the claim
+s55 made about that file and not a convenience.
+
+| job | rung | elapsed | trainable params |
+|---|---|---:|---:|
+| 3419183 | `eve_ft_lr0.0001` | 3:45:21 | 261,672,661 |
+| 3419184 | `eve_frozen` | 3:40:27 | 0 |
+| 3419185 | `tranception_ft_both_lr0.0001` | 8:57:24 | 4,772,608 |
+| 3419186 | `tranception_frozen_both` | 8:38:26 | 0 |
+
+### Scoring resumed rather than re-ran, and the resume is per-artifact
+
+Job **3427508**, `gpu`, **2:54**, exit `0:0`. s54's invocation unchanged except for the
+partition and a node exclusion. `list_macro` reported `Resuming: 25 model(s)` and
+printed `[resume-skip]` for every one of them, scoring only the four new rungs: 29 rows,
+51 maps in `list_score_maps_aa20`, no `[skip]`. The resume keys on **artifacts rather
+than rows** (`_resume_skip`), so a row without its cached map would have been re-run and
+then checked against the row it already had -- which is why a 25-rung skip here is not
+the silent-success shape s30/s31 record.
+
+### What they measure, and the one place this arm does not behave like the rest
+
+Cell-weighted, q = 0.10, against the published figure's query-pool CSV. The seed floor on
+these panels is **0.028-0.035** (s47).
+
+| rung | C published | C revised | delta | D published | D revised | delta |
+|---|---:|---:|---:|---:|---:|---:|
+| antiGen as EVE full FT | 0.4768 | 0.4273 | **-0.0495** | 0.3924 | 0.3096 | **-0.0828** |
+| antiGen as Tranception full FT | 0.4426 | 0.4310 | -0.0116 | 0.3683 | 0.3094 | **-0.0589** |
+| EVE (frozen) | 0.4193 | 0.3284 | **-0.0909** | 0.3659 | 0.2313 | **-0.1347** |
+| Tranception (frozen) | 0.4460 | 0.3090 | **-0.1370** | 0.4613 | 0.2758 | **-0.1855** |
+
+**s54's headline does not extend to these four.** That section measured 85 of 92 (model,
+panel) cells moving by less than the seed floor, with "nothing drops by more than
+0.0208". Of the **29 rungs now present in both corpora, exactly four move more than
+0.035 on panel C** -- `where_times_which` at **+0.0511**, which s54 already attributed to
+its refit on the new training pool, and the **three MSA rungs, all downward**.
+
+**The AUC panels say where it lives: in the pretraining, not the fine-tuning.**
+
+| rung | E published | E revised | delta | F published | F revised | delta |
+|---|---:|---:|---:|---:|---:|---:|
+| EVE full FT | 0.7807 | 0.7804 | -0.0003 | 0.7291 | 0.7213 | -0.0079 |
+| Tranception full FT | 0.7810 | 0.7830 | +0.0020 | 0.7506 | 0.7372 | -0.0134 |
+| EVE (frozen) | 0.7775 | 0.7305 | **-0.0470** | 0.7476 | 0.6755 | **-0.0720** |
+| Tranception (frozen) | 0.7624 | 0.7226 | **-0.0398** | 0.7532 | 0.7245 | -0.0287 |
+
+The two **fine-tuned** rungs are flat on E (-0.0003, +0.0020); the two **frozen** rungs,
+which are a pretraining pass and a save with `global_step = 0`, carry the whole drop.
+Fine-tuning on the examples washes out whatever moved.
+
+**What that is, this arm cannot say.** Three candidate readings and nothing here
+separates them: the MSA is a different file (351,410 sequences against the published
+filter's 348,990, s55); each frozen rung is an **independently pretrained** VAE / LM
+(s55: there is no `--init-from`, and the published pair was separately pretrained an hour
+apart), so a fresh draw of a generative model is inside every delta above; and the test
+corpus lost a third of its events. **There is no seed replicate for any of these four**,
+on either corpus, so each number above is one draw against one draw, and the s47 floor
+was measured on a different model family. The frozen-vs-fine-tuned split is suggestive of
+the pretraining draw rather than the test corpus -- a corpus effect should hit the other
+25 rungs too, and it does not -- but suggestive is all it is.
+
+### The figure
+
+`figs/coguk_list_aa20{,_supp}.png` + PDFs, re-rendered 2026-10-24 12:18. **29 rungs**
+plus the two s56/s57 ensemble bars.
+
+* **The medals do not move.** C: ensemble 0.5451, antiGen 0.5225, ESM-2 35M partial
+  0.5083. D: ensemble 0.5083, antiGen 0.4732, ESM-2 35M partial 0.4399. The four new
+  rungs land 8th/9th (C) and 10th/11th (D) among the single models; the best of them
+  (Tranception full FT, 0.4310 on C) is below `where_times_which`.
+* **EVEscape still leads F** (0.8105 against antiGen's 0.7997), and the newly drawn EVE
+  rungs are not it -- EVEscape is a fixed external map, EVE full FT is 0.7213.
+* The floor-clipped bars are **the same two** as s54 (PSSM at 0.1000 and ESM-2 650M
+  untrained at 0.0990); no new rung is clipped.
+* Inspected rather than assumed: both full-FT rungs draw in **antiGen Finetunes** under
+  antiGen, both frozen rungs in **Pandemic Data in Training Window**, labels complete.
+* `fig_coguk_list_aa20.R`'s header said these four were absent and now says what is:
+  **EVmutation alone**, the fifth pass and a `plmc` rebuild.
+
+### State
+
+* **Shipped.** The figure, `data/evals_sc2_lists_macro_aa20/list_macro_summary_aa20.csv`
+  (901 -> 1,045 rows, 25 -> 29 models) and `list_macro_percell_aa20.csv`.
+* The published `coguk_list_results` is untouched: different directory, different names.
+* **Not committed yet.**
+
+### Open
+
+* **EVmutation is the last hole**, unchanged from s55: eval-only, same optional metadata,
+  one job -- and a `plmc` rebuild, which s51 recorded as the slowest thing here.
+* **These four do not share the nine's corpus revision.** They were trained on the
+  current `examples_2021_cur.txt` (2,934 examples); the nine s53 rungs were trained on
+  the 2,877-example revision (s54). One row of this figure therefore spans two revisions
+  of the training corpus, and the four rungs that drop hardest are on the newer side of
+  it. That is a third reading of the table above and the cheapest to remove -- the nine
+  jobs are ~2 h of GPU.
+* **No seed replicate for any MSA rung**, which is what would turn the table above from a
+  difference into a measurement.
+
+---
+
+**s61 status.** The six ESM-2 val-selection jobs were **cancelled** on 2026-10-24, to be
+restarted later. One arm finished first and is worth keeping: **3421209, 35M partial, all
+ten runs, `VALSEL10_ESM2 35m_partial OK`** in 3:31:49. The selected epochs are **6, 6, 8,
+11, 12, 15, 19, 19, 20, 29 of 31** -- every one interior, which is the s61 budget
+argument (ESM-2's minima are early, so the published 32 does not bind) coming back
+measured rather than predicted. The two runs selecting epoch 6 are the two with the
+largest holdouts, the same pattern s56 found in antiGen's ten. Partial arms on disk:
+`35m_frozen` 6 of 10, `35m_full` 2, `650m_partial` 1; `train_esm2_valsel10.sh` skips a
+run that already has a `_best.pt`, so a restart resumes rather than redoes.
