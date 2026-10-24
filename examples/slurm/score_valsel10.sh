@@ -18,6 +18,13 @@
 #     symlinks named `fitness_vs10Antigen_s<i>_<ts>.pt` gives each run its own group,
 #     which is the layout NOTES s47 used for the same reason.
 #
+#     `--include-experimental` is required and is not a loosening: `train.py` tags any
+#     `--val-mode random` arm as experimental so that `antiGen-eval` skips it by default,
+#     which is exactly right for the published roster and exactly wrong here, where the
+#     random split IS the arm. Without it discovery finds all N groups and filters every
+#     one away -- which `list_macro` treats as a misconfiguration and exits non-zero on,
+#     rather than reporting a clean run over nothing.
+#
 #  2. SCORE them into the SHARED map cache, and their summary rows into a staging
 #     directory OUTSIDE antiGen-figures. The individual runs must not become bars: the
 #     arm's claim is about their mean, and ten near-identical antiGen rungs beside it
@@ -76,6 +83,7 @@ python -u "$REPO/antiGen/list_macro.py" \
     --output-dir "$WORK/members" \
     --dump-scores "$MAPS" \
     --skip-baselines \
+    --include-experimental \
     --mutation-list coguk="$REPO/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
 
 echo ""

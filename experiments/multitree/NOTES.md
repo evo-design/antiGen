@@ -7423,3 +7423,171 @@ convention is preserved rather than quietly improved.
   on the current file -- so until the nine are re-run the arm mixes two revisions of
   the training corpus by one row of the figure. Worth settling before anything from it
   is quoted.
+
+## 56. Ten val-selected antiGens, averaged: ahead of base, and not established (2026-10-23)
+
+The published arm trains base antiGen for **32 epochs, chosen on nothing**. This replaces
+that with an epoch chosen on a random validation holdout -- ten times, on ten holdouts --
+and takes the mean of the ten runs' log-probs as the predictor. One new bar on
+`coguk_list_aa20`.
+
+### The answer, and it has two halves
+
+Cell-weighted, q = 0.10, on the figure's report cells. Deltas are against **base
+antiGen**, with a 10,000-replicate paired bootstrap over cells.
+
+| panel | base antiGen | **ensemble** | delta | 95% CI | seed floor |
+|---|---:|---:|---:|---|---:|
+| **C** all listed, 230 cells | 0.5225 | **0.5451** | +0.0226 | [-0.0204, +0.0654] | 0.035 |
+| **D** de novo, 125 cells | 0.4732 | **0.5083** | +0.0351 | [-0.0105, +0.0837] | 0.028 |
+| **E** AUC all | 0.8327 | **0.8379** | +0.0052 | | |
+| **F** AUC de novo | 0.7997 | **0.8097** | +0.0100 | | |
+
+It is **ahead on all four, and not one interval excludes zero.** On D the point estimate
+clears the seed floor; on C it does not. The bar is drawn first on C and D, which is
+true of the point estimates and is not a result.
+
+### The decomposition, which is the interesting part
+
+The ten members were scored individually, so the arm separates into "the runs are better"
+and "averaging them is better". Those are different claims and they do not agree.
+
+| | C, all listed | D, de novo |
+|---|---:|---:|
+| base antiGen, fixed 32 ep | 0.5225 | 0.4732 |
+| the ten members, min | 0.5264 | 0.4563 |
+| the ten members, median | 0.5494 | 0.4779 |
+| the ten members, max | 0.5562 | 0.4954 |
+| **mean of the members' VALUES** | **0.5448** | **0.4790** |
+| **ENSEMBLE (mean of log-probs)** | **0.5451** | **0.5083** |
+| ensemble - mean of member values | **+0.0003** | **+0.0293** |
+| ensemble - best member | **-0.0111** | +0.0129 |
+
+**On C the averaging buys nothing.** The ensemble scores 0.5451 against the members'
+mean of 0.5448 -- three ten-thousandths -- and sits **below its own best member**
+(0.5562). The whole +0.023 over base antiGen is that the individual val-selected runs
+are better than the fixed-32 run, not that they were combined.
+
+**On D the averaging is the whole effect.** Members' mean 0.4790, ensemble 0.5083:
+averaging the ten predictors is worth **+0.029**, where being a val-selected run at all
+is worth +0.006 over base. The ensemble also clears its best member by +0.013.
+
+So the bar answers the question asked of it -- a holdout-chosen epoch, averaged over ten
+holdouts, beats the fixed budget on the point estimate -- but the mechanism is different
+on the two cuts and neither is established at this sample size.
+
+### What the ten holdouts actually selected
+
+| run | val mutations | epoch | best NLL | cost of running to 95 |
+|---:|---:|---:|---:|---:|
+| 0 | 854 | 87 | 7.4410 | 0.0092 |
+| 1 | 1,531 | 94 | 7.3383 | 0.0029 |
+| 2 | 1,288 | 91 | 7.5071 | 0.0026 |
+| 3 | 1,057 | 94 | 7.6008 | 0.0001 |
+| **4** | **4,078** | **36** | 8.5168 | **0.0794** |
+| 5 | 956 | 89 | 7.5672 | 0.0118 |
+| **6** | **2,728** | **63** | 8.6532 | **0.0865** |
+| 7 | 793 | 88 | 7.4478 | 0.0068 |
+| 8 | 999 | 88 | 7.4976 | 0.0114 |
+| 9 | 975 | 81 | 7.5064 | 0.0122 |
+
+**`--val-frac 0.1` holds out 10% of EXAMPLES, and mutation counts per node are
+heavy-tailed, so the holdout varies 5x in size** -- 793 to 4,078 mutations off the same
+293 examples. The two runs with by far the most validation data (s4, s6) are the only
+two that pick an early epoch and the only two where running to the end costs anything
+real (~0.08 nats); the eight small holdouts all land at 81-94 on a curve that is flat to
+within 0.01. The straightforward reading is that a ~800-mutation holdout cannot locate
+the minimum and settles somewhere on the plateau, while a 2,700-4,000-mutation one finds
+a genuine overfitting signal earlier. If that is right, most of these ten are not
+selecting an epoch at all -- which is consistent with C's decomposition above, where
+selection does the work and averaging does none.
+
+The members' own spread on the figure metric is **0.0298** (C) and **0.0391** (D),
+against s47's three-seed floor of 0.035 / 0.028 measured on the published corpus. Ten
+draws here reproduce that floor from a different source of randomness, which is worth
+having.
+
+### The budget: formally interior, not independently checked
+
+No run selected epoch 95, so the 96-epoch budget does not bind in the strict sense, but
+the median argmin is 88 and two runs sit at 94. A 256-epoch run on split-seed 0 was
+queued to settle whether the curve keeps descending past 96; **it was cancelled at
+exactly epoch 96 on the judgement that it would not move the result**, so the budget
+question rests on the plateau reading above and not on a measurement. Stated here
+because the two are not the same thing.
+
+### Code
+
+* `antiGen/eval_utils.py` -- `validate_per_source` read
+  `alphabet.amino_acids.index('*')` unconditionally and raised `ValueError: substring not
+  found` on 20 letters. **It survived s53 because that arm's `--val-mode file` left every
+  validation loader empty, so the function was never called**; this is the first arm to
+  ask for a holdout, and it failed in all ten runs after building the model and writing
+  the manifest. Gated bit-exact against `git show HEAD:` on a model that masks the stop
+  column (BLOSUM62) and one that does not (the transformer), since the guard is only
+  safe if it is a no-op wherever the column exists.
+* `antiGen/ensemble_sweep.py` -- `Substrate.alphabet`, and `alphabet_of_maps`, which
+  reads the frame a map directory was written in **from the query manifest** (recorded
+  since s53), falls back to the 22-token frame for a directory dumped before that flag,
+  and then **checks the length against a map file's actual residue count**. A 20-column
+  map read as 22 would mask two columns that are not there and name every `alt` one
+  residue along, and neither fails on shape once the masks agree with each other.
+  `--root-counts` and `--alphabet` join `add_substrate_args`.
+* `antiGen-figures/figures/fig_coguk_list.R` -- `coguk.ensemble_group` /
+  `coguk.ensemble_color`. "Ensembles" is the right noun only when the members are drawn;
+  here they are not, so the group's standing caveat would say the opposite of what it
+  means. **`coguk_list_results` re-renders byte-identical to HEAD through this** -- md5
+  on both PNGs, not asserted.
+* `examples/slurm/train_antigen_valsel10.sh`, `score_valsel10.sh` -- the two jobs.
+
+### Two things the run surfaced about the pipeline
+
+* **`--include-experimental` is mandatory for this arm.** `train.py` auto-tags any
+  `--val-mode random` run as `experiment='multitree'` so `antiGen-eval` skips it, which
+  is right for the published roster and wrong here, where the random split *is* the arm.
+  Without it discovery finds all ten groups and filters every one away -- and
+  `list_macro` exits non-zero on that rather than reporting a clean run over nothing,
+  which is the behaviour s30/s31 put there.
+* **Reusing the shared map cache is checked, not assumed.** `--dump-scores` warns the
+  directory must be new; that is about a different query set, and
+  `write_query_manifest` refuses to overwrite a manifest whose `query_sha1` (among six
+  other keys) differs and returns the existing one when they agree. It has to be the
+  same directory, because the ensemble reads every member from one cache.
+
+### The jobs
+
+| job | what | result |
+|---|---|---|
+| 3418734 | 10 x antiGen, 96 ep, `--val-mode random --val-frac 0.1`, split-seed/init-seed both moving | **OK**, ~18 min on `evo_gpu_priority` |
+| 3419047 | scoring | **failed**: the experimental tag, above |
+| 3419070 | scoring + the rule | **OK**, 2:31 |
+
+The rule is `logsoftmax` / `arith` / `union_min` -- **exactly the published "Mean of
+log-probs"** (`querypool_arm/rules9.json`) over these ten members instead of the
+roster's nine, so the bar is a known combination rule and not a new one.
+
+### State
+
+* **Shipped.** `figs/coguk_list_aa20{,_supp}.png` re-rendered with 24 drawn rungs.
+  Inspected: the new bar is drawn last in its own colour, labelled in full, and is 1st on
+  C and D -- medals checked against the CSV rather than read off the image.
+* The ten members' own rows are in
+  `/large_storage/hielab/ispecht/fitness-inference/valsel10_arm/members/`, deliberately
+  **outside** `antiGen-figures`: ten near-identical antiGen rungs beside their own mean
+  would be ten readings of one predictor.
+
+### Open
+
+* **No control isolates the ensembling from the data cost.** This bar moves three things
+  against base antiGen at once -- the epoch, the 10% each run holds out, and being an
+  average of ten. The control is ten **fixed-32** runs on the same ten splits, averaged
+  the same way, which is ~30 min of GPU and would turn the C/D decomposition above from
+  suggestive into a measurement. s47 needed exactly this control and found the data cost
+  sometimes larger than the selection effect.
+* **The holdout is 10% of examples, not of mutations.** Fixing that would make the ten
+  selections comparable, but it is a new splitter and not the one s46/s47 established.
+* The 256-epoch budget check was cancelled; see above.
+* **The non-priority GPU partitions could not launch jobs for this account** all
+  afternoon -- `launch_failed_requeued_held`, reproduced with throwaway probes at 160 G
+  and 256 G on `gpu_batch_high_mem,gpu_batch,gpu`, while the same resource spec on
+  `evo_gpu_priority` queued normally. The four s55 EVE/Tranception jobs are stuck on it.
