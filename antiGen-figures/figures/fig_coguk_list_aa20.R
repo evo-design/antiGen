@@ -66,15 +66,19 @@
 ##         figs/coguk_list_aa20_supp.png  (+ .pdf)
 ## ---------------------------------------------------------------------------
 
-## THE THIRTEENTH BAR (NOTES s56). `coguk_list_aa20` draws one rung the published figure
+## THE TWO EXTRA BARS (NOTES s56, s57). `coguk_list_aa20` draws one rung the published figure
 ## has no counterpart for: base antiGen trained ten times, each stopping at the epoch a
 ## random validation holdout chose, combined as the mean of the ten runs' log-probs. It
 ## replaces the published arm's fixed 32-epoch budget, which was chosen on nothing.
 ##
-## It arrives through the ENSEMBLE group, because that is what the machinery calls a
-## combination of cached maps -- but its members are NOT drawn on this figure, so the
-## group's standing caveat ("an ensemble bar sits beside its own parts") does not apply
-## and its noun would mislead. Hence the renamed group and its own colour.
+## s57 adds a second bar on the same protocol: a weighted blend of `where_times_which`
+## and the root PSSM, the weight chosen on each of ten holdouts and the ten blends
+## averaged. Both arrive through the ENSEMBLE group, because that is what the machinery
+## calls a combination of cached maps -- but neither's members are drawn on this figure,
+## so the group's standing caveat ("an ensemble bar sits beside its own parts") does not
+## apply and its noun would mislead. Hence the renamed group and its own colour. The
+## group name names the PROTOCOL rather than either model, since the two bars share it
+## and nothing else.
 ##
 ## READ IT AS ONE BAR MOVING THREE THINGS AT ONCE, not as "selection is worth X". It
 ## differs from the base antiGen rung in the epoch, in the 10% of the training pool each
@@ -87,7 +91,7 @@
 ## that section's Open.
 options(
   coguk.macro_dir    = "data/evals_sc2_lists_macro_aa20",
-  coguk.ensemble_group = "antiGen, val-selected x10",
+  coguk.ensemble_group = "Val-selected, averaged over 10 holdouts",
   coguk.ensemble_color = "#0096c7",
   ## Deliberately absent -- see the header. Named rather than left at the
   ## published default, which would draw the old corpus's rows under this
