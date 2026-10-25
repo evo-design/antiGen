@@ -66,6 +66,7 @@ from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 compute_hit_rate, fit_substitution_baseline,
                                 load_baselines, load_checkpoint,
                                 positional_marginal_counts,
+                                where_times_which_dirichlet,
                                 WhereTimesWhichPredictor)
 from antiGen.load import load_counts_matrix, load_examples, load_pssms
 from antiGen.models.factory import create_model
@@ -545,6 +546,8 @@ def main():
                 _fit().config,
                 positional_marginal_counts(training_examples, seq_len, E),
                 _fit()).to(device),
+            "wxw_dirichlet": lambda: where_times_which_dirichlet(
+                _fit(), training_examples, seq_len, E).to(device),
         }
         for name in builtin_models:
             candidates.append((name, None))

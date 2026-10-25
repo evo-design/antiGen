@@ -502,6 +502,100 @@ class WhereTimesWhichPredictor(BaseFitnessPredictor):
         return which + self.log_position.view(1, -1, 1)
 
 
+class WhereTimesWhichDirichletPredictor(BaseFitnessPredictor):
+    """``where_times_which`` as a conjugate PRIOR, updated by the observed events.
+
+    ``WhereTimesWhichPredictor`` and the event-count map are the two ends of one
+    question. The factored map says what a mutation should look like if where and
+    which are independent and position-specific history is worth nothing; the raw
+    event counts say the opposite, that only the cells actually seen matter. Each is
+    wrong in the obvious way -- the factored map cannot learn that one site mutates
+    to one residue over and over, and the counts assign nothing at all to a cell the
+    training window happens not to contain.
+
+    This blends them as a Dirichlet posterior mean. The factored joint is the base
+    measure, carrying concentration ``kappa``; every observed mutation event is one
+    conjugate update::
+
+        q[i, a] = (N[i, a] + kappa * pi[i, a]) / (N_total + kappa)
+        pi[i, a] = P(i) * P(a | wt_i)        -- the factored joint, summing to 1
+
+    The default ``kappa = N_total`` gives prior and data equal weight, which is the
+    setting the idea arrived with.
+
+    TWO LIMITS, AND THEY ARE THE GATE. ``kappa -> inf`` is the factored map and
+    ``kappa -> 0`` is the event-count map, both EXACTLY and both up to one additive
+    constant over the whole map -- which within-query ranking does not see. The
+    first of those is a rung drawn on the same panels, so the identity can be checked
+    against this arm's own output rather than against an argument
+    (``test_wxw_dirichlet.py``).
+
+    One consequence worth stating because it is easy to mistake for a bug: nothing
+    here needs Laplace smoothing. ``N`` is the RAW event count, unsmoothed, because
+    ``kappa * pi`` is already strictly positive in every cell -- that is what a prior
+    is for. Adding ``alpha`` to ``N`` as well would smooth twice and would break both
+    limits.
+
+    Scores are example-dependent through the which term, so like its parent this is
+    scored through the model path rather than ``fixed_map_metrics``.
+    """
+
+    # Inherited from the substitution model, exactly as the factored predictor is:
+    # both special columns carry mass under the prior.
+    OUTPUTS_LEGITIMATE_GAP = True
+    OUTPUTS_LEGITIMATE_STOP = True
+
+    def __init__(self, config, event_counts, positional_counts, substitution_model,
+                 kappa=None):
+        super().__init__(config)
+        self.register_buffer('event_counts', event_counts.float())
+        # Normalized here, unlike the parent's: a prior has to be a distribution, and
+        # the parent only ever needed this term up to a constant.
+        self.register_buffer(
+            'log_position',
+            torch.log_softmax(torch.log(positional_counts.clamp(min=1e-12)).float(),
+                              dim=0))
+        self.substitution = substitution_model
+        n_total = float(event_counts.sum())
+        self.n_total = n_total
+        self.kappa = n_total if kappa is None else float(kappa)
+        # With no events AND no prior weight the posterior is 0/0, and the map comes
+        # out all-NaN -- which ranks as a silent tie everywhere rather than failing.
+        # N_total = 0 means the training window carried no mutation at all, so this is
+        # a broken fit and not a case to paper over with a fallback.
+        if self.kappa <= 0.0:
+            raise ValueError(
+                f"kappa must be > 0 (got {self.kappa}); with kappa = 0 the posterior "
+                f"is the raw event map and every unobserved cell is log(0). "
+                + ("The default kappa is N_total, which is 0 here: these training "
+                   "examples carry no mutation events." if n_total == 0 else ""))
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        which = torch.log_softmax(self.substitution.score_matrix()[x], dim=-1)
+        prior = torch.exp(which + self.log_position.view(1, -1, 1))
+        q = ((self.event_counts.unsqueeze(0) + self.kappa * prior)
+             / (self.n_total + self.kappa))
+        return torch.log(q.clamp(min=1e-30))
+
+
+def where_times_which_dirichlet(substitution_model, examples, seq_len, vocab_size,
+                                kappa=None):
+    """Build the Dirichlet blend from the same pieces the factored baseline uses.
+
+    One constructor for all four entry points (``eval``, ``list_macro``,
+    ``list_variant_recall``, ``background_discrimination``), so the four cannot drift
+    into scoring four slightly different models under one name.
+
+    ``alpha=0.0`` is the point: the counts enter RAW and the prior does the smoothing.
+    """
+    return WhereTimesWhichDirichletPredictor(
+        substitution_model.config,
+        frequency_baseline_scores(examples, seq_len, vocab_size, alpha=0.0),
+        positional_marginal_counts(examples, seq_len, vocab_size),
+        substitution_model,
+        kappa=kappa)
+
+
 @torch.no_grad()
 def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
     """NLL per mutation and hit rates of a fixed ``(seq_len, vocab)`` score map."""
@@ -539,7 +633,8 @@ def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
 
 @torch.no_grad()
 def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets=10,
-                  eval_range=None, model_gap_stop_mask=None):
+                  eval_range=None, model_gap_stop_mask=None, common_pool=None,
+                  alphabet=ALLOWED_AAS, score_sink=None):
     """Evaluate loss and hit rates over the entire dataloader, fanning out across variants.
 
     Does a single forward pass per batch and computes hit rates for every variant
@@ -558,6 +653,26 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
                NaN-masked in the model's scores right after the forward pass (before
                any variant-specific masking), so models that emit sentinel/garbage at
                gap/stop columns don't get those cells ranked. Baselines are unaffected.
+    common_pool: optional (len(eval_range), E) bool COMMON CANDIDATE POOL, normally
+               :func:`real_substitution_mask`. Passing one is what makes "the top q"
+               the same SIZE for every rung: the variant's score mask narrows the pool
+               rather than being burned into the scores, and a cell inside the pool
+               that a model cannot score ranks last instead of leaving the pool, so
+               ``n_valid`` is ``|pool| - 1`` for every model alike. ``None`` is the
+               published per-model behaviour, where ``n_valid`` is each model's own
+               emission set and a partially-covering map gets a smaller top-q set.
+               See :func:`compute_hit_rate` and NOTES s51/s68.
+    alphabet:  the amino-acid string, used only to build the query-dependent half of
+               the pool (:func:`real_wildtype_mask`) when ``common_pool`` is given.
+    score_sink: optional ``sink(start, arr)`` called once per batch with the model's
+               eval-range scores as a (B, len(eval_range), E) float32 array, at query
+               offset ``start``. Observational -- the metric is identical whether or
+               not it is supplied. The slice handed over is the one
+               ``antiGen.score_cache`` specifies: the model's gap/stop mask already
+               applied (a property of the model), the query's own residue still
+               present (a property of the query, applied by the metric), and -inf
+               sentinels as they are. The dataloader must be ``shuffle=False`` or the
+               offsets name the wrong queries.
 
     Returns dict: label -> (avg_loss, hit_rate_by_qtile, baseline_hits_by_qtile).
     avg_loss is the same across variants (masking only changes hit-rate accounting).
@@ -565,6 +680,10 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     """
     if baselines is None:
         baselines = []
+    if eval_range is None:
+        eval_range = RBD_RANGE
+    if common_pool is not None:
+        common_pool = common_pool.to(device)
 
     if model is not None:
         model.eval()
@@ -578,6 +697,7 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     var_total_rbd_mutations = {label: 0 for label, _ in variants}
 
     n_total_batches = len(dataloader)
+    n_seen = 0
     for batch_idx, (aa_batch, target_batch) in enumerate(dataloader):
         if batch_idx % 10 == 0:
             print(f"  [evaluate_full] batch {batch_idx}/{n_total_batches}", flush=True)
@@ -598,8 +718,17 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
             scores = logits.clone()
             if model_gap_stop_mask is not None:
                 scores[:, model_gap_stop_mask] = float('nan')
+            if score_sink is not None:
+                score_sink(n_seen, scores[:, eval_range, :].detach().float().cpu().numpy())
         else:
             scores = None
+        n_seen += batch_size
+
+        # The query-dependent half of the common pool: a position whose own residue
+        # is a gap or a stop contributes no candidates, the mirror of the gap/stop
+        # COLUMNS real_substitution_mask already drops. A no-op at 20 letters.
+        wt_pool = (real_wildtype_mask(aa_batch[:, eval_range], alphabet)
+                   if common_pool is not None else None)
 
         # Build per-example wild-type mask once; baselines mask out wild-type to NaN.
         masked_baselines = {}
@@ -626,41 +755,55 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
             else:
                 score_mask = target_mask = seen_mask
 
-            if score_mask is None and target_mask is None:
-                v_scores = scores
+            # The TARGET side is the same under either pool convention.
+            if target_mask is None:
                 v_target = target_batch
+            else:
+                v_target = target_batch.clone()
+                tm_dev = target_mask.to(device)
+                v_target[tm_dev.unsqueeze(0).expand_as(v_target)] = 0
+
+            # The CANDIDATE side has two. With a common pool the variant's score mask
+            # NARROWS THE POOL and nothing is written into the scores, so every rung
+            # ranks the same cells and selects q * |pool| of them; without one, the
+            # published behaviour, where the mask is burned in as NaN and n_valid is
+            # each model's own emission set.
+            v_pool = None
+            if common_pool is not None:
+                v_pool = common_pool
+                if score_mask is not None:
+                    v_pool = v_pool & ~score_mask.to(device)[eval_range, :]
+                v_scores = scores
+                v_masked_baselines = masked_baselines
+            elif score_mask is None:
+                v_scores = scores
                 v_masked_baselines = masked_baselines
             else:
-                if scores is not None and score_mask is not None:
+                if scores is not None:
                     v_scores = scores.clone()
                     sm_dev = score_mask.to(device)
                     v_scores[sm_dev.unsqueeze(0).expand_as(v_scores)] = float('nan')
                 else:
                     v_scores = scores
-                if target_mask is not None:
-                    v_target = target_batch.clone()
-                    tm_dev = target_mask.to(device)
-                    v_target[tm_dev.unsqueeze(0).expand_as(v_target)] = 0
-                else:
-                    v_target = target_batch
-                if score_mask is None:
-                    v_masked_baselines = masked_baselines
-                else:
-                    v_masked_baselines = {}
-                    for name, mb in masked_baselines.items():
-                        mb_copy = mb.clone()
-                        mb_copy[score_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
-                        v_masked_baselines[name] = mb_copy
+                v_masked_baselines = {}
+                for name, mb in masked_baselines.items():
+                    mb_copy = mb.clone()
+                    mb_copy[score_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
+                    v_masked_baselines[name] = mb_copy
 
             for i in range(n_buckets - 1):
                 qtile = (i + 1) / n_buckets
                 rbd_muts_this = None
                 if v_scores is not None:
-                    hits, rbd_muts_this = compute_hit_rate(v_scores, v_target, aa_batch, qtile, eval_range=eval_range)
+                    hits, rbd_muts_this = compute_hit_rate(
+                        v_scores, v_target, aa_batch, qtile, eval_range=eval_range,
+                        pool_mask=v_pool, wt_pool_mask=wt_pool)
                     var_total_hits[label][i] += hits
 
                 for name, _ in baselines:
-                    b_hits, b_rbd = compute_hit_rate(v_masked_baselines[name], v_target, aa_batch, qtile, eval_range=eval_range)
+                    b_hits, b_rbd = compute_hit_rate(
+                        v_masked_baselines[name], v_target, aa_batch, qtile,
+                        eval_range=eval_range, pool_mask=v_pool, wt_pool_mask=wt_pool)
                     var_baseline_hits[label][name][i] += b_hits
                     if rbd_muts_this is None:
                         rbd_muts_this = b_rbd
@@ -693,7 +836,8 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     return results
 
 
-def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, quantiles=(0.1,)):
+def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
+                      quantiles=(0.1,), pool_mask=None):
     """Variant-emergence hit rate for one (seq_len, E) score map, per top-q quantile.
 
     Masks wild-type to NaN, then for each ``q`` in ``quantiles`` takes the top-q
@@ -709,10 +853,36 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, 
     boundary block of equal scores is counted with weight (n_needed - n_above)/n_at,
     the expected share under random tie-breaking. This makes the metric seed-free and
     fair to coarse-valued predictors (e.g. BLOSUM62) instead of over-selecting them.
+
+    ``pool_mask`` is the COMMON CANDIDATE POOL, and it matters more here than on the
+    recall row because ``n_valid`` is this metric's DENOMINATOR, not just the size of
+    the set it searches: without one, a map that declines to score part of the eval
+    range is scored against a top decile that much smaller, so it can catch strictly
+    fewer emerged cells than a rival and still report the higher precision. With one,
+    a cell inside the pool that the map cannot score is filled one step below the
+    minimum -- it ranks LAST, stays in ``n_valid``, and is never selected. Same
+    treatment as ``list_variant_recall.top_q_weights``, which is where it was first
+    measured (NOTES s51); carried here by s68.
+
+    The pool is the caller's to build, and it must be exactly this spec's candidate
+    set: every restriction the caller expressed by writing NaN into ``prob_2d`` (the
+    de novo cut, a curated list) has to be struck from the pool too, or those cells
+    would be filled and ranked last rather than leaving the pool, inflating the
+    denominator. ``wt_mask`` is intersected in here because it is passed explicitly.
     """
     p = prob_2d.clone()
     p[~wt_mask] = float('nan')
     pf = p.float()
+    filled = None
+    if pool_mask is not None:
+        pm = pool_mask.to(pf.device) & wt_mask.to(pf.device)
+        unscorable = (torch.isnan(pf) | torch.isneginf(pf)) & pm
+        filled = unscorable.clone()
+        if unscorable.any():
+            finite = pf[torch.isfinite(pf)]
+            floor = (float(finite.min()) - 1.0) if finite.numel() else 0.0
+            pf = torch.where(unscorable, torch.full_like(pf, floor), pf)
+        pf = torch.where(pm, pf, torch.full_like(pf, float('nan')))
     n_valid = int((~torch.isnan(pf)).sum().item())
     high_count_masks = [pv >= threshold_count for pv in pssm_variant_list]
     out = {}
@@ -721,10 +891,27 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, 
         vb = torch.nanquantile(pf, 1.0 - q, interpolation='lower')
         above = pf > vb
         at = pf == vb
+        # The tie fraction is taken over the WHOLE boundary block, filled cells
+        # included -- they occupy top-q slots, they simply cannot be credited --
+        # which is how `list_variant_recall.top_q_weights` computes it.
         n_above = above.sum().item()
         n_at = max(at.sum().item(), 1)
         frac = min(max((n_needed - n_above) / n_at, 0.0), 1.0)
-        n_selected = max(n_above + frac * n_at, 1e-9)  # = n_needed (top-q count)
+        if filled is not None and filled.any():
+            # Ranked last is not never-selected: the filled cells are one tie block,
+            # so a large enough q puts the boundary inside it. They stay in n_valid
+            # (and so in n_selected) but can never be counted as caught.
+            above = above & ~filled
+            at = at & ~filled
+        # The denominator is the selected set, counted at-or-above the boundary with
+        # the filled cells INCLUDED -- they occupy top-q slots that simply cannot be
+        # credited, which is how a map pays for the range it declined to score. Note
+        # this is the actual count, not the target q*n_valid the two differ from by
+        # one boundary cell; `list_variant_recall.curve` takes the target instead, so
+        # the two rows differ at ~1e-4 and are not read against each other. Keeping
+        # the count is what makes a fully-scoring rung bit-identical to its published
+        # value, which is the property worth more here (NOTES s68).
+        n_selected = max(n_above + frac * n_at, 1e-9)
         rates = []
         for hm in high_count_masks:
             n_hits = (above & hm).sum().item() + frac * (at & hm).sum().item()
@@ -736,10 +923,17 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, 
 # ── Mask construction ──────────────────────────────────────────────────────────
 
 def build_special_mask(seq_len, E, gap_idx, stop_idx):
-    """(seq_len, E) bool mask marking gap and stop AA columns True."""
+    """(seq_len, E) bool mask marking gap and stop AA columns True.
+
+    ``gap_idx`` / ``stop_idx`` of None mean the alphabet carries no such column, which
+    is the 20-letter frame antiGen-data-revised writes: nothing is special, so the mask
+    is all-False and every downstream exclusion becomes a no-op (NOTES s54).
+    """
     special_mask = torch.zeros(seq_len, E, dtype=torch.bool)
-    special_mask[:, gap_idx] = True
-    special_mask[:, stop_idx] = True
+    if gap_idx is not None:
+        special_mask[:, gap_idx] = True
+    if stop_idx is not None:
+        special_mask[:, stop_idx] = True
     return special_mask
 
 

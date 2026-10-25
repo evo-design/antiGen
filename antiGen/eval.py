@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import gc
 import glob
 import os
@@ -26,13 +27,18 @@ from torch.utils.data import Dataset, DataLoader
 
 from antiGen.config import ModelType
 from antiGen import datasets
+from antiGen import score_cache as sc
 from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.models.factory import create_model
-from antiGen.load import load_examples, load_pssms
+from antiGen.config import LEGACY_AAS
+from antiGen.load import (load_counts_matrix, load_counts_series,
+                          load_examples, load_pssms)
 from antiGen.mutation_lists import (cells_to_mask, describe as describe_list,
                                     load_mutation_list)
 from antiGen.eval_utils import (fit_substitution_baseline,
+                                real_wildtype_mask,
                                 positional_marginal_counts,
+                                where_times_which_dirichlet,
                                 WhereTimesWhichPredictor,
     RBD_RANGE,
     evaluate_full,
@@ -41,6 +47,7 @@ from antiGen.eval_utils import (fit_substitution_baseline,
     build_special_mask,
     build_model_gap_stop_mask,
     load_checkpoint,
+    real_substitution_mask,
 )
 
 
@@ -159,6 +166,13 @@ def config_label(prefix, config_dict, global_step):
     return f"{prefix}_{tag}"
 
 
+#: Day 0 of "years into pandemic". This is the figure's constant, not a new one:
+#: `fig2_sc2_benchmarks.R` has had `PANDEMIC_START <- as.Date("2019-12-20")` since the
+#: published arm, and an emergence axis drawn against any other origin would not sit on
+#: the same ruler as the gating panel beside it.
+PANDEMIC_START = "2019-12-20"
+
+
 # ── Unified output writers ───────────────────────────────────────────────────────
 
 def write_unified_hit_rate(output_dir, file_suffix, qtile_labels,
@@ -174,14 +188,44 @@ def write_unified_hit_rate(output_dir, file_suffix, qtile_labels,
             writer.writerow([name] + [f"{v:.8f}" for v in vals])
 
 
+def emergence_step_labels(n_steps, dates=None):
+    """Column headers for the emergence grid, as ``t_<years into pandemic>``.
+
+    THE INDEX CONVENTION IS ONLY CORRECT FOR ONE GRID. The published arm reads
+    ``pssms/<variant>/time_<t>.csv``, whose filenames ARE t in years and which the
+    data pipeline writes at exactly 0.1-year spacing, so numbering the steps
+    ``(i + 1) * 0.1`` reproduced the real t and `sc2_results`' "Date (t, years into
+    pandemic)" axis was true. ``--variant-counts-dir`` is a different grid: dated
+    files at whatever spacing the corpus was built with. The revised arm's is
+    QUARTERLY, 2021-01-01 .. 2026-01-01, so the index convention labelled a five-year
+    span as t_0.1 .. t_2.1 -- an axis wrong by a factor of 2.5, and a panel-L filter
+    (`x >= 2`, "from two years in") that silently became "the last two points".
+
+    So a dated grid labels itself from its dates and an undated one keeps the index
+    convention, which leaves every published CSV byte-identical.
+    """
+    if dates is None:
+        return [f"t_{(i + 1) * 0.1:.1f}" for i in range(n_steps)]
+    origin = datetime.date.fromisoformat(PANDEMIC_START)
+    out = []
+    for d in dates:
+        if not isinstance(d, datetime.date):
+            d = datetime.date.fromisoformat(str(d))
+        out.append(f"t_{(d - origin).days / 365.25:.4f}")
+    if len(out) != n_steps:
+        raise ValueError(f"{len(out)} date(s) for {n_steps} emergence step(s)")
+    return out
+
+
 def write_unified_variant_emergence(output_dir, file_suffix, n_steps, quantiles,
-                                    model_rows, baseline_rows):
+                                    model_rows, baseline_rows, step_labels=None):
     """Write one emergence CSV: rows = (model|baseline, top_quantile), cols = time steps.
 
     model_rows / baseline_rows map name -> {q: [hit rate per step]}. One row per
     (name, q) so every top-q quantile (q = 0.1 … 0.9) is reported.
     """
-    step_labels = [f"t_{(i + 1) * 0.1:.1f}" for i in range(n_steps)]
+    if step_labels is None:
+        step_labels = emergence_step_labels(n_steps)
     csv_path = os.path.join(output_dir, f"variant_emergence_{file_suffix}_all-models.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
@@ -270,6 +314,23 @@ def parse_args():
                         help='Directory to scan for fitness_*.pt checkpoints')
     parser.add_argument('--output-dir', type=str, required=True,
                         help='Directory for unified comparison CSVs')
+    parser.add_argument('--alphabet', type=str, default=LEGACY_AAS,
+                        help='Residue alphabet. The default is the 22-token frame every '
+                             'published invocation uses; the revised corpus passes 20.')
+    parser.add_argument('--train-examples', type=str, nargs='+', default=None,
+                        help='The revised corpus writes the two halves as separate '
+                             'files; naming them replaces the data-dir glob.')
+    parser.add_argument('--test-examples', type=str, nargs='+', default=None)
+    parser.add_argument('--split-date', type=str, default=None, metavar='YYYY-MM-DD',
+                        help='Which train/test split to read, for a corpus whose '
+                             'POST_CUTOFF field is a set of cutoff dates.')
+    parser.add_argument('--root-counts', type=str, default=None, metavar='TSV',
+                        help="The revised count matrix, where pssms/root.csv used to be.")
+    parser.add_argument('--variant-counts-dir', type=str, default=None, metavar='DIR',
+                        help="Dated variant count files, replacing "
+                             "pssms/<variant>/time_*.csv as the emergence grid.")
+    parser.add_argument('--counts-since', type=str, default=None, metavar='YYYY-MM-DD',
+                        help="Drop emergence steps before this date.")
     parser.add_argument('--data-dir', type=str, default=None,
                         help="Override the data directory (else derived from checkpoints' train_args)")
     parser.add_argument('--multitree-baselines', action='store_true',
@@ -318,6 +379,38 @@ def parse_args():
     parser.add_argument('--priority-models', type=str, default=None,
                         help='Comma-separated label substrings to evaluate FIRST (before the '
                              'other models). Baselines are always computed first regardless.')
+    parser.add_argument('--skip-baselines', action='store_true', default=False,
+                        help="Skip the test-set baseline sweep. It is one pass over "
+                             "the test set scoring 13 fixed maps against every "
+                             "variant and quantile -- the single most expensive thing "
+                             "in the run, ~4 h here -- and it is pure waste for a job "
+                             "whose output is a score-map cache rather than a CSV "
+                             "(the ensemble MEMBER pass, NOTES s68). The baseline "
+                             "ROWS are then absent from the hit-rate CSVs, so do not "
+                             "pass this for a run anything reads.")
+    parser.add_argument('--dump-scores', default=None, metavar='DIR',
+                        help="Cache each evaluated model's eval-range score map over "
+                             "the TEST set to DIR, in antiGen.score_cache's format. "
+                             "Observational: it adds I/O to a pass that is happening "
+                             "anyway and changes no number. It exists so that "
+                             "anything combining several models' maps -- the "
+                             "ensemble rules -- can be scored on the recall panels "
+                             "without paying the member forward passes a second "
+                             "time. ~1.2 GB per model at 71,704 queries x 201 x 20.")
+    parser.add_argument('--dump-models', default=None, metavar='A,B,C',
+                        help="Restrict --dump-scores to these model prefixes "
+                             "(exact names, comma-separated). Default: every model "
+                             "the run evaluates.")
+    parser.add_argument('--legacy-pool', action='store_true', default=False,
+                        help="Score every rung against its OWN emission set rather "
+                             "than a common candidate pool -- the published "
+                             "behaviour, and what the committed evals_sc2 CSVs were "
+                             "written with. Off by default since NOTES s68: without "
+                             "a common pool 'the top 10%%' is 10%% of a set whose size "
+                             "varies by model (3,801-4,221 across this roster), so a "
+                             "map that declines to score part of the range selects "
+                             "fewer cells than its rivals. Pass this only to "
+                             "reproduce a published number.")
     parser.add_argument('--seed', type=int, default=42, help='Seed for baseline tie-break noise')
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--hit-rate-buckets', type=int, default=10)
@@ -373,10 +466,12 @@ def main():
     print(f"Using device: {device}")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    gap_idx = allowed_aas.index('-')
-    stop_idx = allowed_aas.index('*')
+    # None when the alphabet has no such column (NOTES s54): every gap/stop exclusion
+    # downstream then becomes a no-op rather than an index error.
+    gap_idx = allowed_aas.index('-') if '-' in allowed_aas else None
+    stop_idx = allowed_aas.index('*') if '*' in allowed_aas else None
     n_buckets = args.hit_rate_buckets
     emergence_only = args.emergence_only
     if emergence_only:
@@ -393,7 +488,15 @@ def main():
     print(f"Found {len(groups)} checkpoint group(s): {sorted(groups)}")
 
     # ── 2. Resolve data paths ────────────────────────────────────────────────
-    if args.data_dir:
+    # The revised corpus names every input it needs, so the legacy resolution -- which
+    # derives a directory from a checkpoint's recorded cutoff and needs
+    # $FITNESS_DATA_ROOT -- must not run at all. Left in, it would either fail on a
+    # missing env var or resolve to the PUBLISHED corpus and read it for nothing.
+    explicit = bool(args.train_examples and args.test_examples
+                    and args.root_counts and args.variant_counts_dir)
+    if explicit:
+        data_dir = None
+    elif args.data_dir:
         data_dir = args.data_dir
     else:
         allowed_cutoffs = datasets.DATASETS[args.dataset]["allowed_cutoffs"]
@@ -417,13 +520,23 @@ def main():
 
     variant = args.variant or datasets.default_variant(args.dataset)
 
-    examples_files = sorted(glob.glob(os.path.join(data_dir, "examples_cutoff_*.txt")))
-    if not examples_files:
-        raise SystemExit(f"No examples_cutoff_*.txt found in {data_dir}")
-    examples_path = examples_files[0]
     print(f"Dataset={args.dataset} variant={variant}")
-    print(f"Loading examples from {examples_path}...")
-    all_examples = load_examples(examples_path, allowed_aas, variant)
+    if args.train_examples or args.test_examples:
+        if not (args.train_examples and args.test_examples):
+            raise SystemExit("--train-examples and --test-examples go together.")
+        all_examples = []
+        for path in list(args.train_examples) + list(args.test_examples):
+            print(f"Loading examples from {path}...")
+            all_examples += load_examples(path, allowed_aas, variant,
+                                          split_date=args.split_date)
+    else:
+        examples_files = sorted(glob.glob(os.path.join(data_dir, "examples_cutoff_*.txt")))
+        if not examples_files:
+            raise SystemExit(f"No examples_cutoff_*.txt found in {data_dir}")
+        examples_path = examples_files[0]
+        print(f"Loading examples from {examples_path}...")
+        all_examples = load_examples(examples_path, allowed_aas, variant,
+                                     split_date=args.split_date)
 
     seq_len = len(all_examples[0].aa_idx)
     print(f"Sequence length: {seq_len}")
@@ -503,8 +616,21 @@ def main():
           f"variant-descended: {len(variant_testing_examples)}")
 
     # PSSMs + baselines
-    pssm_dir = os.path.join(data_dir, "pssms")
-    pssm_root, pssm_variant = load_pssms(pssm_dir, variant, E)
+    if args.root_counts or args.variant_counts_dir:
+        if not (args.root_counts and args.variant_counts_dir):
+            raise SystemExit("--root-counts and --variant-counts-dir go together: one "
+                             "fixes the de novo cut, the other the emergence grid.")
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+        steps, pssm_variant = load_counts_series(args.variant_counts_dir, allowed_aas,
+                                                 since=args.counts_since)
+        emergence_dates = steps
+        print(f"Emergence grid: {len(steps)} step(s), {steps[0]} .. {steps[-1]}")
+    else:
+        pssm_dir = os.path.join(data_dir, "pssms")
+        pssm_root, pssm_variant = load_pssms(pssm_dir, variant, E)
+        # time_<t>.csv names its own t at 0.1-year spacing, which is exactly what the
+        # index convention reproduces, so this grid keeps labelling itself by index.
+        emergence_dates = None
 
     if args.dataset == 'flu':
         baseline_subdir = "baselines_flu"
@@ -529,6 +655,41 @@ def main():
             num_workers=4, pin_memory=True, drop_last=False,
         )
 
+    # ── Score-map cache (optional) ──────────────────────────────────────────
+    # The query set is `testing_examples` in loader order, which is shuffle=False, so
+    # a map's row i is example i. `query_sha1` over the eval-range genotypes is what
+    # makes that checkable later: two dumps of the same roster have identical SHAPE
+    # and no array-level signature of a drifted query set (score_cache's module note).
+    dump_dir = args.dump_scores
+    dump_sha1 = None
+    dump_only = ([m.strip() for m in args.dump_models.split(',') if m.strip()]
+                 if args.dump_models else None)
+    if dump_dir:
+        aa_all = torch.stack([e.aa_idx for e in testing_examples])
+        dump_sha1 = sc.query_sha1(aa_all[:, eval_range])
+        print(f"\n=== Score-map cache: {dump_dir} ===")
+        print(f"  {len(testing_examples)} queries x {len(eval_range)} positions x {E} "
+              f"residues = {sc.expected_bytes(len(testing_examples), len(eval_range), E) / 2**30:.2f} GiB per model")
+        sc.write_query_manifest(
+            dump_dir, dataset=args.dataset, variant=variant, seq_len=seq_len,
+            eval_range=eval_range, list_specs=[], sha1=dump_sha1,
+            n_queries=len(testing_examples),
+            n_events=float(sum(float(e.mat[eval_range, :].sum()) for e in testing_examples)),
+            args=args)
+        if not os.path.exists(os.path.join(dump_dir, sc.QUERIES)):
+            qi, po, al, ct = [], [], [], []
+            for i, e in enumerate(testing_examples):
+                for r, a in (e.mat[eval_range, :] > 0).nonzero().tolist():
+                    qi.append(i); po.append(eval_range[r]); al.append(a)
+                    ct.append(float(e.mat[eval_range[r], a]))
+            sc.write_queries(dump_dir, aa_all.to(torch.int8).numpy(),
+                             (np.array(qi), np.array(po), np.array(al),
+                              np.array(ct, dtype=np.float32)))
+            print(f"  wrote {sc.QUERIES}: {len(testing_examples)} genotypes, "
+                  f"{len(qi)} target cells ({sum(ct):.0f} events)")
+        print(f"  query_sha1 {dump_sha1}"
+              + (f"; restricted to {dump_only}" if dump_only else ""), flush=True)
+
     # Baseline coverage inside the eval range. A baseline with no signal outside the
     # RBD (the Omicron DMS sets, EVEscape) is a constant -1 there, which
     # load_baselines turns into NaN, so under --eval-range full its candidate pool is
@@ -546,6 +707,22 @@ def main():
     # ── 4. Eval-variant masks ────────────────────────────────────────────────
     special_mask = build_special_mask(seq_len, E, gap_idx, stop_idx)
     hit_rate_seen_mask = pssm_root > 0  # (seq_len, E) True = seen in training root
+
+    # The model-independent half of the common candidate pool, over the eval range.
+    # With it, every rung ranks the same cells and selects q * |pool| of them, which
+    # is what `list_macro.py` already does and what makes the recall panels of this
+    # figure and of the CoG-UK list figure the same measurement (NOTES s68). At 20
+    # letters there is no gap or stop column, so this selects every cell and the only
+    # thing it changes is that a map with MISSING measurements (EVEscape, the BA.2
+    # DMS panels, LY-CoV1404) now ranks those cells last inside a full-size pool
+    # instead of being handed a smaller one.
+    common_pool = None if args.legacy_pool else real_substitution_mask(
+        len(eval_range), allowed_aas)
+    if common_pool is None:
+        print("\ncandidate pool: per-model emission set (--legacy-pool, pre-s68)")
+    else:
+        print(f"\ncandidate pool: common -- {int(common_pool.sum())} of "
+              f"{len(eval_range) * E} eval-range cells, identical for every rung")
 
     test_variants = [
         ("All", "all", None),
@@ -638,15 +815,17 @@ def main():
             pvm[emergence_seen_mask] = float('nan')
             pssm_variant_sub_unseen.append(pvm)
 
-        # wt masks for the no-gap/stop and unseen+no-gap/stop specs
-        wt_mask_nogapstop = wt_mask_2d.clone()
-        wt_mask_nogapstop[:, gap_idx] = False
-        wt_mask_nogapstop[:, stop_idx] = False
-        combined_mask = emergence_seen_mask.clone()
-        combined_mask[:, gap_idx] = True
-        combined_mask[:, stop_idx] = True
-        wt_mask_unseen_nogapstop = wt_mask_2d.clone()
-        wt_mask_unseen_nogapstop[combined_mask] = False
+        # wt masks for the no-gap/stop and unseen+no-gap/stop specs, built off
+        # `special_mask` rather than by indexing with gap_idx/stop_idx directly.
+        # At 20 letters both indices are None, and `t[:, None] = False` does not
+        # raise -- it unsqueezes and assigns the WHOLE tensor, so every one of the
+        # four `*_nogapstop*` emergence rows was silently written off an all-False
+        # candidate mask and an all-NaN score map (NOTES s68). The equivalent
+        # mask form is a no-op at 20 letters and identical at 22.
+        special_sub = special_mask[eval_range, :]
+        wt_mask_nogapstop = wt_mask_2d & ~special_sub
+        combined_mask = emergence_seen_mask | special_sub
+        wt_mask_unseen_nogapstop = wt_mask_2d & ~combined_mask
 
         variant_thresholds = [100, 1] if variant == 'BA.2' else [10, 1]
         T0 = variant_thresholds[0]
@@ -664,8 +843,7 @@ def main():
         bl_nogapstop = []
         for n, bp in baselines:
             s = _sub(bp)
-            s[:, gap_idx] = float('nan')
-            s[:, stop_idx] = float('nan')
+            s[special_sub] = float('nan')
             bl_nogapstop.append((n, s))
         bl_unseen_nogapstop = []
         for n, bp in baselines:
@@ -678,7 +856,7 @@ def main():
         # for the PSSM-precision curve as well as for recall.
         # Keyed by the suffix stem, so `coguk` and `coguk_unseen` sit side by side and
         # the spec loop below does not need to know which is which.
-        list_emergence = {}      # stem -> (pssm_list, baseline_set)
+        list_emergence = {}      # stem -> (pssm_list, baseline_set, drop_mask)
         for label, _in_full, in_sub in mutation_lists:
             out_of_list = ~in_sub
             # The de novo cut, as for recall: strike the training-window cells from
@@ -693,37 +871,76 @@ def main():
                     pv_list.append(pvm)
                 bl_list = []
                 for n, bp in baselines:
-                    sc = _sub(bp)
-                    sc[drop] = float('nan')
-                    bl_list.append((n, sc))
-                list_emergence[stem] = (pv_list, bl_list)
+                    bp_sub = _sub(bp)
+                    bp_sub[drop] = float('nan')
+                    bl_list.append((n, bp_sub))
+                list_emergence[stem] = (pv_list, bl_list, drop)
 
-        # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set, threshold)
+        # The candidate pool for the precision row, per spec. It matters more here
+        # than on the recall row because n_valid is this metric's DENOMINATOR and not
+        # just the size of the set searched: without a common pool a map that declines
+        # to score part of the range is scored against a top decile that much smaller
+        # (NOTES s51 measured it at 98.0 listed cells caught scoring BELOW a rival's
+        # 94.0). Every restriction expressed above by writing NaN into a score map --
+        # the de novo cut, a curated list -- is struck from the pool here too, or those
+        # cells would rank last inside it rather than leave it.
+        root_real = real_wildtype_mask(
+            testing_root_example.aa_idx[eval_range].unsqueeze(0), allowed_aas)[0]
+        n_ungrounded = int((~root_real).sum())
+        print(f"variant root: {n_ungrounded} gap/stop residue(s) in the eval range"
+              + ("; the query-dependent pool is a no-op for the precision row"
+                 if not n_ungrounded else
+                 f", so the query-dependent pool removes {n_ungrounded * E} cells"))
+
+        def _epool(wt_m, drop=None):
+            """This spec's candidate set, or None under --legacy-pool."""
+            if common_pool is None:
+                return None
+            pool = common_pool & wt_m & root_real.unsqueeze(-1)
+            return pool if drop is None else (pool & ~drop)
+
+        # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set,
+        #        threshold, pool)
         emergence_specs = [
-            ("all", pssm_variant_sub, "base", wt_mask_2d, bl_base, T0),
-            ("unseen", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, T0),
-            ("all_thresh1", pssm_variant_sub, "base", wt_mask_2d, bl_base, 1),
-            ("unseen_thresh1", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, 1),
-            ("all_nogapstop", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, T0),
-            ("all_nogapstop_thresh1", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, 1),
-            ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0),
-            ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1),
+            ("all", pssm_variant_sub, "base", wt_mask_2d, bl_base, T0,
+             _epool(wt_mask_2d)),
+            ("unseen", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, T0,
+             _epool(wt_mask_2d, emergence_seen_mask)),
+            ("all_thresh1", pssm_variant_sub, "base", wt_mask_2d, bl_base, 1,
+             _epool(wt_mask_2d)),
+            ("unseen_thresh1", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, 1,
+             _epool(wt_mask_2d, emergence_seen_mask)),
+            ("all_nogapstop", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, T0,
+             _epool(wt_mask_nogapstop)),
+            ("all_nogapstop_thresh1", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, 1,
+             _epool(wt_mask_nogapstop)),
+            ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0,
+             _epool(wt_mask_unseen_nogapstop)),
+            ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1,
+             _epool(wt_mask_unseen_nogapstop)),
         ]
-        for stem, (pv_list, bl_list) in list_emergence.items():
+        for stem, (pv_list, bl_list, drop) in list_emergence.items():
             emergence_specs.append(
-                (f"list_{stem}", pv_list, f"list_{stem}", wt_mask_2d, bl_list, T0))
+                (f"list_{stem}", pv_list, f"list_{stem}", wt_mask_2d, bl_list, T0,
+                 _epool(wt_mask_2d, drop)))
             emergence_specs.append(
                 (f"list_{stem}_thresh1", pv_list, f"list_{stem}", wt_mask_2d,
-                 bl_list, 1))
+                 bl_list, 1, _epool(wt_mask_2d, drop)))
 
         n_steps = len(pssm_variant_sub)
+        # pssm_variant_sub slices POSITIONS, not time, so its length is the whole grid
+        # and these dates line up one-for-one; `--counts-since` already dropped its
+        # prefix inside load_counts_series. emergence_step_labels re-checks the two
+        # lengths agree rather than trusting that to stay true.
+        emergence_labels = emergence_step_labels(n_steps, emergence_dates)
         # Accumulators: suffix -> {name: {q: [hit rate per step]}}
         emergence_model_rows = {suffix: {} for suffix, *_ in emergence_specs}
         emergence_baseline_rows = {}
-        for suffix, pssm_list, _mp, wt_m, bl_set, thr in emergence_specs:
+        for suffix, pssm_list, _mp, wt_m, bl_set, thr, pool in emergence_specs:
             emergence_baseline_rows[suffix] = {
                 name: variant_hit_rates(bp, wt_m, pssm_list, threshold_count=thr,
-                                        quantiles=EMERGENCE_QUANTILES)
+                                        quantiles=EMERGENCE_QUANTILES,
+                                        pool_mask=pool)
                 for name, bp in bl_set
             }
 
@@ -775,18 +992,20 @@ def main():
         if do_emergence:
             for suffix, *_ in emergence_specs:
                 write_unified_variant_emergence(args.output_dir, suffix, n_steps, EMERGENCE_QUANTILES,
-                                                emergence_model_rows[suffix], emergence_baseline_rows[suffix])
+                                                emergence_model_rows[suffix], emergence_baseline_rows[suffix],
+                                                step_labels=emergence_labels)
 
     # ── 7. Baseline sweep (once, no model) — before models so baselines land on disk
     #        immediately and are reused on resume. Skipped entirely in emergence-only
     #        mode (variant-emergence baselines were already computed in step 5). ─────
-    if not emergence_only:
+    if not emergence_only and not args.skip_baselines:
         if any(suffix not in test_baseline_rows for _, suffix, _ in test_variants):
             print("\n=== Baseline sweep (test set) ===")
             base_results = evaluate_full(
                 None, test_loader, device,
                 variants=[(label, sm) for label, _, sm in test_variants],
                 baselines=baselines, n_buckets=n_buckets, eval_range=eval_range,
+                common_pool=common_pool, alphabet=allowed_aas,
             )
             for label, suffix, _ in test_variants:
                 _, _, baseline_hits = base_results[label]
@@ -801,6 +1020,7 @@ def main():
                 None, variant_test_loader, device,
                 variants=[(label, sm) for label, _, sm in variant_variants],
                 baselines=baselines, n_buckets=n_buckets, eval_range=eval_range,
+                common_pool=common_pool, alphabet=allowed_aas,
             )
             for label, suffix, _ in variant_variants:
                 _, _, baseline_hits = vb_results[label]
@@ -843,9 +1063,14 @@ def main():
             pm = positional_marginal_counts(training_examples, seq_len, E)
             return WhereTimesWhichPredictor(_fit().config, pm, _fit()).to(device)
 
+        def _wxw_dirichlet():
+            return where_times_which_dirichlet(
+                _fit(), training_examples, seq_len, E).to(device)
+
         builtin_models = {"codon": _codon,
                           "substitution": _substitution,
-                          "where_times_which": _where_times_which}
+                          "where_times_which": _where_times_which,
+                          "wxw_dirichlet": _wxw_dirichlet}
         for name in builtin_models:
             candidates.append((name, None, None))
         print(f"  added {len(builtin_models)} factored baselines: "
@@ -917,12 +1142,32 @@ def main():
         # Quantile hit rates over the test set (the expensive part; skipped in
         # --emergence-only mode, which touches only the single testing-root pass below).
         if not emergence_only:
-            results = evaluate_full(
-                model, test_loader, device,
-                variants=[(label, sm) for label, _, sm in test_variants],
-                baselines=[], n_buckets=n_buckets, eval_range=eval_range,
-                model_gap_stop_mask=model_mask,
-            )
+            writer = None
+            if dump_dir and (dump_only is None or prefix in dump_only) \
+                    and not os.path.exists(sc.map_path(dump_dir, prefix)):
+                writer = sc.MapWriter(dump_dir, prefix, len(testing_examples),
+                                      len(eval_range), E)
+            try:
+                results = evaluate_full(
+                    model, test_loader, device,
+                    variants=[(label, sm) for label, _, sm in test_variants],
+                    baselines=[], n_buckets=n_buckets, eval_range=eval_range,
+                    model_gap_stop_mask=model_mask,
+                    common_pool=common_pool, alphabet=allowed_aas,
+                    score_sink=(writer.write_batch if writer else None),
+                )
+            except BaseException:
+                # A partial map is a full-size file of plausible zeros, and the resume
+                # rule downstream is os.path.exists. Leave a stray .tmp instead.
+                if writer is not None:
+                    writer.abort()
+                raise
+            if writer is not None:
+                side = writer.close(manifest_sha1=dump_sha1,
+                                    extra={"n_queries": len(testing_examples),
+                                           "eval_range_len": len(eval_range)})
+                print(f"  [map] {prefix}: {side['n_nan']} NaN, "
+                      f"{side['n_neginf']} -inf cells", flush=True)
             for label, suffix, _ in test_variants:
                 _, hit_rate_by_qtile, _ = results[label]
                 hit_rate_model_rows[suffix][prefix] = hit_rate_by_qtile
@@ -934,6 +1179,7 @@ def main():
                     variants=[(label, sm) for label, _, sm in variant_variants],
                     baselines=[], n_buckets=n_buckets, eval_range=eval_range,
                     model_gap_stop_mask=model_mask,
+                    common_pool=common_pool, alphabet=allowed_aas,
                 )
                 for label, suffix, _ in variant_variants:
                     _, hit_rate_by_qtile, _ = v_results[label]
@@ -948,8 +1194,7 @@ def main():
             mp_unseen = tr_scores.clone()
             mp_unseen[emergence_seen_mask] = float('nan')
             mp_nogapstop = tr_scores.clone()
-            mp_nogapstop[:, gap_idx] = float('nan')
-            mp_nogapstop[:, stop_idx] = float('nan')
+            mp_nogapstop[special_sub] = float('nan')
             mp_unseen_nogapstop = tr_scores.clone()
             mp_unseen_nogapstop[combined_mask] = float('nan')
             mp_by_key = {
@@ -963,10 +1208,10 @@ def main():
                 mp_list_unseen = tr_scores.clone()
                 mp_list_unseen[~in_sub | emergence_seen_mask] = float('nan')
                 mp_by_key[f"list_{label}_unseen"] = mp_list_unseen
-            for suffix, pssm_list, mp_key, wt_m, _bl, thr in emergence_specs:
+            for suffix, pssm_list, mp_key, wt_m, _bl, thr, pool in emergence_specs:
                 emergence_model_rows[suffix][prefix] = variant_hit_rates(
                     mp_by_key[mp_key], wt_m, pssm_list, threshold_count=thr,
-                    quantiles=EMERGENCE_QUANTILES,
+                    quantiles=EMERGENCE_QUANTILES, pool_mask=pool,
                 )
 
         # Persist after each model so a timeout/crash keeps all finished models.

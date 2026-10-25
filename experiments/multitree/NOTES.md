@@ -8675,3 +8675,906 @@ as holes in the figure until it lands**, which `fig_coguk_list.R` reports per me
 * `examples/slurm/{eval_sc2_varrecall,background_discrimination_sc2}.sh` -- `DATA_DIR` /
   `CKPT_DIR` / `TREE_JSON` / `REF_JSON` overrides and an `EXTRA` passthrough, so the
   20-letter arm comes off the published scripts rather than a fork.
+
+## 67. sc2_results on the revised corpus: the inventory, and what each panel needs (2026-10-24, IN PROGRESS)
+
+Rebuilding the whole of `sc2_results` at the 2021-01-01 cutoff on the revised corpus,
+with the roster `coguk_list_aa20` draws. This section is written as the work proceeds;
+nothing below is a measurement yet.
+
+### The thirteen panels resolve to three data products
+
+| panel | what | source |
+|---|---|---|
+| A, F | cartoons | static PNGs, no data |
+| B, C | recall by quantile | `quantile_hit_rates_*_all-models.csv` |
+| D, E | recall AUC | same |
+| G, H | PSSM precision vs date | `variant_emergence_*_all-models.csv` |
+| I, J | max PSSM precision | same |
+| L | PSSM precision, 100+ de novo, finetunes | same, filtered |
+| K | model vs BA.2 DMS expression | `data/sc2/<model>/variant_root_predictions_*.csv` |
+| M | recall at top decile vs cutoff | one eval per cutoff under `data/gating/` |
+
+So: one `antiGen-eval` run for B-J and L, a per-model prediction matrix at the BA.2 root
+for K, and a sweep of per-cutoff evals for M.
+
+### Three things the inventory turned up
+
+* **`eval.py` has had none of the revised-corpus treatment** the other four scripts got
+  (s65/s66): no `--alphabet`, no `--train-examples`/`--test-examples`, no
+  `--root-counts`, no `--variant-counts-dir`, no `--split-date`. Same patch shape as
+  `list_macro`, `list_variant_recall` and `background_discrimination`.
+* **Nothing in the codebase writes `variant_root_predictions_*.csv` any more.** The
+  committed ones are dated 2026-06-22 and their producer is gone. They are recoverable
+  with no GPU: a model's score row at the BA.2 root over the RBD is exactly what
+  `list_score_maps_aa20` already holds, at **dumped query 4110** (located by genotype,
+  s66). Panel K is therefore cache arithmetic plus a `ref/` file for the revised BA.2
+  root, which differs from the published one at 0-indexed 492 -- Q493R, INSIDE the RBD,
+  so the published reference cannot be reused for masking.
+* **Panel M's fixed-32 base antiGen already exists.** The cutoff series' first round
+  completed `base/` for 15 of the 16 cutoffs before it was cancelled over the budget
+  question (s65); 2023-01-01's was trained by `train_sc2_2023.sh` into
+  `ckpt_stage_2023-01-01` and is copied into the series with a `PROVENANCE.txt` saying
+  so. The recipe is identical, which is what makes the copy legitimate.
+
+### Decided with the user
+
+* Panel M runs **2020-04-01 to 2024-01-01**, 16 quarterly cutoffs. Beyond that the test
+  window falls under ~7,000 records (2,232 by 2025-01, **170** by 2026-01), so later
+  points would plot as equals while resting on a fraction of the evidence (s65).
+* Panel M's lines: fixed-32 base antiGen, **ESM-2 35M partial FT**, where x which, and
+  the three published reference lines (PSSM, BLOSUM62, EVEscape).
+* The **five combination bars** join B-J, through the same cached-map path s66 added to
+  the yield row -- otherwise they are rungs on the list figure and absent here.
+
+### A cost estimate that was wrong by 17x, caught before it cost anything
+
+The per-cutoff ESM-2 runs were first submitted at time limits derived from a guessed
+0.0008 s per record-epoch. The measured rate is **0.0138** -- s53's 2021 arm took 21:34
+for 2,934 records at 32 epochs -- so 2024-01-01 would have been killed at 2 h into an
+8.4 h run, and the same for the five cutoffs above it. Cancelled within a minute and
+resubmitted at 2x the measured rate: 1 h to 17 h per cutoff, ~66 GPU-hours in all.
+Worth recording because the failure mode is a half-trained checkpoint that still loads.
+
+### Progress
+
+* **`eval.py` patched and gated.** `--alphabet`, `--train-examples`/`--test-examples`,
+  `--root-counts`, `--variant-counts-dir`, `--counts-since`, `--split-date`; and
+  `build_special_mask` takes `gap_idx`/`stop_idx` of None, so every gap/stop exclusion
+  is a no-op at 20 letters rather than an index error. One subtlety worth naming: when
+  the revised inputs are given, the **legacy path resolution must not run at all** --
+  left in, it derives a directory from a checkpoint's recorded cutoff and would either
+  fail on a missing `$FITNESS_DATA_ROOT` or silently resolve to the PUBLISHED corpus and
+  read it for nothing. Suite still **205**.
+* **Panel K's inputs are built, with no GPU.**
+  `experiments/multitree/dump_variant_root_predictions.py` writes each cached model's
+  score row at the variant root in the published shape (seq_len x 22, NaN outside the
+  eval range and in the `*`/`-` columns, which is what "says nothing here" already means
+  to that panel). The root is located **by genotype** -- dumped query 4110, three
+  duplicate rows, checked identical -- because the cache is rebuilt whenever the query
+  set changes and a moved index would write another background's predictions under the
+  right filename.
+  * `data/sc2_aa20/`: the **14 trained pipeline rungs**, matching the published
+    `data/sc2`'s contents (trained models only; the fixed external maps live in
+    `baselines/` and are read in probability space by a different reader). The first
+    dump wrote all 52 cached models including the twenty ensemble MEMBER runs, which
+    would have appeared as twenty spurious rungs; pruned.
+  * Plus **5 `ens_*` directories**, one per drawn combination rule, so the bars that
+    join B-J are on the same footing here.
+  * `ref/BA.2_aa20.txt` -- the revised BA.2 root, which differs from the published one
+    inside the RBD (Q493R), so the published reference cannot be reused for
+    `mask_wildtype`.
+  * `baselines/BA2_escape_LYCoV1404.csv` -- the s64 map joins the baseline predictors.
+* **Submitted**: the main eval (3432548) and the 16 per-cutoff ESM-2 35M partial
+  trainings for panel M.
+
+### STOPPED HERE, 2026-10-24 (on instruction). State at the stopping point
+
+**Nothing in this section is measured and the figure is not drawn.** What exists:
+
+| piece | state |
+|---|---|
+| `eval.py` + `eval_utils.build_special_mask` patched | done, suite 205 |
+| `examples/slurm/eval_all_sc2.sh` parameterised | done |
+| panel K inputs (`data/sc2_aa20/`, `ref/BA.2_aa20.txt`, baseline escape map) | done |
+| `dump_variant_root_predictions.py` | done |
+| main eval, job **3432548** -> `evals_sc2_aa20` | SUBMITTED, still PENDING |
+| per-cutoff ESM-2 35M partial, 16 jobs | 3 of 16 trained, 5 running, 8 pending |
+| per-cutoff base antiGen (fixed 32) | already on disk, 16 of 16 |
+| per-cutoff evals for panel M | NOT SUBMITTED |
+| revised `sc2_results` figure wrapper | NOT WRITTEN |
+
+**Uncommitted at the stopping point**: `antiGen/eval.py`, `antiGen/eval_utils.py`,
+`examples/slurm/eval_all_sc2.sh`, `experiments/multitree/dump_variant_root_predictions.py`,
+`antiGen-figures/data/sc2_aa20/`, `antiGen-figures/ref/BA.2_aa20.txt`,
+`antiGen-figures/baselines/BA2_escape_LYCoV1404.csv`, and this section.
+
+**Still running from earlier sections, unrelated to the stop**: job 3432096, the s66
+background row (23,806 genotypes, ~1 h in of ~3); job 3431140, the s65 512-epoch probe
+(3 seeds at 2021-07-01, ~2 h in). Both write outside `antiGen-figures` and neither is
+needed by anything already committed.
+
+### To resume
+
+1. The main eval finishes -> panels B-E, G-J, L. Its CSVs are
+   `quantile_hit_rates_*_all-models.csv` and `variant_emergence_*_all-models.csv` in
+   `evals_sc2_aa20`, read by a new wrapper the way `fig_coguk_list_aa20.R` reads its
+   macro directory.
+2. The five combination bars still need the cached-map path wired into eval.py's two
+   metrics, the way s66 wired it into the yield row -- **this is not done**, so as
+   things stand B-J would draw 28 rungs, not 33.
+3. The 16 per-cutoff evals for panel M, once the ESM-2 runs land, so each cutoff is
+   scored once with all six lines present (base antiGen fixed-32, ESM-2 35M partial,
+   where x which, PSSM, BLOSUM62, EVEscape).
+4. A wrapper that points MODEL_DIR at `data/sc2_aa20`, the ref at `BA.2_aa20.txt`, and
+   the gating directory at the new per-cutoff tree, with panel M's x-axis truncated at
+   2024-01-01 per the decision above.
+
+### A scheduling lesson worth keeping
+
+The cluster was saturated by this session's own jobs, and the **critical path (the main
+eval) sat PENDING behind 16 training jobs that only feed one panel**. Niced after the
+fact. Submit the critical path first, or nice the bulk work at submission.
+
+## 68. One top decile for every rung, in `eval.py` too (2026-10-24)
+
+`eval.py` was the last script on the figure still scoring each rung against its **own**
+emission set. s51 gave `compute_hit_rate` a `pool_mask`, s51/s52 gave
+`list_variant_recall` and `background_contrast` theirs, `list_macro` has passed one
+since it was written, and `rescore_common_pool.py` exists to retrofit the published
+CSVs -- but the script behind Figure 2 and `sc2_results` never took one. So the two
+figures this arm draws were asking the same question two ways, and on instruction
+(2026-10-24) that is now one way: **a top-q quantile means the same NUMBER of cells
+for every rung.**
+
+### What "the same number" is here
+
+At 20 letters `real_substitution_mask` selects every column and `real_wildtype_mask`
+every row, so the pool is the whole eval range -- **4,020 cells, 4,019 after the query's
+own residue leaves** -- identical for every rung and every query. The convention is not
+free of consequence even when the mask is a no-op, because the pool is what decides
+whether a cell a model **cannot score** leaves the pool or stays in it ranked last:
+
+* **before**: a NaN cell was dropped, so `n_valid` was the model's own coverage and
+  `q * n_valid` was a proportionally smaller selection. A map covering half the RBD
+  searched half as many cells as its rivals.
+* **now**: it is filled one step below the query's minimum, stays in `n_valid`, and is
+  never selected. Every rung selects `q * 4,019` and a map pays for its gaps.
+
+### Exactly four rungs move, and the roster says which before the job starts
+
+`eval.py` already prints baseline coverage over the eval range. On this corpus:
+
+| rung | coverage |
+|---|---|
+| `BA2_escape_LYCoV1404` | **50.3%** |
+| `EVEscape` | **95.0%** |
+| `Omicron_BA2_bind`, `Omicron_BA2_expr` | **99.6%** |
+| everything else (23 rungs) | 100.0% |
+
+A rung that scores every cell is **bit-unmoved** -- the pool it gets is the pool it had
+-- which is the property the change rests on and is gated as such
+(`test_a_fully_scoring_rung_is_unmoved_by_the_pool`, over all three mask shapes a
+variant can carry). So no trained model's curve moves at all; the four maps above do,
+and `BA2_escape_LYCoV1404` moves a lot. That is the s64 caveat becoming arithmetic
+rather than a sentence beside a label.
+
+### The precision row needed it more than the recall row
+
+On recall `n_valid` sizes the set searched; on the variant-emergence row (panels G-J, L)
+`n_valid` **is the denominator** -- precision is hits / the size of the top-q. s51
+measured what that does: the nine-member mean of log-probs caught 98.0 listed cells to
+EVE full FT's 94.0 and scored **0.2322 against 0.2461**. So `variant_hit_rates` takes a
+`pool_mask` too, with `top_q_weights`' treatment copied rather than re-derived, down to
+taking the tie fraction over the whole boundary block before the filled cells are struck
+from it.
+
+**The denominator stayed the selected COUNT, and that was not the first attempt.** Taking
+it as the target `q * n_valid` -- which is what `list_variant_recall.curve` does -- moved
+six rungs at 100% coverage by ~1e-4, because the count and the target differ by one
+boundary cell. That is not the pool's doing and it should not look like it, so the
+denominator is `n_above + frac * n_at` with the filled cells counted in. Fully-scoring
+rungs are then bit-identical to their pre-s68 values at every q, and the sc2_results
+precision row sits ~1e-4 from the list figure's yield row by construction; the two are
+not read against each other and now say so in the code.
+
+**A blind map has two regimes, and only the second involves a filled cell.** Below its
+coverage the pool simply makes its top-q the same SIZE as everyone's, so it reaches
+further down its own shorter ranking than the published convention let it. Above its
+coverage the boundary crosses into the filled block and cells it never scored occupy
+slots it can never be credited for. Both are gated.
+
+**The pool is per spec, and it has to be.** Every restriction the emergence path
+expresses by writing NaN into a score map -- the de novo cut, a curated list -- must be
+struck from the pool as well, or those cells would be *filled and ranked last* inside it
+instead of leaving it, and the denominator would be the whole range for a spec that only
+ever meant to search a few hundred cells. The spec tuple carries its own pool for that
+reason; `_epool(wt_mask, drop)` builds it from the same two masks the score map was
+NaN-ed with.
+
+### A silent wipe found on the way, which had nothing to do with pooling
+
+Four emergence suffixes built their masks by indexing with `gap_idx` / `stop_idx`:
+
+```python
+wt_mask_nogapstop[:, gap_idx] = False        # gap_idx is None at 20 letters
+```
+
+At 20 letters both indices are `None`, and **this does not raise**. `t[:, None] = False`
+unsqueezes and assigns the **whole tensor**, so `all_nogapstop`, `all_nogapstop_thresh1`,
+`unseen_nogapstop` and `unseen_nogapstop_thresh1` were each about to be written off an
+all-False candidate mask and an all-NaN score map. They are not among the four suffixes
+`VARIANT_EMERGENCE_METRICS` draws, so nothing on the figure was wrong -- but four CSVs of
+confident zeros would have been, and s67's `build_special_mask` work had retired the
+same trap one layer up without catching this one. Now built as `wt_mask_2d & ~special_sub`
+off `build_special_mask`, which is a no-op at 20 letters and identical at 22. Gated.
+
+### `--legacy-pool`, and what it is for
+
+Off by default. It restores the per-model emission set, and it is the only way to
+reproduce the committed `evals_sc2` CSVs, which were written under the old convention --
+the same flag, with the same meaning, that `list_macro`, `list_variant_recall`,
+`background_contrast` and `rescore_common_pool` already carry. Nothing on disk is
+reinterpreted by this change; the published figure is a published number and stays one.
+
+### The combination bars need a cache this figure does not have, and 2 of the 5 need more
+
+Resuming s67's item 2: the five drawn rules cannot come off `list_score_maps_aa20`,
+because that cache holds the **11,523 CoG-UK-list-carrying queries** and the recall
+panels score all **71,704** post-cutoff test records. Two facts the inventory should
+have stated and did not:
+
+* **The three mean rules' nine members are already on this roster** -- base antiGen, EVE
+  full FT, Tranception full FT and the six ESM-2 arms, verbatim from
+  `ensembles9_aa20/rules_drawn5.json`. Their test-set forward passes are happening
+  anyway, so the maps are free apart from I/O.
+* **The other two rules have different members entirely**: `vs10Antigen_s0..s9` and
+  `hybridWxwPssm_s0..s9`, twenty cheap runs that are NOT on this roster. They need their
+  own pass over the test set into the same cache. So this run buys 3 of the 5 bars on
+  B-E, not 5, and that is a second job rather than a second thought.
+
+`eval.py --dump-scores DIR [--dump-models A,B,C]` writes each evaluated model's
+eval-range map in `score_cache`'s format -- 1.07 GiB per model at 71,704 x 201 x 20,
+`query_sha1 47e22b2b` over the eval-range genotypes, 46,433 target events. The sink is
+**observational**: it is handed the slice after the model's gap/stop mask and before any
+variant masking, and the metric is bit-identical with it on or off (gated). A pass that
+dies leaves a stray `.tmp` rather than a full-size file of plausible zeros, which is the
+discipline `MapWriter` already had and the reason the writer is aborted on any
+`BaseException` rather than on a caught `Exception`.
+
+**One thing this turned up:** the emergence block bound a local `sc` over the
+`score_cache` module alias inside the same function, which would have made every
+`sc.*` call in `main()` an `UnboundLocalError`. Renamed; it is the sort of thing that
+only appears when a module is first imported into a long function.
+
+### Code
+
+* `antiGen/eval_utils.py` -- `evaluate_full(common_pool=, alphabet=, score_sink=)`: the
+  variant's score mask now narrows the pool instead of being burned into the scores, and
+  the query-dependent half is built per batch. `variant_hit_rates(pool_mask=)`.
+* `antiGen/eval.py` -- `--legacy-pool`, `--dump-scores`, `--dump-models`; the pool built
+  once beside the eval range and handed to all four `evaluate_full` call sites; per-spec
+  emergence pools; the `gap_idx`/`stop_idx` indexing retired.
+* `experiments/multitree/submit_eval_aa20.sh` -- the resubmission, with the nine members
+  named so the cache stays at ~9.7 GiB.
+* `antiGen/tests/test_eval_common_pool.py` -- 17 tests. Suite **222**.
+
+### Measured, before any GPU was spent
+
+`--emergence-only --models blosum62` on the real corpus, CPU, run twice -- once with the
+pool and once with `--legacy-pool` -- is enough to see the whole precision row move or
+not move. It does exactly what the coverage table predicts:
+
+| suffix | rungs that moved | largest |
+|---|---|---|
+| `all_thresh1` | LY-CoV1404, EVEscape, `Omicron_BA2_{bind,expr}` | **0.1825** (LY-CoV1404) |
+| `unseen_thresh1` | LY-CoV1404, `Omicron_BA2_{bind,expr}` | 0.1471 |
+| `all` | the same four | 0.0411 |
+| `unseen` | the same three | 0.0206 |
+
+The other ten rungs are bit-identical. EVEscape drops out of the de novo subsets because
+its 15 missing cells are all present in the training window. And the four
+`*_nogapstop*` suffixes now come out **equal to their plain twins**, which is what 20
+letters means and what the `None`-index wipe was hiding.
+
+### State
+
+Job **3432548** was already in its baseline sweep when this landed, so its CSVs would be
+the old convention; it writes to `evals_sc2_aa20` and nothing of it is reusable. **It
+has to be cancelled before `experiments/multitree/submit_eval_aa20.sh` is run**, or the
+resume logic will find its rows and skip every model that wrote one, leaving a directory
+that mixes two conventions and says nothing about which row is which.
+
+Still to do on s67's list, unchanged by this section except where noted:
+
+| piece | state |
+|---|---|
+| main eval, with the nine members' maps | script written, **NOT SUBMITTED** (blocked on the cancel) |
+| the 20 `vs10Antigen` / `hybridWxwPssm` members over the test set | not written; needed for 2 of the 5 bars on B-E |
+| the offline rule scorer (cache -> `quantile_hit_rates` rows for `ens_*`) | not written |
+| per-cutoff evals for panel M | not submitted; the ESM-2 trainings are still running |
+| revised `sc2_results` figure wrapper | not written |
+
+## 69. Resuming s67's list: the member passes, the rule scorer, the cutoff sweep (2026-10-24)
+
+The main eval went back in the queue as **3433201** against an empty `evals_sc2_aa20` --
+3432548 was cancelled inside its baseline sweep and had flushed nothing, so there is no
+mixed-convention directory to worry about. Everything below is the rest of s67's list.
+
+### The three products the combination bars need, and why they are three
+
+The bars cannot come from one place, because the five rules are not one kind of thing.
+
+| rule | members | where its maps come from |
+|---|---|---|
+| Mean of ranks / log-probs / z-scores | the nine drawn rungs | the main eval's `--dump-scores` |
+| `ens_8a91fbbf88` | `vs10Antigen_s0..s9` | job **3433299**, its own eval pass |
+| `ens_69de905310` | `hybridWxwPssm_s0..s9` | job **3433285**, `hybrid_baseline.py` |
+
+All three write into **one** cache, `test_score_maps_aa20`, and
+`write_query_manifest` is what makes that safe: a second pass over a different query set
+is refused rather than deposited, because two dumps of the same roster have identical
+shape and no array-level signature of a drift.
+
+* **The hybrid pass is done**, in under five minutes on CPU -- it reads only the
+  manifest and `queries.npz`, which the main eval writes at startup, so it did not have
+  to wait for anything. Ten maps, 0 NaN and 0 -inf cells. The selected weights are
+  **0.50 / 0.55 / 0.60** (min / median / max), which is the diagnostic
+  `hybrid_baseline.py`'s own module note asks for: they are interior, not pinned at
+  w = 0, so the selection is not simply the PSSM the val half has already seen.
+* **The vs10 pass needed `--include-experimental`.** Its first submission discovered all
+  ten groups and filtered all ten: the val-selected checkpoints carry the `multitree`
+  arm, which `--dataset sc2` drops by default. Correct for a figure roster and wrong for
+  a member pass, which is what the flag is for.
+* **`--skip-baselines`** was added for that job. Its output is a cache, not a CSV, and
+  the test-set baseline sweep is the single most expensive thing in a run -- 13 fixed
+  maps against every variant and quantile over the whole test set. It is guarded by a
+  warning in its own help: the baseline ROWS are then absent, so it must not be passed
+  for a run anything reads.
+
+### The rule scorer, and the one check that makes it legitimate
+
+`experiments/multitree/ensemble_test_rows.py` turns the cache into rows -- recall over
+the test queries for B-E, precision at the variant root for G-J and L -- and writes
+`*_ensemble.csv` holding `ens_*` rows and nothing else, which is
+`ensemble_report.py`'s rule and for its reason: the figure checks overlapping jobs
+against each other, so re-reporting a single-model row turns a reproduction into a
+disagreement.
+
+**`--verify-member` is the gate on the whole cached path at once.** A normalisation is
+monotone within a query, so a ONE-MEMBER rule must rank cell for cell with its member
+and must therefore reproduce that member's own row in
+`quantile_hit_rates_all_all-models.csv` -- the row `eval.py` wrote from a forward pass,
+through a different code path, in a different job. It checks the dump's query order, the
+`-inf` convention, the pool and the tie rule in one number, and it is the only thing that
+establishes the bars are on the same ruler as the rungs beside them. Refuses above 1e-6.
+
+Two things the identity needed before it could be relied on:
+
+* `test_ensemble_rules.test_one_member_is_a_no_op` pins it **without** a pool. Under one,
+  a member's NaN cells are filled and ranked last instead of leaving the pool, so the
+  normalisation runs over a different set than the metric's candidate pool. Re-checked
+  rather than inherited.
+* The variant root is located **by genotype** against `ref/BA.2_aa20.txt`, never by
+  index -- the s67 rule, and the reference has to be the revised root, which differs
+  from the published one at Q493R inside the RBD.
+
+### Panel M: six of sixteen submitted, and a staging directory
+
+`cutoff_series/<D>/` holds `base/`, `esm2_35m_partial/`, `valsel/` (ten runs) and
+`valsel_ep32/`, and `discover_checkpoints` globs one level deep -- so the eval finds
+nothing pointed at the cutoff directory and twenty unwanted members pointed at a parent.
+Each cutoff therefore gets a directory of two symlinks.
+
+`submit_cutoff_evals.sh` is re-runnable: a cutoff whose ESM-2 run has not landed is
+skipped with a line saying which half is missing, and one already evaluated is skipped
+unless `FORCE=1`. **6 of 16 submitted** (2020-04-01 .. 2021-07-01), 10 still waiting on
+their training. Niced at 1000, which is the s67 scheduling lesson applied rather than
+restated.
+
+Dry-checked on CPU before the queue filled: at 2020-04-01 the roster resolves to the two
+checkpoints plus the factored baselines, the shared test corpus splits to **75,143**
+testing records at that date, and the emergence grid starts at the cutoff. Worth noting
+the other end of s65's budget finding is visible here -- that cutoff trains on **190
+examples**.
+
+### Code
+
+* `antiGen/eval.py` -- `--skip-baselines`.
+* `experiments/multitree/ensemble_test_rows.py` -- the rule scorer and its gate.
+* `experiments/multitree/submit_eval_aa20{,_members}.sh`, `submit_cutoff_evals.sh`.
+* `antiGen/tests/test_ensemble_test_rows.py` -- 4 tests, including the script end to end
+  over a synthetic cache. Suite **226**.
+
+### Open
+
+* The figure wrapper is **still not written**. It needs a loader that reads panel M by
+  model NAME: the published `fig2_sc2_benchmarks.R` reads rows 1, 2 and 4 of each
+  per-cutoff CSV by POSITION, which only works because that arm ran one eval per model.
+  This arm runs one eval per cutoff with every line in it.
+* The ten remaining cutoffs, as their ESM-2 runs land.
+* `ensemble_test_rows.py` has not been run on real maps -- the main eval has not reached
+  its first member yet, so `--verify-member` has nothing to check against.
+
+## 70. The cached path is on the same ruler, and two mistakes of mine (2026-10-25)
+
+### The gate passed, on real maps
+
+`ensemble_test_rows.py --verify-member esm2_esm2_t12_35M_UR50D_lr0.0001_partial4`, over
+the 71,704-query cache the main eval is still filling:
+
+    one-member rule vs its own row, worst |delta| = 4.248e-09 over 9 quantiles
+
+A one-member rule is a monotone transform of its member within each query, so it must
+reproduce that member's row -- and that row was written by `eval.py` from a forward
+pass, in another job, through `evaluate_full` rather than through the cache. 4e-9 says
+the dump's query order, the `-inf` convention, the common pool and the fractional tie
+rule all agree across the two paths. **The combination bars are on the same ruler as the
+rungs they will sit beside**, which until now was an argument and is now a number.
+
+Denominators, for the record: **46,433** target events over the eval range, **9,826** on
+the de novo cut. The two `*_nogapstop` variants come out of one pass each with their
+plain twins, as s68 said they must at 20 letters.
+
+### I submitted five duplicate jobs, and then a sixth
+
+`submit_cutoff_evals.sh` skipped a cutoff that was already *evaluated* and a cutoff not
+yet *trained*, and nothing else. Run again to pick up a newly-trained cutoff, it
+resubmitted every job still sitting in the queue from the previous run: five duplicates,
+two of them against an output directory a running job was writing, and `rm -rf` on
+staging directories whose symlinks a running job still resolves through. **"Has it
+finished" is not the same question as "is it needed"**, and only the second is safe to
+submit on.
+
+The fix is a queue check by job name -- which is why every job is named `cut_<D>` -- but
+the first version of THAT was wrong too, and submitted a sixth duplicate. It read the
+queue per cutoff as `squeue 2>/dev/null | grep -c`, which returns a confident **0** when
+the scheduler is merely busy, and a confident 0 here means "submit a duplicate". The
+queue is now read **once, up front, and a failed read aborts the script** rather than
+being treated as an empty queue. Verified: a third run submits nothing.
+
+Six duplicates are in the queue (`3434315-9`, `3434331`), all PENDING, all newer than
+the job they shadow. They need cancelling.
+
+### `antiGen-figures/baselines/` is globbed, so dropping a file in it edits the figure
+
+Rendering `fig2_sc2_benchmarks.R` unmodified -- to see whether byte-identity was
+available as a gate for the sc2_results wrapper, the way it was for the list figure --
+reproduced five of seven PNGs **byte for byte** and changed two: `sc2_results.png` and
+`supp_dms.png`. Not nondeterminism. Line 466 is
+
+    baseline_files <- list.files("baselines")
+
+so s64's `BA2_escape_LYCoV1404.csv`, sitting untracked in that directory since
+2026-10-24, is already a rung on the published figure's DMS panels. The committed PNGs
+are from 2026-10-18 and predate it.
+
+Two things follow. **PNG rendering is deterministic**, so byte-identity IS usable as the
+gate on parameterising fig2 -- against a re-render, not against the committed file.
+And a new baseline reaches the published figure by existing, with no edit anywhere;
+whether those two PNGs should now be re-rendered is a decision, not a cleanup.
+
+**The render left `figs/{sc2_results,supp_dms}.png` and seven `figs_vector/*.pdf`
+modified in the working tree** (every PDF differs on its embedded timestamp alone).
+Restoring them is `git checkout --` on those paths, which this session cannot run.
+
+### R, for the record
+
+`/home/ivan.specht/miniconda/envs/antigen-figs/bin/Rscript`, 4.5.3. Not on PATH.
+
+## 71. `fig2_sc2_benchmarks.R` parameterised, and the aa20 wrapper (2026-10-25)
+
+The last piece of s67's list, and the one the cluster cannot hurry. `sc2_results` is
+drawn by `fig2_sc2_benchmarks.R`, which had **no `getOption` anywhere** -- every input
+and output path was a literal. The list figure solved this with a drawer plus a wrapper
+(`fig_coguk_list.R` + `fig_coguk_list_aa20.R`); this is the same split, for the same
+reason: a forked drawer and its original drift apart silently, and the two figures are
+read against each other.
+
+### The gate, and the thing it caught about the published figure
+
+Rendering the unmodified script reproduced **five of seven PNGs byte for byte** and
+changed `sc2_results.png` and `supp_dms.png`. Not nondeterminism (s70): line 466 is
+`list.files("baselines")`, so s64's `BA2_escape_LYCoV1404.csv` had already joined the
+published DMS panels by existing. So byte-identity IS available as the gate, against a
+**re-render** rather than against the committed file -- and that re-render is the
+baseline every change below was checked against. **All eight outputs byte-identical**
+after the refactor.
+
+### What became an option
+
+Inputs: `eval_dir`, `model_dir`, `gating_dir`, `mtb_dir`/`mtb_models`, `dms_dir`, `ref`,
+`baseline_dir`, `pssm_by_cutoff_dir`, `cartoon_dir`, `ensemble_dir`. Outputs:
+`fig_main`, `fig_prefix`, `fig1_auc`. Panel M: `gate_loader`, `gate_models`,
+`gate_model_labels`, `gate_rows`, `gate_x`, `gate_baselines`, `gate_colors_main`,
+`gate_colors_supp`, `gate_drop_main`. Every default is the published value.
+
+Four things were more than renaming a literal:
+
+* **Panel M is read by NAME on this arm.** The published loader takes rows 1, 2 and 4
+  of each per-cutoff CSV **by position**, which works only because that arm ran one
+  eval per MODEL. This arm runs one eval per CUTOFF with every line in it, so
+  `gate_recall_by_name` matches `sc2.gate_rows` against the `model` column -- and a
+  cutoff missing a line **stops the render**. A line that quietly vanishes for three
+  cutoffs and comes back is worse than a figure that refuses to draw.
+* **The model column is made a factor in `sc2.gate_rows` order.** `scale_color_manual`
+  matches its values to levels positionally, so leaving it a character vector would
+  make the colour assignment depend on the locale's collation of the labels.
+* **The gating PRECISION supplement is skipped when there is no per-model tree.** It
+  reads `GATING_DIR/<model>/cutoff_*/`, which a by-cutoff corpus simply does not have.
+  Wrapped in a function, called on `length(gate_cutoff_dirs)`; its locals are used
+  nowhere else, checked rather than assumed.
+* **`with_ensemble` splices the `ens_*` rows** from `<metric>_ensemble.csv`. It refuses
+  a file holding a non-`ens_` row, and refuses one that re-reports a row already
+  present -- `ensemble_report.py`'s rule, and here a collision is a real contradiction
+  between two jobs over the same queries.
+
+### An R trap worth naming: `options(x = NULL)` DELETES the option
+
+`sc2.fig1_auc = NULL` in the wrapper does not set the option to NULL, it removes it --
+so `getOption("sc2.fig1_auc", "fig1/auc.png")` hands back the default, and the revised
+arm would have silently overwritten **Figure 1's** recall-AUC inset with another
+corpus's panel. The sentinel is `""`, and the drawer tests `nzchar`.
+
+### Panel M was missing a line, and "done" was the wrong question
+
+BLOSUM62 is one of panel M's six lines and on this arm it is a **checkpoint**
+(`fitness_blosum62_*.pt`), not a fixed map in `data/baselines` -- so the staging
+directory of two symlinks produced per-cutoff CSVs with no `blosum62` row at all. The
+matrix does not depend on the cutoff, so one checkpoint serves every point; what varies
+is the test window, which is what the panel plots.
+
+The deeper fix is in what counts as finished. `submit_cutoff_evals.sh` treated a cutoff
+as done when **a CSV existed**, so a cutoff could be done while missing a line forever
+and re-running would never notice. It now checks that the CSV carries every row in
+`PANEL_ROWS`, prints `[redo]` with the names of the missing ones, and resubmits. Two
+cutoffs were re-queued by that check on its first run. The five already in the queue got
+the symlink added to their staging directories in place, so only the two that had
+already finished pay for the mistake.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- the drawer, byte-identical on its
+  defaults.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- the wrapper. Outputs `sc2_results_aa20`
+  and `aa20_supp_*`, so nothing published is overwritten.
+* `antiGen-figures/tests/test_gate_by_name.R` -- the by-name loader against a synthetic
+  tree whose rows are **shuffled between cutoffs**, so a positional reader would mix
+  them. Pins all three properties: by name, factor order, refusal on a missing line.
+  There is no R test harness here, so it is a script that stops on its first
+  `stopifnot`.
+* `experiments/multitree/install_sc2_aa20.sh` -- copies the eval outputs into
+  `data/evals_sc2_aa20` and `data/gating_aa20`, copies rather than symlinks (a symlink
+  into `/large_storage` would make a drawn figure change under a later re-run), and
+  reports what is missing instead of installing half a figure. It prints the installed
+  roster size, because `eval.py` flushes after every model and a CSV exists long before
+  the roster is whole.
+* `experiments/multitree/submit_cutoff_evals.sh` -- blosum62 staged; `PANEL_ROWS`.
+
+### State
+
+Running the wrapper today would draw a figure with 18 of ~32 rungs, no combination bars
+and no panel M. The install script says so rather than letting it happen. What it is
+waiting for is only data: the main eval (on its 650M arms), the rule scorer, and the
+cutoff sweep.
+
+## 72. The data lands, and the smoke test earns its keep (2026-10-25)
+
+s71 left the wrapper written and gated with nothing to draw. The data arrived today, so
+this section is what arrived, and the two bugs that drawing it immediately exposed.
+
+### What landed
+
+* **Main eval 3433201, COMPLETED in 11h24m.** Thirty rungs on the revised 20-letter
+  corpus, all four recall tables and all eight emergence tables. No NaNs. `pssm_root`
+  shows exactly the flat profile a tie-heavy coarse predictor should -- 0.782 at the
+  top decile rising only to 0.926 across the whole q range -- which is s68's fractional
+  tie rule behaving, not rounding the boundary to a cliff.
+* **The score cache is whole**: 29 maps, 32 GiB, and NO `.tmp` left behind, so no
+  writer died mid-file and left a half-map that `load_block` would read without
+  complaint.
+* **Rule scorer 3441435, COMPLETED in 44 seconds.** The gate held: a one-member rule
+  reproduced `simple_d128_n2_lr0.0001`'s own row to **4.022e-09**. Twelve
+  `*_ensemble.csv`, five `ens_*` rows each and nothing else. Denominators 46,433
+  events / 9,826 de novo, the same as s70 measured.
+
+Submitted beside it: nine cutoff evals, where the `PANEL_ROWS` check of s71 paid for
+itself immediately -- `2020-10-01` and `2021-01-01` came back `[redo] CSV is missing
+blosum62`, two cutoffs the old "a CSV exists" test would have called done forever.
+
+### Two trainings died on a bad node, and it is worth saying how that was told apart
+
+`2022-07-01` and `2022-10-01` had a manifest and no checkpoint, with nothing in the
+queue: both killed TIMEOUT at epoch 8 of 32.
+
+The tempting reading is that the budget was too small for a bigger corpus. It is wrong.
+2022-07-01 is 44,481 examples and managed 8 epochs in 11 hours; **2023-01-01 is 53,916
+examples -- more data, 1,686 batches an epoch against 1,391 -- and finished all 32 in
+6h41m**, and 2024-01-01 took 8h28m. The two that died were running about 7x slower per
+epoch than a larger job on the same recipe, so whatever throttled them, it was not the
+work. What they have in common is the node: both ran on GPUCACE, nothing else in the
+sweep did, and they overlapped there for ten hours.
+
+That is consistent with two readings -- a degraded GPU, or two 256G jobs contending on
+one host -- and the retry does not need to tell them apart, so
+`submit_cutoff_esm2_retry.sh` covers both: GPUCACE excluded, and 16h, about double what
+the largest healthy cutoff actually needed.
+
+### The smoke test, which is the point of this section
+
+With B-E and G-J/L complete I ran the wrapper rather than waiting for panel M. It
+rendered, and **nothing published moved** -- every output is `aa20_*`. It also came out
+wrong in two ways that would have been far more expensive to find after the sweep
+finished. Panel M, the part that was new and therefore suspected, was correct; the
+breakage was in the parts inherited from the published drawer.
+
+**(a) The emergence axis was wrong by a factor of 2.5.** `eval.py` labelled the
+emergence grid's columns
+
+```python
+step_labels = [f"t_{(i + 1) * 0.1:.1f}" for i in range(n_steps)]
+```
+
+-- the step INDEX times 0.1, never looking at a date. That was right for exactly one
+grid. The published arm reads `pssms/<variant>/time_<t>.csv`, whose filenames ARE t in
+years and which the pipeline writes at exactly 0.1-year spacing, so the index
+reproduced the real t and "Date (t, years into pandemic)" was a true axis;
+`data/evals_sc2` runs t_0.1 .. t_6.0 and is fine. `--variant-counts-dir` is a different
+grid: dated files at whatever spacing the corpus was built with. The revised arm's is
+QUARTERLY, 2021-01-01 .. 2026-01-01, so a five-year span was labelled t_0.1 .. t_2.1.
+
+Two consequences, one of them silent. The axis read 2.1 years where it meant 6.1. And
+panel L filters `variant_emergence_performance_x$x >= 2`, which on the published grid
+means "from two years in" and on this one meant **"the last two points"** -- which is
+why panels G, H and L drew straight diagonals across a 2.000-2.100 axis.
+
+The fix: `emergence_step_labels(n_steps, dates=None)`. A dated grid labels itself from
+its dates; an undated one keeps the index convention, so **every published CSV stays
+bit-identical**. The origin is `PANDEMIC_START = "2019-12-20"`, which is not a new
+constant -- it is the one `fig2_sc2_benchmarks.R` has carried since the published arm.
+On the revised grid the headers now run t_1.0349 (2021-01-01) .. t_6.0342 (2026-01-01),
+which puts the two arms on one ruler.
+
+It changes **headers only, not one value**, so it does not cost an 11-hour re-run.
+
+**(b) Six models collapsed into a single line called NA.** `add_group_and_label` does
+
+```r
+df$model <- factor(longform_names[match(df$model, all_models)], levels = longform_names)
+```
+
+so anything not in the 27-name published inventory becomes NA, and ggplot draws the lot
+as one group -- the sawtooth across panels B and C, one tooth per model. The six are the
+five `ens_*` rule rows and `BA2_escape_LYCoV1404`. This is still OPEN; see below.
+
+### Two mistakes of mine, found while fixing those
+
+* **I had put a second pandemic origin in the wrapper.** `sc2.gate_x` dated panel M from
+  `2019-12-01`, while the drawer's own `PANDEMIC_START` is `2019-12-20` -- 19 days, 0.052
+  years, and three axes all labelled "years into pandemic" disagreeing. The wrapper now
+  uses the drawer's constant.
+* **`PANDEMIC_START` was a local inside `draw_gating_precision()`**, a function the
+  by-name loader never calls, so referring to it from the wrapper would have been
+  "object not found". It is hoisted to a top-level constant where all three readers can
+  see it.
+
+Also, twice now I have written a sequence of `str.replace` calls where an earlier one
+invalidates a later one's match -- this time a 4-space pattern also matching a 12-space
+line. The assertion caught it before anything was written. Line-anchored replacement is
+the habit to keep.
+
+### Code
+
+* `antiGen/eval.py` -- `PANDEMIC_START`; `emergence_step_labels(n_steps, dates=None)`;
+  dates threaded from `load_counts_series` to the writer. `pssm_variant_sub` slices
+  POSITIONS, not time, so the dates line up one-for-one -- I first wrote a `[-n_steps:]`
+  tail slice on the assumption it was a time slice, which was a no-op that would have
+  read as meaningful. The labeller re-checks the two lengths rather than letting `zip`
+  truncate and slide every curve.
+* `experiments/multitree/ensemble_test_rows.py` -- imports that labeller rather than
+  restating it (the figure asserts the two CSVs' headers are identical, so a second copy
+  of the convention is a mismatch waiting to happen), and now writes
+  `ensemble_figure_rows.tsv`, the same sidecar under the same name and format as
+  `ensemble_report.py`, so the figure reads `ens_<id>` -> label from disk instead of
+  carrying a hand-copied blake2b hash.
+* `antiGen/tests/test_emergence_labels.py` -- 5 tests. The published convention
+  unchanged at 4 and 60 steps; a dated grid against the real offsets; date objects and
+  ISO strings agreeing; a length mismatch raising rather than zipping short; and that
+  the origin is the figure's own constant.
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `PANDEMIC_START` hoisted.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- one origin.
+* `experiments/multitree/submit_ensemble_rows.sh`, `submit_cutoff_esm2_retry.sh` -- new.
+* `install_sc2_aa20.sh` -- the expected roster was a stale estimate (27); it is 30,
+  counted off the finished run.
+
+26 Python tests pass.
+
+### State, and what is still open
+
+Still to do before the figure is right:
+
+1. **The NA models, (b) above.** The five rules need display names and a group, and
+   `BA2_escape_LYCoV1404` needs placing. Both want to be `getOption`s so the published
+   defaults do not move; the labels should come from `ensemble_figure_rows.tsv`.
+2. **Relabel the emergence CSVs already on disk.** Their VALUES are correct and the
+   header fix is cosmetic-but-load-bearing, so this is a header rewrite driven by the
+   same `emergence_step_labels`, not a re-run. The rule scorer (44s) can simply be run
+   again.
+3. **Panel M**: 9 cutoff evals in flight, 2 ESM-2 retrains behind them.
+4. DONE: the `PANDEMIC_START` hoist moved nothing. Both PNGs byte-identical, all seven
+   PDFs content-identical.
+
+### A correction to s71's gate, and two bad comparisons on the way to it
+
+**s71 claimed "all eight outputs byte-identical". That was too strong for the PDFs.**
+`cairo_pdf` embeds `/CreationDate` and `/ModDate`, so two renders of identical content
+differ at byte 58 and can never match bit for bit; the seven PDFs here are the same
+size to the byte and differ only in that timestamp. The right gate for a PDF is a
+comparison with the timestamps stripped, and that is what this re-render used. The PNG
+half of s71's claim stands as written.
+
+Getting there took two comparisons that proved nothing, both worth recording because
+both LOOKED like passes:
+
+* I launched `md5sum -c` from inside the snapshot directory, so it checked the snapshot
+  against itself. A clean "all OK" that could not have failed.
+* The first strip used `|` as the `sed` delimiter while the pattern itself contained an
+  alternation `|`. `sed` errored on both sides, `md5sum` hashed two empty streams, and
+  all seven files reported IDENTICAL. The rerun prints the stripped byte count (12,694,
+  not 0) and the per-file hash, so an empty or constant comparison is visible in the
+  output rather than silently passing.
+
+A verification that cannot fail is worse than no verification, because it gets believed.
+
+Two things remain the user's call, carried over from s71: the nine modified figure files
+in the working tree that I could not revert, and whether `figs/sc2_results.png` and
+`figs/supp_dms.png` should now be re-rendered to gain the LY-CoV1404 baseline, which is
+a real content change to committed figures rather than a side effect of verification.
+
+## 73. K-L were done and empty, and a Dirichlet blend of where x which (2026-10-25)
+
+Two things, in the order they were asked for: why `coguk_list_aa20`'s background row
+had been finished since the 24th and drawn nothing, and a new rung on the same figure.
+
+### A COMPLETED job that produced zero rows
+
+Job 3432096 (`bg_aa20`) ran both halves on 2026-10-24 and exited 0 in 2h21m. The
+expensive half did its work -- 30 `scores_*.npz`, 4.3 GB, no `.tmp`. The cheap half
+wrote:
+
+    1212 cells hosted; 0 with >=1 host(s) and >=10 controls
+      cellset coguk_all: 0 cells
+    Wrote .../background_summary.csv (0 rows)
+
+A header and nothing else. Nothing in that log says "failure", which is why it sat for
+a day looking done.
+
+**`--min-controls` defaults to 10**, which is right for the published TIME-MATCHED
+rule, where a cell's control is a SET of backgrounds close in time. s66 replaced that
+rule on this substrate: the revised corpus carries no per-node dates, so the contrast
+is host vs ONE fixed reference genotype, the BA.2 root. Under that rule every cell has
+exactly 1 control and `len(cq) >= 10` is false for all 1,212 of them. **The threshold
+is a leftover from the rule that was replaced, not a bar this arm failed** -- s66
+changed the contrast and did not change the filter that reads it.
+
+`--min-hosts` stays at 1. Under the single-reference rule it is the only remaining
+stability knob, and raising it is a judgement about what the panel claims rather than
+a fix.
+
+The reference index is READ from `backbone_manifest.json` (`variant_root_query = 0`),
+never assumed -- the s67 rule, for the s67 reason: the query set is rebuilt whenever
+the corpus changes and a moved index contrasts every cell against the wrong background
+under the right name.
+
+### What the cost of K-L actually is, which was worth measuring before promising it
+
+The published contrast pass took **28 seconds** (score maps 02:58:26, summary 02:58:54
+on 10-19). This arm is not 28 seconds, because `common_percentiles` loops per cell over
+a `(n_queries x n_pool)` array and both axes grew:
+
+| | published | revised | ratio |
+|---|---|---|---|
+| background genotypes | 402 | 23,806 | 59x |
+| usable cells | 150 | 1,212 | 8.1x |
+| product | 60k | 28.8M | **478x** |
+
+So 3-5 hours, not minutes. **The 59x is s66's decision showing up as a bill**: using
+the attached tree rather than the guide tree is what gives 23,806 backgrounds, and it
+was taken for the reason recorded there, not by accident.
+
+The empty run's 2m44s is NOT a baseline for this. With `usable` empty the per-cell loop
+ran zero times, so that number is the cost of reading 30 npz files and nothing else.
+
+### A Dirichlet blend of `where_times_which` with the observed events
+
+New rung `wxw_dirichlet`, on request, from a colleague's snippet. The factored joint is
+a conjugate PRIOR and every observed mutation event is an update:
+
+    q[i,a] = (N[i,a] + kappa * pi[i,a]) / (N_total + kappa),  kappa = N_total
+    pi[i,a] = P(i) * P(a | wt_i)
+
+**The base measure is THIS repo's `where_times_which`, not the snippet's.** The snippet
+builds its prior from an empirical substitution matrix `s_i * M[wt_i,a]`; this repo
+already has that object as a drawn rung, except its which term is the FITTED
+substitution model (genetic code + BLOSUM62). Using the rung keeps the figure
+internally consistent and buys the gate below. Recorded because it is a real choice and
+the other reading is a one-line change to the constructor.
+
+**The counts enter RAW.** No Laplace alpha, because `kappa * pi` is already strictly
+positive in every cell -- that is what a prior is for. Adding alpha to `N` as well would
+smooth twice and break both limits, so a test pins it.
+
+### The gate is the two limits, and one of them is a bar on the same panel
+
+`kappa -> inf` must reproduce `where_times_which` and `kappa -> 0` must reproduce the
+raw event-count map, both exactly and both up to ONE additive constant over the whole
+map -- which within-query ranking cannot see. Measured to <1e-4. The first of those is
+a rung drawn beside it, so this is the same shape of check as
+`ensemble_test_rows --verify-member`: a construction that has to reproduce something
+already on the figure, rather than an argument that it should.
+
+**Writing that test found a silent failure mode.** With no observed events the default
+`kappa = N_total = 0`, so `q` is 0/0 and the map comes out ALL-NaN -- which does not
+raise, does not warn, and ranks as a tie in every cell. It would have been read as a
+rung performing at chance. It now refuses, and says which of the two causes it is.
+
+### The figure: an option, not an inventory row
+
+`coguk.wxw_dirichlet`, empty by default, following `coguk.mt2021` and the ensembles.
+`MODEL_GROUP`'s order IS the bar-panel order and its names ARE the per-metric "missing"
+report, so listing the rung unconditionally would add a permanent hole to the PUBLISHED
+figure's completeness report for something that arm never scored. Inserted next to its
+parent, in its parent's colour block -- same `_fit()`, same training examples, so no new
+group and no new legend level.
+
+Gated the established way: **`coguk_list_results` re-renders byte-identical**
+(`776aa91c`, `49cc10be`), checked against scratch output names so no committed file was
+touched by the check itself.
+
+### Three mistakes of mine, two of them about waste
+
+* **My wait loop reported the contrast job finished when it was still running.** It read
+  `squeue` and treated a failed read as an empty queue -- precisely the trap
+  `submit_cutoff_evals.sh` was fixed for in s70, reintroduced by me in a throwaway loop
+  an hour after writing that section up. The lesson did not transfer because I thought
+  of it as a property of that script rather than of `squeue`.
+* **I submitted the contrast before adding the new rung**, which would have run the
+  expensive half twice: hours, against ~5 minutes to score one more model. Cancelled at
+  17 minutes and re-sequenced so the contrast runs once over all 31.
+* **I submitted the two list passes together**, putting `list_variant_recall` as a
+  READER on `list_score_maps_aa20` while `list_macro --dump-scores` was writing a new
+  map into it. Cancelled and resubmitted under `--dependency=afterok`.
+
+Also worth keeping: `VAR=v exec sbatch` assigns without EXPORTING, and `--export=ALL`
+forwards only the exported environment -- so the prefix form hands the job an empty
+`CONTRAST_EXTRA` and silently runs the contrast on its defaults, which is the exact
+10-control filter this section is about. Written as `export` lines, and the slurm script
+now echoes the contrast args, because their absence from the log is what let the
+original zero-row run pass for a success.
+
+### Code
+
+* `antiGen/eval_utils.py` -- `WhereTimesWhichDirichletPredictor` and the
+  `where_times_which_dirichlet` constructor. ONE constructor for all four entry points,
+  so they cannot drift into scoring four slightly different models under one name.
+* `antiGen/{eval,list_macro,list_variant_recall,background_discrimination}.py` -- the
+  rung registered in each `builtin_models`.
+* `antiGen/tests/test_wxw_dirichlet.py` -- 9 tests: both limits, normalisation, raw
+  counts, the degenerate refusal and the no-data-but-a-prior case. Suite **240**.
+* `antiGen-figures/figures/fig_coguk_list.R` -- `coguk.wxw_dirichlet`; byte-identical
+  on its defaults. `fig_coguk_list_aa20.R` -- opts in.
+* `examples/slurm/background_discrimination_sc2.sh` -- echoes `CONTRAST_EXTRA`;
+  `python -u` on the contrast, so its setup lines are visible while it runs.
+* `experiments/multitree/submit_bg_aa20.sh` (both halves, supersedes
+  `submit_bg_contrast_aa20.sh`), `submit_lists_aa20.sh`.
+
+### State
+
+In flight: `bg_aa20` **3442399** (scores the new rung, then contrasts all 31),
+`macro_aa20` **3442400** (resumes, scores the new rung only), `varr_aa20` **3442410**
+(full CSV rebuild, ~90s, held on macro).
+
+Still open from s72, untouched here: the NA models on `sc2_results_aa20`, the emergence
+CSV header rewrite, and panel M's remaining cutoffs. And still the user's call: the
+re-rendered figure binaries in the working tree, and whether the published
+`sc2_results.png` / `supp_dms.png` should gain the LY-CoV1404 baseline.

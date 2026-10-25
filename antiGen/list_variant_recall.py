@@ -77,6 +77,7 @@ from antiGen.eval import (config_label, dataset_of_train_args, discover_checkpoi
 from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 fit_substitution_baseline, load_baselines,
                                 load_checkpoint, positional_marginal_counts,
+                                where_times_which_dirichlet,
                                 WhereTimesWhichPredictor)
 from antiGen.config import LEGACY_AAS
 from antiGen.load import (load_counts_matrix, load_counts_series,
@@ -463,6 +464,8 @@ def main():
                 _fit().config,
                 positional_marginal_counts(training_examples, seq_len, E),
                 _fit()).to(device),
+            "wxw_dirichlet": lambda: where_times_which_dirichlet(
+                _fit(), training_examples, seq_len, E).to(device),
         }
         candidates += [(n, None) for n in builtin]
 

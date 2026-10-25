@@ -132,6 +132,10 @@ options(
   coguk.varr_x0      = 1.0,
   coguk.varr_dx      = 0.25,
   coguk.bg_dir       = "data/evals_sc2_background_aa20",
+  ## The Dirichlet blend of where x which with the observed mutation events, new on
+  ## this arm (NOTES s73). It joins its parent's colour block rather than starting
+  ## one: it is fitted on the same training examples by the same `_fit()`.
+  coguk.wxw_dirichlet = "wxw_dirichlet",
   coguk.fig_main     = "coguk_list_aa20",
   coguk.fig_supp     = "coguk_list_aa20_supp",
   coguk.title_suffix = " [20 AA, revised corpus]",

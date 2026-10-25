@@ -71,6 +71,10 @@ echo "tree/ref  = $TREE_JSON | $REF_JSON"
 echo "ckpt-dir  = $CKPT_DIR"
 echo "out       = $OUT"
 echo "extra     = ${EXTRA[*]}"
+# Echoed because its absence hid a real failure: a contrast run on default
+# flags filtered away every cell and wrote a zero-row summary that exited 0
+# and read like a success (NOTES s73).
+echo "contrast  = ${CONTRAST_ARGS[*]:-<none: defaults>}"
 
 python "$REPO/antiGen/background_discrimination.py" \
     --dataset sc2 \
@@ -81,7 +85,7 @@ python "$REPO/antiGen/background_discrimination.py" \
     --output-dir "$OUT" \
     --multitree-baselines "${EXTRA[@]}" || exit 1
 
-python "$REPO/antiGen/background_contrast.py" \
+python -u "$REPO/antiGen/background_contrast.py" \
     --background-dir "$OUT" \
     "${DATA_ARG[@]}" \
     --mutation-list coguk="$REPO/coguk.csv" "${CONTRAST_ARGS[@]}"

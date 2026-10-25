@@ -348,6 +348,19 @@ DN_NOUN  <- getOption("coguk.dn_noun",  "de novo")
 Y_RECALL <- getOption("coguk.y_recall", "P(listed mutation in top q)")
 Y_YIELD  <- getOption("coguk.y_yield",  "P(%s cell is listed & emerged by t)")
 
+## The Dirichlet blend of `where_times_which` with the observed mutation events:
+## the factored joint is the prior's base measure and each event is a conjugate
+## update (antiGen/eval_utils.py:WhereTimesWhichDirichletPredictor).
+##
+## AN OPTION RATHER THAN A ROW IN THE INVENTORY BELOW, for the reason the
+## multi-tree arm and the ensembles are: the published corpus has no such row, and
+## `MODEL_GROUP`'s order is the bar-panel order and its names are the per-metric
+## "missing" report. Listing it unconditionally would add a permanent hole to the
+## published figure's own completeness report for a rung that arm never scored.
+## Empty by default; `fig_coguk_list_aa20.R` opts in.
+WXW_DIR       <- getOption("coguk.wxw_dirichlet", character(0))
+WXW_DIR_LABEL <- getOption("coguk.wxw_dirichlet_label", "Where × which + events")
+
 
 ## --- Model inventory -------------------------------------------------------
 ##
@@ -452,6 +465,21 @@ MODEL_LABEL <- c(
 REF_CEILING <- getOption("coguk.ref_ceiling",
                          "Ceiling: every listed cell emerged by t")
 REF_CHANCE  <- sprintf("Chance: a %s picked at random", q_noun)
+
+## Inserted next to `where_times_which` rather than appended: this vector's order
+## is the bar-panel order, and the blend belongs beside the map it is a prior for.
+## No new group and no new colour -- it is fitted on the training examples exactly
+## as its parent is, so it joins that block rather than starting one.
+if (length(WXW_DIR) > 0) {
+  stopifnot(length(WXW_DIR) == 1, !WXW_DIR %in% names(MODEL_GROUP))
+  at <- match("where_times_which", names(MODEL_GROUP))
+  stopifnot(!is.na(at))
+  insert_after <- function(v, i, x) c(v[seq_len(i)], x, v[-seq_len(i)])
+  MODEL_GROUP <- insert_after(
+    MODEL_GROUP, at, setNames(MODEL_GROUP[["where_times_which"]], WXW_DIR))
+  MODEL_LABEL <- insert_after(
+    MODEL_LABEL, at, setNames(WXW_DIR_LABEL, WXW_DIR))
+}
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
                   "Pandemic Data in Training Window", "Pre-Pandemic Data Only")
