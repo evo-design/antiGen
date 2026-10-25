@@ -67,6 +67,7 @@ import gc
 import glob
 import os
 
+import numpy as np
 import torch
 
 from antiGen import datasets
@@ -181,6 +182,18 @@ def main():
                          "Replaces pssms/<variant>/time_*.csv as the emergence grid; "
                          "see load_counts_series for the complement that turns one into "
                          "the other.")
+    ap.add_argument('--maps-dir', default=None, metavar='DIR',
+                    help="The --dump-scores cache, for --rule-json.")
+    ap.add_argument('--rule-json', default=None, metavar='JSON',
+                    help="Frozen combination rules to score on this row, as a list of "
+                         "the dicts ensemble_report takes. The recall panels get their "
+                         "ensemble bars from a separate ensemble_report pass, which has "
+                         "no yield-row equivalent, so without this the five combination "
+                         "bars are simply absent from G-J while the rest of the figure "
+                         "carries them. NO GPU IS NEEDED: the variant root is already "
+                         "one of the dumped queries, so a rule's map at that genotype is "
+                         "arithmetic over cached members (NOTES s50 established the same "
+                         "for the published figure).")
     ap.add_argument('--common-pool', action='store_true',
                     help="Score every model against the SAME candidate set: the whole "
                          "eval range less the query's own residue, with a cell a model "
@@ -339,6 +352,57 @@ def main():
                   f"(top decile = {done[0]['n_selected']:.0f} cells)", flush=True)
         write()
 
+    def record_rules():
+        """The frozen rules, evaluated at the variant root from cached maps."""
+        import json as _json
+        from antiGen import ensemble_rules as er
+        from antiGen import score_cache as sc
+        if not args.maps_dir:
+            raise SystemExit("--rule-json needs --maps-dir")
+        specs = _json.load(open(args.rule_json))
+        if isinstance(specs, dict):
+            specs = [specs]
+
+        # The variant root among the dumped queries, located by GENOTYPE rather than by
+        # a remembered index: the cache is rebuilt whenever the query set changes, and
+        # an index that silently moved would score a different background entirely.
+        aa_idx = sc.read_queries(args.maps_dir)[0]
+        want = root.aa_idx.numpy().astype(aa_idx.dtype)
+        hits = np.where((aa_idx == want).all(axis=1))[0]
+        if len(hits) == 0:
+            raise SystemExit(f"the variant root genotype is not among the "
+                             f"{aa_idx.shape[0]} dumped queries in {args.maps_dir}")
+        qi = int(hits[0])
+        print(f"\nVariant root is dumped query {qi}"
+              + (f" (and {len(hits) - 1} duplicate row(s), checked)" if len(hits) > 1
+                 else ""))
+
+        members = sorted({m for sp in specs for m in sp["members"]})
+        maps = {}
+        for m in members:
+            arr, _n_neg = sc.load_map(args.maps_dir, m, mmap=True, neginf_to_nan=True)
+            rows_ = [torch.as_tensor(np.asarray(arr[int(h)], dtype=np.float32))
+                     for h in hits]
+            # Duplicate genotypes must score identically; if they do not, the cache and
+            # the corpus disagree about what query qi is.
+            for r in rows_[1:]:
+                d = torch.nan_to_num(rows_[0] - r, nan=0.0).abs().max().item()
+                if d > 1e-6:
+                    raise SystemExit(f"{m}: duplicate rows of the variant root genotype "
+                                     f"differ by {d:.2e}")
+            maps[m] = rows_[0].unsqueeze(0)          # (1, R, E)
+
+        for spec in specs:
+            spec = dict(spec)
+            spec.pop("figure_label", None)
+            spec.pop("figure_group", None)
+            spec.pop("family", None)
+            rule = er.Rule(family="frozen",
+                           **{k: (tuple(v) if isinstance(v, list) else v)
+                              for k, v in spec.items()})
+            combined = er.apply(maps, rule)[0]       # (R, E)
+            record(f"ens_{rule.rule_id}", combined)
+
     def write():
         path = os.path.join(args.output_dir, OUT)
         tmp = path + ".tmp"
@@ -440,6 +504,10 @@ def main():
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    if args.rule_json:
+        print("\n=== frozen rules, from the cached maps (no forward pass) ===")
+        record_rules()
 
     print(f"\n=== Wrote {os.path.join(args.output_dir, OUT)} ===")
     if skipped:
