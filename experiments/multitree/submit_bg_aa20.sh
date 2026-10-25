@@ -67,6 +67,9 @@ else
 fi
 
 mkdir -p logs
+# gpu_batch, NOT evo_gpu_priority: the contrast half runs for hours and the fast
+# lane is for very short jobs only (user directive, NOTES s74 / CLAUDE.md).
+PARTITION=${PARTITION:-gpu_batch}
 # EXPORTED, not prefixed. `VAR=v exec sbatch` assigns in this shell without exporting,
 # and `--export=ALL` forwards the exported environment only -- so the prefix form would
 # hand the job an empty CONTRAST_EXTRA and silently run the contrast on its defaults,
@@ -77,6 +80,7 @@ export CONTRAST_EXTRA="--root-counts $REVISED/sc2-2021/train/counts_2021_cur.tsv
 echo "contrast args   = $CONTRAST_EXTRA"
 exec sbatch \
     --job-name=bg_aa20 \
+    --partition="$PARTITION" \
     --time=24:00:00 \
     --export=ALL \
     examples/slurm/background_discrimination_sc2.sh "$OUT" \

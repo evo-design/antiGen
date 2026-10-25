@@ -9578,3 +9578,72 @@ Still open from s72, untouched here: the NA models on `sc2_results_aa20`, the em
 CSV header rewrite, and panel M's remaining cutoffs. And still the user's call: the
 re-rendered figure binaries in the working tree, and whether the published
 `sc2_results.png` / `supp_dms.png` should gain the LY-CoV1404 baseline.
+
+## 74. `evo_gpu_priority` is for very short jobs only (2026-10-25)
+
+**A standing directive from the user, recorded here because it is a property of the
+cluster and not of any one script.**
+
+> Do not submit to `evo_gpu_priority` except for **very short** jobs -- order of
+> minutes. Everything else goes to `gpu_batch`.
+
+It is a shared fast lane. A multi-hour job parked on it blocks other people's short
+work, which is the whole reason the partition exists.
+
+### What I did wrong
+
+s73 moved three jobs onto `evo_gpu_priority` to get them off a backed-up `gpu_batch`.
+Two of them -- `macro_aa20` (~45 s) and `varr_aa20` (~90 s) -- are legitimately short.
+**`bg_aa20` is not**: its contrast half runs for hours. And `submit_cutoff_evals.sh` had
+been putting per-cutoff evals there all along, inheriting
+`eval_all_sc2.sh`'s own `#SBATCH --partition=evo_gpu_priority`, which is how
+`cut_2023-10-01` came to sit on the fast lane for 30 minutes.
+
+**I was treating the partition as a queue-jumping tool.** It is not; it is a lane
+reserved for work that will be gone in minutes.
+
+### Moved
+
+* `bg_aa20` 3442500 -- PENDING, so `scontrol update jobid=... partition=gpu_batch`
+  moved it in place.
+* `cut_2023-10-01` 3441426 -- RUNNING, which cannot be moved in place. Cancelled 30
+  minutes in and resubmitted as **3442525** on `gpu_batch`. That is the cost of the
+  mistake and it is the right way round: 30 minutes of mine against a shared lane.
+
+### A script's default cannot be trusted
+
+Thirteen files under `examples/slurm/` carry `#SBATCH --partition=evo_gpu_priority`
+from before this rule -- `eval_all_sc2.sh`, `list_recall_sc2.sh`,
+`eval_emergence_sc2.sh`, `eval_all_{flu,denv2,rsv_a}.sh`, the `train_*`/`score_*`
+valsel scripts. **Submitting through any of them without an override puts a long job on
+the fast lane**, which is exactly how the cutoff evals got there with nobody choosing
+it. They are left alone -- other arms share them -- and the override belongs in the
+submit wrapper:
+
+    PARTITION=${PARTITION:-gpu_batch}
+    sbatch --partition="$PARTITION" ...
+
+Done for `submit_cutoff_evals.sh`, `submit_bg_aa20.sh` and
+`submit_bg_contrast_aa20.sh`. `submit_lists_aa20.sh` keeps `evo_gpu_priority` as its
+default and now says in the file WHY it qualifies, so the next reader does not have to
+decide whether it is an oversight.
+
+### Measured runtimes, so "short" is a number and not a feeling
+
+| job | measured | lane |
+|---|---|---|
+| `list_macro` resume, one model | ~45 s | priority ok |
+| `list_variant_recall`, full rebuild | ~90 s | priority ok |
+| `ensemble_test_rows` | 44 s | priority ok |
+| per-cutoff eval `cut_<date>` | 4 min - 1h14m | `gpu_batch` |
+| `background_discrimination`, 30 models | 2h21m | `gpu_batch` |
+| `background_contrast`, revised corpus | 3-5 h est. | `gpu_batch` |
+| main `eval_all_sc2` | 11h24m | `gpu_batch` |
+
+### Recorded in three places, because one was not enough
+
+* **`CLAUDE.md` at the repo root** -- new file, the rule first. This is the one a fresh
+  session reads before touching anything.
+* **Claude's project memory** -- so it survives a session that never opens the repo
+  root.
+* **Here**, with the reasoning, because NOTES is where the why lives.

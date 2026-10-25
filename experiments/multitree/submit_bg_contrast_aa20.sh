@@ -27,6 +27,9 @@
 #
 # No GPU: this half is numpy, plus torch on CPU for the per-query convention.
 #
+# gpu_batch: this runs for hours, and evo_gpu_priority is for very short jobs only
+# (user directive, NOTES s74 / CLAUDE.md).
+#
 # NOT NICED, unlike the rest of this directory. The s67 lesson is to nice BULK
 # work behind the critical path, and K-L is the critical path here -- two panels
 # of coguk_list_aa20 that are holes until this lands, with nothing queued behind
@@ -63,7 +66,7 @@ echo "min hosts/ctrls  = $MIN_HOSTS / $MIN_CONTROLS"
 mkdir -p logs
 exec sbatch \
     --job-name=bg_contrast_aa20 \
-    --partition=evo_gpu_priority \
+    --partition="${PARTITION:-gpu_batch}" \
     --time=08:00:00 --cpus-per-task=8 --mem=128G \
     --output=logs/bg_contrast_aa20_%j.out \
     --error=logs/bg_contrast_aa20_%j.err \

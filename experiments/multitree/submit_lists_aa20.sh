@@ -40,13 +40,19 @@ COMMON=(--alphabet $ALPHABET
 
 mkdir -p logs
 
+# evo_gpu_priority is for VERY SHORT jobs only (user directive, NOTES s74 /
+# CLAUDE.md), and these two are exactly that: list_macro resumes and scores ONE
+# analytic model (~45s measured) and list_variant_recall rebuilds one CSV (~90s).
+# Anything here that grows past a few minutes belongs on gpu_batch instead.
+PARTITION=${PARTITION:-evo_gpu_priority}
+
 export DATA_DIR=""
 export CKPT_DIR=$STORE/ckpt_stage_aa20
 
 # A-F. Resumes; scores wxw_dirichlet and skips the other 30.
 MACRO_ID=$(
 OUTDIR=$STORE/evals_sc2_lists_macro_aa20 \
-sbatch --parsable --job-name=macro_aa20 --export=ALL \
+sbatch --parsable --job-name=macro_aa20 --partition="$PARTITION" --export=ALL \
     examples/slurm/eval_sc2_list_macro.sh \
     "${COMMON[@]}" \
     --multitree-baselines \
@@ -60,7 +66,7 @@ echo "macro: $MACRO_ID"
 # running the two at once puts a reader on a directory that is being written. The
 # dependency costs nothing here -- macro scores one model -- and removes the race.
 OUTDIR=$STORE/evals_sc2_lists_varrecall_aa20 \
-sbatch --job-name=varr_aa20 --export=ALL --dependency=afterok:$MACRO_ID \
+sbatch --job-name=varr_aa20 --partition="$PARTITION" --export=ALL --dependency=afterok:$MACRO_ID \
     examples/slurm/eval_sc2_varrecall.sh \
     "${COMMON[@]}" \
     --variant-counts-dir "$REVISED/sc2-test/counts_ba2" \
