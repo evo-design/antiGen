@@ -9647,3 +9647,73 @@ decide whether it is an oversight.
 * **Claude's project memory** -- so it survives a session that never opens the repo
   root.
 * **Here**, with the reasoning, because NOTES is where the why lives.
+
+## 75. LY-CoV1404 joins the published figure, and s70 had misread which panel moved
+(2026-10-25)
+
+On instruction: `figs/sc2_results.png` and its DMS supplement re-rendered to take s64's
+`BA2_escape_LYCoV1404.csv`, which has been sitting in the globbed `baselines/`
+directory since the 24th.
+
+### The first render drew it as a bar called "NA"
+
+`list.files(BASELINE_DIR)` means a map reaches this figure **by existing**. Nothing
+else is needed -- and nothing else checks. `BA2_escape_LYCoV1404` was not in
+`fig2_sc2_benchmarks.R`'s 27-name inventory, so `add_group_and_label`'s
+`longform_names[match(...)]` returned NA, and fig2's rule is that **anything unlisted
+falls into the "antiGen" group**. The result was a bar labelled `NA`, drawn in
+antiGen's blue, at the right-hand end of both DMS panels: an antibody-escape scan
+presented as an antiGen model.
+
+This is the same failure `fig_coguk_list.R` already carries a comment about -- "fig2
+assigns any unlisted model to the antiGen group, which would quietly mis-colour exactly
+those extra rows" -- and the same shape as s72(b) on the revised arm. **A glob plus a
+positional name table is a combination that fails silently by construction**: the glob
+admits the row, the table has no slot for it, and NA is a legal factor level.
+
+Fixed by listing it: `dms_models` gains the name and `longform_names` gains
+`"BA.2 DMS (LY-CoV1404 escape)"` at the matching index, which is the string
+`fig_coguk_list.R` already uses -- one object, one name across the two figures.
+
+### s70's "two PNGs changed" was the bug, not the baseline
+
+s70 rendered the unmodified script, found `sc2_results.png` and `supp_dms.png` both
+changed, and read that as the new baseline reaching both. **Only the supplement should
+have moved.** With the rung correctly grouped:
+
+    sc2_results.png   IDENTICAL to HEAD
+    supp_dms.png      CHANGED
+    (11 other PNGs    IDENTICAL)
+
+The main figure's line panels keep **the strongest model in each group** so they stay
+readable, and LY-CoV1404 does not beat the BA.1/BA.2 scans already representing Deep
+Mutational Scans. So it joins the figure family and draws on the supplement only. The
+main figure moved in s70 solely because an NA row was being treated as a separate
+group -- which is to say s70 measured a real difference and attributed it to the wrong
+cause. **If the rung is wanted visible on the main panel, that is a change to the
+keep-strongest rule and a separate decision.**
+
+### What it says, which is worth not over-reading
+
+Its correlations against BA.2 binding and expression sit near zero and slightly
+negative. That is the expected answer rather than a disappointing one: escape from an
+antibody is not a binding or expression phenotype, and this panel asks only whether the
+two agree. s64's coverage caveat still applies -- it measures 2,023 of 4,020 cells.
+
+### PDFs, and a correction to s70 in passing
+
+`cairo_pdf` embeds `/CreationDate` and `/ModDate`, so all seven PDFs go dirty on any
+render (s72). Compared with both stripped, **exactly one differs in content**:
+`supp_dms.pdf`. The other six were restored with `git checkout --`, which **does work
+from this session** -- s70 recorded that it could not be run here, and that was wrong.
+The stripped byte counts are printed rather than assumed, so a comparison of two empty
+streams cannot pass for agreement.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `BA2_escape_LYCoV1404` in
+  `dms_models` and `longform_names`, with the glob trap named at the insertion point.
+* `antiGen-figures/figs/supp_dms.png`, `figs_vector/supp_dms.pdf` -- re-rendered.
+* `antiGen-figures/baselines/BA2_escape_LYCoV1404.csv` -- **committed**, having been
+  untracked since s64. Until now the published figure depended on a file that was not
+  in the repo, so a fresh clone would have rendered a different figure and said nothing.

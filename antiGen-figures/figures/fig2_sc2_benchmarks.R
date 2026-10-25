@@ -36,9 +36,41 @@ suppressPackageStartupMessages({
 
 apply_paper_defaults()
 
-EVAL_DIR   <- "data/evals_sc2"
-MODEL_DIR  <- "data/sc2"
-GATING_DIR <- "data/gating"
+## EVERY INPUT AND OUTPUT IS AN OPTION, AND EVERY DEFAULT IS THE PUBLISHED ONE.
+## Sourcing this file unchanged renders the published figure byte for byte; a wrapper
+## (fig_sc2_aa20.R) sets options() and renders another corpus through the same code.
+## That is the split fig_coguk_list.R already has, and it is here for the same reason:
+## a forked drawer and an original drift apart silently, and the two figures are read
+## against each other. Checked by re-rendering, not asserted (NOTES s70, s71).
+EVAL_DIR   <- getOption("sc2.eval_dir",   "data/evals_sc2")
+MODEL_DIR  <- getOption("sc2.model_dir",  "data/sc2")
+GATING_DIR <- getOption("sc2.gating_dir", "data/gating")
+
+## The DMS scatter row (panel K and supp_dms) and its reference genotype. The revised
+## BA.2 root differs from the published one INSIDE the RBD (Q493R), so a wrapper that
+## forgot to move `sc2.ref` would mask the wrong cell rather than fail (NOTES s67).
+DMS_DIR      <- getOption("sc2.dms_dir",      "dms")
+REF_FILE     <- getOption("sc2.ref",          "ref/BA.2.txt")
+## NB this directory is LISTED, not named file by file, so a baseline reaches the
+## figure by existing. s64's BA2_escape_LYCoV1404.csv joined the published DMS panels
+## that way, with no edit anywhere (NOTES s70).
+BASELINE_DIR <- getOption("sc2.baseline_dir", "baselines")
+PSSM_CUTOFF_DIR <- getOption("sc2.pssm_by_cutoff_dir", "pssm_by_cutoff")
+CARTOON_DIR  <- getOption("sc2.cartoon_dir",  "cartoons")
+
+## Output names. A wrapper must move these or it overwrites the published figure.
+FIG_MAIN     <- getOption("sc2.fig_main", "sc2_results")
+FIG_PREFIX   <- getOption("sc2.fig_prefix", "")
+## "" to skip. NOT NULL: `options(x = NULL)` REMOVES an option in R, so a wrapper that
+## set it to NULL would get the default back from getOption and silently overwrite the
+## published Figure 1 inset with another corpus's panel.
+FIG1_AUC     <- getOption("sc2.fig1_auc", "fig1/auc.png")
+fig_name <- function(n) paste0(FIG_PREFIX, n)
+
+## Cached-map combination rules are not checkpoints, so `eval.py` cannot score them;
+## they arrive as `<metric>_ensemble.csv` holding `ens_*` rows and nothing else
+## (experiments/multitree/ensemble_test_rows.py). NULL means the figure has no bars.
+ENSEMBLE_DIR <- getOption("sc2.ensemble_dir", NULL)
 
 ## The three query-dependent baselines from the cross-tree experiment (codon,
 ## substitution, where x which) were scored by a later run of the same pipeline
@@ -46,8 +78,18 @@ GATING_DIR <- "data/gating"
 ## so they go through the model path and need `eval.py --multitree-baselines`.
 ## Only their rows are taken from here; every model present in both directories
 ## keeps its published row (see MTB_MODELS below).
-MTB_DIR    <- "data/evals_sc2_mtb"
-MTB_MODELS <- c("codon", "substitution", "where_times_which")
+MTB_DIR    <- getOption("sc2.mtb_dir", "data/evals_sc2_mtb")
+MTB_MODELS <- getOption("sc2.mtb_models",
+                        c("codon", "substitution", "where_times_which"))
+
+
+## Day 0 of "years into pandemic". Three axes carry that label -- the emergence
+## panels G/H/L, the gating-precision titles, and panel M's x on arms whose cutoff
+## directories are dates -- so the origin is defined once, here, where every one of
+## them can see it. It used to live inside draw_gating_precision(), which meant a
+## caller outside that function got "object not found"; `antiGen/eval.py` carries the
+## same date as PANDEMIC_START so the CSV headers are dated against it too.
+PANDEMIC_START <- as.Date("2019-12-20")
 
 
 ## --- Model inventory -------------------------------------------------------
@@ -82,7 +124,19 @@ subsets <- list(
     "Omicron_BA1_bind",
     "Omicron_BA1_expr",
     "Omicron_BA2_bind",
-    "Omicron_BA2_expr"
+    "Omicron_BA2_expr",
+    ## Antibody escape rather than a binding/expression phenotype: the escape
+    ## fraction of each substitution from LY-CoV1404 (bebtelovimab) on a BA.2
+    ## background. A deep mutational scan, so this group; its own label, because
+    ## what it measures is not what the other four measure (NOTES s64).
+    ##
+    ## LISTED HERE BECAUSE `baselines/` IS GLOBBED. `list.files(BASELINE_DIR)`
+    ## means a map reaches this figure by existing, with no edit anywhere -- and
+    ## a map that arrives without an entry in `longform_names` becomes NA in
+    ## `add_group_and_label`, which draws it as a bar called "NA" in the antiGen
+    ## group, the default for anything unlisted. That is what the first render
+    ## after the file landed actually produced (NOTES s75).
+    "BA2_escape_LYCoV1404"
   ),
   trained_models = c(
     "esm2_frozen",
@@ -127,6 +181,16 @@ longform_names <- c(
   "BA.1 DMS (expression)",
   "BA.2 DMS (bind)",
   "BA.2 DMS (expression)",
+  ## Positional against `all_models`, so this sits with the other four DMS
+  ## entries and not at the end of the vector.
+  ##
+  ## IT COVERS HALF THE POOL, and that caps its AUC rather than its top decile:
+  ## the source table measures 2,023 of the 4,020 candidate cells, and an
+  ## unscored cell stays in the pool ranked last so one map's gaps cannot shrink
+  ## everyone's denominator. Its curve therefore plateaus where its coverage
+  ## runs out, and its AUC is not comparable with a map that scores every cell
+  ## (NOTES s64).
+  "BA.2 DMS (LY-CoV1404 escape)",
   "antiGen as ESM 2 (35M) LM head FT",
   "antiGen as ESM 2 (35M) full FT",
   "antiGen as ESM 2 (35M) partial FT",
@@ -198,12 +262,41 @@ read_metric <- function(dir, metric) {
 with_mtb <- function(metric) {
   df <- read_metric(EVAL_DIR, metric)
   path <- file.path(MTB_DIR, paste0(metric, "_all-models.csv"))
-  if (!file.exists(path)) return(df)
-  extra <- read_metric(MTB_DIR, metric)
-  extra <- extra[extra$model %in% setdiff(MTB_MODELS, df$model), , drop = FALSE]
-  if (nrow(extra) == 0) return(df)
-  stopifnot(identical(colnames(df), colnames(extra)))
-  rbind(df, extra)
+  if (file.exists(path)) {
+    extra <- read_metric(MTB_DIR, metric)
+    extra <- extra[extra$model %in% setdiff(MTB_MODELS, df$model), , drop = FALSE]
+    if (nrow(extra) > 0) {
+      stopifnot(identical(colnames(df), colnames(extra)))
+      df <- rbind(df, extra)
+    }
+  }
+  with_ensemble(df, metric)
+}
+
+#' Append the combination rules' rows, if this figure has any.
+#'
+#' They are a separate file by design: the drawn rungs and the rules are scored by
+#' different jobs over the same queries, and `ensemble_report.py`'s rule is that a
+#' rule-scoring job emits `ens_*` rows and NOTHING else -- re-reporting a single-model
+#' row from a second job turns a reproduction into a disagreement. A rule that collides
+#' with a row already present is therefore a real contradiction and stops the render.
+with_ensemble <- function(df, metric) {
+  if (is.null(ENSEMBLE_DIR)) return(df)
+  path <- file.path(ENSEMBLE_DIR, paste0(metric, "_ensemble.csv"))
+  if (!file.exists(path)) {
+    message("  [ensemble] no ", basename(path), "; ", metric, " draws no bars")
+    return(df)
+  }
+  ens <- read.csv(path)
+  stopifnot(identical(colnames(df), colnames(ens)))
+  if (!all(grepl("^ens_", ens$model))) {
+    stop(path, " holds non-rule row(s): ",
+         paste(setdiff(ens$model[!grepl("^ens_", ens$model)], ""), collapse = ", "))
+  }
+  clash <- intersect(df$model, ens$model)
+  if (length(clash)) stop(path, " re-reports row(s) already present: ",
+                          paste(clash, collapse = ", "))
+  rbind(df, ens)
 }
 
 ## Recall: one row per model, one column per interior quantile. Anchor the
@@ -453,17 +546,17 @@ plot_by_x <- function(performance_df, auc_df, metric_names, metric_indices,
 
 ## How well does each model's predicted mutation matrix correlate with the
 ## BA.2 deep mutational scan? Negative DMS entries encode "not measured".
-bind <- as.matrix(read.csv("dms/Omicron_BA2_bind.csv")[RBD_RANGE, ])
-expr <- as.matrix(read.csv("dms/Omicron_BA2_expr.csv")[RBD_RANGE, ])
+bind <- as.matrix(read.csv(file.path(DMS_DIR, "Omicron_BA2_bind.csv"))[RBD_RANGE, ])
+expr <- as.matrix(read.csv(file.path(DMS_DIR, "Omicron_BA2_expr.csv"))[RBD_RANGE, ])
 bind[bind < 0] <- NA
 expr[expr < 0] <- NA
 
-ref <- strsplit(readLines("ref/BA.2.txt", warn = FALSE), "")[[1]][RBD_RANGE]
+ref <- strsplit(readLines(REF_FILE, warn = FALSE), "")[[1]][RBD_RANGE]
 bind <- mask_wildtype(bind, ref)
 expr <- mask_wildtype(expr, ref)
 
 models         <- list.files(MODEL_DIR)
-baseline_files <- list.files("baselines")
+baseline_files <- list.files(BASELINE_DIR)
 
 #' Predicted RBD matrix for one antiGen-pipeline model directory.
 read_model_predictions <- function(model) {
@@ -479,7 +572,7 @@ read_model_predictions <- function(model) {
 
 #' Predicted RBD matrix for one external baseline CSV.
 read_baseline_predictions <- function(file) {
-  pred <- as.matrix(read.csv(file.path("baselines", file))[RBD_RANGE, ])
+  pred <- as.matrix(read.csv(file.path(BASELINE_DIR, file))[RBD_RANGE, ])
   pred[pred < 0] <- NA       # probability-space, negative encodes "no value"
   pred
 }
@@ -616,7 +709,7 @@ save_figure(
     ncol = 1,
     rel_heights = c(0.075, 1)
   ),
-  "supp_dms", width = 10, height = 8
+  fig_name("supp_dms"), width = 10, height = 8
 )
 
 
@@ -654,8 +747,8 @@ ft_plot <- ggplot(ft_df, aes(x = x, y = value, color = model, group = model)) +
 
 ## --- Recall-AUC inset for Figure 1 -----------------------------------------
 
-ggsave(
-  "fig1/auc.png",
+if (nzchar(FIG1_AUC)) ggsave(
+  FIG1_AUC,
   plot_by_x(
     hit_rate_performance_x, hit_rate_performance,
     longform_hit_rate_metrics, 2,
@@ -671,47 +764,103 @@ ggsave(
 ## For each train/test cutoff, how well does a hard gate between antiGen and a
 ## simpler model do? The evaluation writes one directory per model and one
 ## subdirectory per cutoff.
-GATE_MODELS <- c("blosum62", "gated_static_esm2_35m_xfmr",
-                 "gated_static_esm2_xfmr", "gated_static_xfmr_pssm",
-                 "transformer")
+GATE_MODELS <- getOption("sc2.gate_models",
+                         c("blosum62", "gated_static_esm2_35m_xfmr",
+                           "gated_static_esm2_xfmr", "gated_static_xfmr_pssm",
+                           "transformer"))
 
-GATE_MODEL_LABELS <- c(
+GATE_MODEL_LABELS <- getOption("sc2.gate_model_labels", c(
   "transformer"                  = "antiGen",
   "pssm_root"                    = "PSSM",
   "blosum62"                     = "BLOSUM62",
   "gated_static_xfmr_pssm"       = "antiGen / PSSM gate",
   "gated_static_esm2_35m_xfmr"   = "antiGen / ESM 2 (35M) FT gate",
   "gated_static_esm2_xfmr"       = "antiGen / ESM 2 (650M) FT gate"
-)
+))
 
-gate_cutoff_dirs <- list.files(file.path(GATING_DIR, GATE_MODELS[1]))
+#' The published layout: one directory per MODEL, one subdirectory per cutoff, and the
+#' wanted rows identified BY POSITION -- row 1 is whichever model the directory is for,
+#' rows 2 and 4 are PSSM and EVEscape and are the same in every directory, so they are
+#' read only from the first. That works because each of those evals scored a different
+#' one-model roster, and it is why this is a function: a corpus evaluated once per
+#' cutoff with every line in it cannot be read this way at all, and `sc2.gate_loader`
+#' is how such a corpus supplies its own reader (NOTES s71).
+#' The published per-model cutoff directories. Empty under a `by_name` corpus, which
+#' has no per-model tree -- and that emptiness is what switches off the gating
+#' PRECISION supplement below, a published-only row that reads the same tree.
+gate_cutoff_dirs <- if (getOption("sc2.gate_loader", "by_position") == "by_position") {
+  list.files(file.path(GATING_DIR, GATE_MODELS[1]))
+} else character(0)
 
-## Rows 1, 2 and 4 of each recall file are the gated/base model, PSSM and
-## EVEscape. Row 1 is whichever model the directory is for, so it is renamed;
-## rows 2 and 4 are the same two reference curves in every directory and are
-## therefore only read from the first.
-gate_recall <- data.frame()
-for (i in seq_along(GATE_MODELS)) {
-  for (cutoff_dir in gate_cutoff_dirs) {
-    dir <- file.path(GATING_DIR, GATE_MODELS[i], cutoff_dir)
-    new_df <- read.csv(find_metric_file(dir, "quantile_hit_rates_all_"))
-    new_df <- new_df[, c(1, 2, 3, 6)]
-    colnames(new_df)[2:4] <- c("recall", "recall_20", "recall_50")
-    new_df$model[1] <- GATE_MODELS[i]
-    new_df$cutoff <- as.numeric(gsub(".*\\_", "", cutoff_dir))
-    new_df <- new_df[if (i == 1) c(1, 2, 4) else 1, ]
-    gate_recall <- rbind(gate_recall, new_df)
+gate_recall_by_position <- function() {
+  cutoff_dirs <- gate_cutoff_dirs
+  out <- data.frame()
+  for (i in seq_along(GATE_MODELS)) {
+    for (cutoff_dir in cutoff_dirs) {
+      dir <- file.path(GATING_DIR, GATE_MODELS[i], cutoff_dir)
+      new_df <- read.csv(find_metric_file(dir, "quantile_hit_rates_all_"))
+      new_df <- new_df[, c(1, 2, 3, 6)]
+      colnames(new_df)[2:4] <- c("recall", "recall_20", "recall_50")
+      new_df$model[1] <- GATE_MODELS[i]
+      new_df$cutoff <- as.numeric(gsub(".*\\_", "", cutoff_dir))
+      new_df <- new_df[if (i == 1) c(1, 2, 4) else 1, ]
+      out <- rbind(out, new_df)
+    }
   }
+  out
 }
-gate_recall$model <- ifelse(gate_recall$model %in% names(GATE_MODEL_LABELS),
-                            GATE_MODEL_LABELS[gate_recall$model],
-                            gate_recall$model)
+
+#' One directory per CUTOFF, every line in one CSV, rows taken BY NAME.
+#'
+#' `sc2.gate_rows` is a named vector: names are the `model` column as the eval wrote
+#' it, values are the label to draw. A name absent from a cutoff's CSV is an error and
+#' not a gap -- a line that quietly vanishes for three cutoffs and comes back is worse
+#' than a render that stops. `sc2.gate_x` maps a directory name to the x value.
+gate_recall_by_name <- function() {
+  want <- getOption("sc2.gate_rows")
+  if (is.null(want)) stop("sc2.gate_loader = 'by_name' needs sc2.gate_rows")
+  to_x <- getOption("sc2.gate_x", function(d) as.numeric(gsub(".*_", "", d)))
+  dirs <- sort(list.files(GATING_DIR))
+  out <- data.frame()
+  for (d in dirs) {
+    f <- find_metric_file(file.path(GATING_DIR, d), "quantile_hit_rates_all_")
+    df <- read.csv(f)
+    missing <- setdiff(names(want), df$model)
+    if (length(missing)) {
+      stop(f, " is missing row(s) ", paste(missing, collapse = ", "),
+           ". Every cutoff must carry every line, or the panel compares ",
+           "different rosters at different x.")
+    }
+    df <- df[match(names(want), df$model), c(1, 2, 3, 6)]
+    colnames(df)[2:4] <- c("recall", "recall_20", "recall_50")
+    df$model  <- unname(want)
+    df$cutoff <- to_x(d)
+    out <- rbind(out, df)
+  }
+  # An explicit factor in the order `sc2.gate_rows` was written. `scale_color_manual`
+  # matches its values to the levels positionally, so leaving `model` a character
+  # vector would make the colour assignment depend on the locale's collation of the
+  # labels -- which is not a thing a figure should depend on.
+  out$model <- factor(out$model, levels = unname(want))
+  out
+}
+
+gate_recall <- switch(
+  getOption("sc2.gate_loader", "by_position"),
+  by_position = gate_recall_by_position(),
+  by_name     = gate_recall_by_name(),
+  stop("sc2.gate_loader must be 'by_position' or 'by_name'"))
+if (getOption("sc2.gate_loader", "by_position") == "by_position") {
+  gate_recall$model <- ifelse(gate_recall$model %in% names(GATE_MODEL_LABELS),
+                              GATE_MODEL_LABELS[gate_recall$model],
+                              gate_recall$model)
+}
 
 ## Training-set size at each cutoff, for the two scatter rows of the
 ## supplement: how many sequences, and how many distinct mutations, the
 ## pandemic-to-date PSSM was built from.
-stats_by_cutoff <- do.call(rbind, lapply(list.files("pssm_by_cutoff"), function(file) {
-  pssm <- read.csv(file.path("pssm_by_cutoff", file))[, -1]
+stats_by_cutoff <- do.call(rbind, lapply(list.files(PSSM_CUTOFF_DIR), function(file) {
+  pssm <- read.csv(file.path(PSSM_CUTOFF_DIR, file))[, -1]
   data.frame(
     cutoff = as.numeric(gsub(".csv", "", gsub(".*_", "", file))),
     n_seqs = rowSums(pssm)[1],
@@ -723,20 +872,28 @@ gate_recall$n_muts <- stats_by_cutoff$n_muts[match(gate_recall$cutoff, stats_by_
 gate_recall$n_seqs <- stats_by_cutoff$n_seqs[match(gate_recall$cutoff, stats_by_cutoff$cutoff)]
 
 ## Baselines that are not antiGen-derived are drawn dashed.
-GATE_BASELINES <- c("PSSM", "BLOSUM62", "EVEscape")
+GATE_BASELINES <- getOption("sc2.gate_baselines", c("PSSM", "BLOSUM62", "EVEscape"))
 
 make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
                            show_legend = FALSE, xvar = "cutoff",
                            xlab_text = "Train / test cutoff (years into pandemic)",
                            geom = "line", xlim_hi = 5) {
+  ## ggplot matches these to the levels of `model` in order, so the vector's LENGTH
+  ## is part of the published roster. A corpus with a different set of lines has to
+  ## supply both the colours and which of them the main figure drops.
   if (SUPP) {
-    color_vals <- c(ANTIGEN_BLUE, FINETUNE_COLORS[2:3], GATE_BLUE,
-                    MODEL_TYPE_COLORS[4], FINETUNE_COLORS[4], MODEL_TYPE_COLORS[3])
+    color_vals <- getOption("sc2.gate_colors_supp",
+                            c(ANTIGEN_BLUE, FINETUNE_COLORS[2:3], GATE_BLUE,
+                              MODEL_TYPE_COLORS[4], FINETUNE_COLORS[4],
+                              MODEL_TYPE_COLORS[3]))
   } else {
-    color_vals <- c(ANTIGEN_BLUE, GATE_BLUE, MODEL_TYPE_COLORS[4],
-                    FINETUNE_COLORS[1], MODEL_TYPE_COLORS[3])
-    df <- df[!(df$model %in% c("antiGen / ESM 2 (35M) FT gate",
-                               "antiGen / ESM 2 (650M) FT gate")), ]
+    color_vals <- getOption("sc2.gate_colors_main",
+                            c(ANTIGEN_BLUE, GATE_BLUE, MODEL_TYPE_COLORS[4],
+                              FINETUNE_COLORS[1], MODEL_TYPE_COLORS[3]))
+    drop <- getOption("sc2.gate_drop_main",
+                      c("antiGen / ESM 2 (35M) FT gate",
+                        "antiGen / ESM 2 (650M) FT gate"))
+    df <- df[!(df$model %in% drop), ]
   }
 
   p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[col_name]],
@@ -828,11 +985,18 @@ save_figure(
     ncol = 1,
     rel_heights = c(0.15, 1, 1, 1)
   ),
-  "supp_gating_recall", width = 10, height = 10
+  fig_name("supp_gating_recall"), width = 10, height = 10
 )
 
 
 ## --- Gating: PSSM precision vs cutoff --------------------------------------
+##
+## Wrapped in a function so a corpus with no per-model gating tree can skip it.
+## This row reads `GATING_DIR/<model>/cutoff_*/variant_emergence_*`, which only
+## exists for the published arm's one-eval-per-model layout; a `by_name` corpus
+## has one directory per CUTOFF and nothing for this to read. Its locals are used
+## nowhere else, which is checked rather than assumed (NOTES s71).
+draw_gating_precision <- function() {
 
 ## Same idea for the precision metric, but resolved by emergence date. Only
 ## the earliest four cutoffs are shown -- later ones leave too little test
@@ -873,7 +1037,6 @@ gate_precision$variable <- ifelse(
   gate_precision$variable
 )
 
-PANDEMIC_START <- as.Date("2019-12-20")
 precision_cutoffs <- unique(gate_precision$cutoff)
 
 ## Rows share a y-range so panels are comparable left to right.
@@ -958,14 +1121,19 @@ save_figure(
     ncol = 1,
     rel_heights = c(0.1, 1, 1)
   ),
-  "supp_gating_precision", width = 9, height = 6
+  fig_name("supp_gating_precision"), width = 9, height = 6
 )
+
+}
+
+if (length(gate_cutoff_dirs)) draw_gating_precision() else
+  message("no per-model gating tree: skipping supp_gating_precision")
 
 
 ## --- Main figure -----------------------------------------------------------
 
 recall_block <- plot_grid(
-  plot_cartoon("cartoons/recall_definition.png",
+  plot_cartoon(file.path(CARTOON_DIR, "recall_definition.png"),
                "Definition of next-mutation recall", base_theme = theme_paper()),
   plot_by_x(
     hit_rate_performance_x, hit_rate_performance,
@@ -979,7 +1147,7 @@ recall_block <- plot_grid(
 )
 
 precision_block <- plot_grid(
-  plot_cartoon("cartoons/precision_definition.png",
+  plot_cartoon(file.path(CARTOON_DIR, "precision_definition.png"),
                "Definition of PSSM precision", base_theme = theme_paper()),
   plot_by_x(
     variant_emergence_performance_x, variant_emergence_performance,
@@ -1003,7 +1171,7 @@ save_figure(
     ncol = 1,
     rel_heights = c(3, 0.1, 1.1)
   ),
-  "sc2_results", width = 13.5, height = 12
+  FIG_MAIN, width = 13.5, height = 12
 )
 
 
@@ -1084,7 +1252,7 @@ plot_by_x_supp <- function(df, metrics, longform_metrics, xlab, ylab, cutoff = 0
 save_figure(
   plot_by_x_supp(performance_by_x, HIT_RATE_METRICS, longform_hit_rate_metrics,
                  "Quantile (q)", "P(obs. mut. in top q-quantile)"),
-  "supp_recall", width = 15, height = 13
+  fig_name("supp_recall"), width = 15, height = 13
 )
 
 save_figure(
@@ -1092,7 +1260,7 @@ save_figure(
                  longform_variant_emergence_metrics,
                  "Date (t, years into pandemic)",
                  "P(mut. in top decile obs. by t)", cutoff = 2),
-  "supp_precision", width = 15, height = 13
+  fig_name("supp_precision"), width = 15, height = 13
 )
 
 ## Summary bars for all four variants of both metrics, including the
@@ -1116,5 +1284,5 @@ save_figure(
     ncol = 1,
     rel_heights = c(1, 1, 1, 1, 0.1)
   ),
-  "supp_summaries", width = 11, height = 14
+  fig_name("supp_summaries"), width = 11, height = 14
 )
