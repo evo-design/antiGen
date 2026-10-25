@@ -8488,3 +8488,190 @@ in the directory and scored the one new map; 52 maps in the cache.
   honest alternative is to report this rung at q = 0.1 only, or to restrict every rung to
   the 2,023 cells it measures and recompute the row -- which is a different panel, not a
   footnote, and is not done here.
+
+## 65. The cutoff series: a corpus per quarter, and a budget that binds (2026-10-24)
+
+`antiGen-data-revised` now emits **24 quarterly training corpora** (`sc2-<D>/train`,
+2020-04-01 to 2026-01-01) and **one test tree** serving all of them. This section is the
+machinery that reads them and the first thing it measured, which is not what the arm was
+built to measure.
+
+### `POST_CUTOFF` is a set now, and the reader has to be told which split
+
+The test corpus writes `POST_CUTOFF:` as a header over zero or more `<date>,True` lines
+-- the set of cutoffs at or after which the record is a test example -- because the tree
+always held `minLeafDated` and one comparison per (record, cutoff) recovers every split
+from it. `_parse_split_label` took `POST_CUTOFF: True|False` on one line and **raised on
+the bare header**, so neither the new train nor the new test corpus loaded at all.
+
+* `antiGen/load.py` -- the third dialect, and `split_date` to choose among its 24
+  answers. **Required the moment a record carries a non-empty set**: defaulting would
+  silently pick a split, and on the test corpus "no date" reads all 75,606 records as
+  training and hands a scorer an empty test pool. A `split_date` the corpus does not
+  carry is also refused, by name against the dates it does have -- otherwise a typo
+  reads every record as training and fails much later.
+* `--split-date` on `train.py`, `list_macro.py`, `list_variant_recall.py` and
+  `background_discrimination.py`.
+* **Gated bit-exact against `git show HEAD:`** on both legacy dialects --
+  `output1/examples_cutoff_1.txt` (171,248 records) and the 2021 revised train corpus
+  (2,934) -- on `aa_idx`, `mat`, `parent_mutation` and all four flags. 6 new tests; the
+  suite is **205**.
+
+Read at 2023-01-01 the test corpus gives **20,618** post-cutoff records of 75,606,
+reproducing an independent streaming count exactly.
+
+### The sweep, and what it is for
+
+`examples/slurm/train_cutoff_series.sh <D>` trains, per cutoff, base antiGen on the
+published recipe and the ten val-selected runs of s56, into
+`cutoff_series/<D>/{base,valsel}` with a `MANIFEST.txt` naming the corpus, the recipe,
+the seeds and the test corpus it pairs with. The point is an analogue of `sc2_results`
+panel M -- recall at the top decile against where the train/test boundary is drawn.
+
+**Both ends of the sweep are weak, and for opposite reasons.** The training corpus grows
+from 190 records to 75,647 while the test window shrinks from 75,143 to 170:
+
+| cutoff | train records | test records | test mutations | listed cells observed |
+|---|---:|---:|---:|---:|
+| 2020-04-01 | 190 | 75,143 | 304,668 | 231 |
+| 2022-01-01 | 32,500 | 41,894 | 133,283 | 214 |
+| 2023-01-01 | 53,916 | 20,618 | 57,319 | 164 |
+| 2026-01-01 | 75,647 | **170** | **177** | **5** |
+
+A point at 2026-01-01 is 177 mutations of evidence beside 2021-01-01's 263,643. On the
+CoG-UK list the de novo cut dies outright: 142 observed de novo cells at the 2021 split,
+**4** at 2023-01-01, **0** from 2024-01-01 on.
+
+### The finding: the budget binds, and 96 does not fix it
+
+The arm ran first at the published 32 epochs. **Nine of ten runs at 2023-01-01 selected
+epoch 31 -- the last one** -- and the pattern holds across the sweep (9/10 at
+2020-04-01, 7/10 at 2021-01-01, 5/8 at 2024-07-01). A run that selects its last epoch has
+not chosen an epoch: its held-out curve was still descending when the budget ran out, so
+the arm collapses to "train to the budget", which is what `base` already is.
+
+The holdout is not the problem. At 2023-01-01 it is **23,620 mutations**, 28x s56's 854.
+
+Re-run at 96, and at 2020-04-01 two of ten still select the last epoch while the rest
+land at 94 of 95. The curve says why -- this is the run with the largest holdout at that
+cutoff:
+
+| epoch | 0 | 30 | 60 | 90 | 94 | 95 |
+|---|---:|---:|---:|---:|---:|---:|
+| val NLL | 10.0469 | 8.9306 | 8.8325 | 8.7624 | **8.7488** | 8.7525 |
+
+It is **flattening into noise, not turning**: the last 10 epochs move 0.027 nats, about
+the size of the per-epoch wobble on a 545-mutation holdout, against 1.30 nats over the
+whole run. Train and val are genuinely different series -- 8.3307 against 8.7525 at the
+end, a gap that widens from 0.08 -- so this is not train loss misread.
+
+**s56 had the same shape and deferred it**: eight of its ten runs selected epochs 81-94
+of 96, and the 256-epoch check meant to settle it was cancelled. A 512-epoch probe at
+2021-07-01 (3 split seeds, the mid-size cutoff where the holdout is well powered and the
+cost is affordable) is running to settle whether the curve ever turns.
+
+**The 32-epoch runs are kept as `valsel_ep32/`**, not deleted: a ten-seed average at the
+published budget is exactly the fixed-budget control s56's Open asked for.
+
+* `train_antigen_valsel10.sh` **now fails a job whose runs select the last epoch**. It
+  previously printed a note asking the reader to check that, and exited OK regardless,
+  which is how this got through. The check reads each run's per-epoch JSON via
+  `examples/slurm/best_epoch.py`; verified against s56's runs (s0 -> 31/7.4410/31, s5 ->
+  28/7.3307/31). Both valsel drivers also skip a run that already has a `_best.pt`, so a
+  cancelled sweep resumes instead of redoing.
+
+### The 2023-01-01 figure arm, in flight
+
+`fig_coguk_list_2023.R`, **without the antiGen Finetunes group or the roster ensembles**
+(they are mixtures of it), and with the de novo column dropped for the reason above --
+`coguk.drop_metrics`, which makes `assemble` generic over the number of recall cuts and
+leaves the published two-panel widths and labels exactly as they were. Base antiGen, the
+two untrained ESM-2 rungs and BLOSUM62 are trained (`ckpt_stage_2023-01-01`, 18:32) and
+scored (job 3428765, 6:54, 20 models). The two val-selected bars wait on the budget
+question above, so the figure is not drawn yet.
+
+### Open
+
+* The budget. See the probe.
+* **Panel M is not drawn**, and its eval is a separate pass per cutoff -- one
+  `--split-date` against the one test corpus, now that the reader takes it.
+* The late cutoffs' points should carry their denominators or be dropped at a stated
+  threshold rather than plotted as equals.
+
+## 66. Panels G-J on the revised corpus, and K-L without dates (2026-10-24)
+
+s54 left `coguk_list_aa20` with six panels and named the two missing rows by substrate
+rather than by queue. `antiGen-data-revised` now emits
+`sc2-test/counts_ba2/counts_<D>.tsv`, 24 dated BA.2-descended count matrices, and the
+yield row is drawn from them.
+
+### The counts run the other way, which is checked rather than assumed
+
+`counts_<D>` holds the variant-descended sequences observed **on or after** D -- 2.17M at
+2020-04-01 falling to 4,076 at 2026-01-01 -- while the panel wants what has emerged **by**
+t. They are exact complements, since every BA.2 sequence post-dates the first grid point:
+
+    emerged_by(D) = counts(earliest) - counts(D)
+
+`load.py:load_counts_series` **rejects the directory unless every cell is non-increasing
+across the grid** (0 of 123,660 rise). A cumulative series read as a forward window would
+run the emergence curve backwards and still produce a monotone, plausible panel.
+
+### Two conventions the row needed stated
+
+* **One top decile for every model.** The first run tripped `fig_coguk_list.R`'s own s51
+  guard: `n_selected` varied by 180, because `list_variant_recall` scored each model
+  against its own emission set and the DMS maps abstain over much of the RBD. The
+  published arm fixes this with a `rescore_common_pool.py` pass; `--common-pool` does it
+  in one step -- the whole eval range less the query's own residue, **3,819 cells for
+  every model**, a cell a model cannot score ranked last rather than dropped.
+* **The time axis is declared.** The published grid is 0.1-year steps from 0.1; this one
+  is quarters from the arm's own cutoff. `coguk.varr_x0` / `coguk.varr_dx` put both on
+  the same "years into the pandemic" axis; the defaults reproduce the published figure,
+  which **re-renders byte-identical** (`776aa91c`, `49cc10be`).
+
+Drawn: 21 steps, 2021-01-01 to 2026-01-01, 28 models, the curve rising at t ~ 2 where
+BA.2 emerges. **The five ensemble bars are absent from G-J** -- that row scores
+checkpoints and baselines, not cached-map rules -- and the figure names them on every
+run.
+
+### K-L: the reconstruction was the mistake
+
+The background row needs the individual background genotypes and which of them hosted
+each mutation; a count matrix has summed over exactly that, so `counts_ba2` cannot serve
+it. The first attempt rebuilt the genotypes from the repo's all-time Nextstrain JSON and
+**failed its own gate: 191 of 2,308 branch mutations disagreed with their reconstructed
+parent**, because that build is not the one the corpus was made on.
+
+That reconstruction was redundant. Every record of the example corpus **is** a genotype,
+with its parent and its child mutations, so `background_tree.build_backbone_from_examples`
+reads them and nothing is re-derived. On instruction this uses the **attached** tree,
+which the published row deliberately avoided: **23,806** distinct post-cutoff background
+genotypes against the guide tree's ~402, so "hosts this mutation" partly counts sampling
+depth here. 1,455 hosted cells, 46,433 host events, reproducing an independent streaming
+count.
+
+**The corpus carries no per-node date**, so the published host-vs-time-matched-control
+rule cannot run on it. On instruction the contrast becomes **host vs one fixed reference
+genotype**, the BA.2 root: `build_contrast_sets` already returned `cell -> (hosts,
+controls)`, so the control list becomes that one query and nothing downstream moves. It
+is a **weaker question than the published one and must not be read against it** -- an
+idiosyncrasy of the reference moves every cell the same way instead of averaging out --
+and cells the reference already carries, or whose only host is the reference, are
+dropped. `build_contrast_sets` **refuses the time-matched rule on a dateless backbone**
+rather than matching on NaN.
+
+Job 3432096 is scoring 23,806 genotypes across the roster, ~3 GPU-hours. **K-L are left
+as holes in the figure until it lands**, which `fig_coguk_list.R` reports per metric.
+
+### Code
+
+* `antiGen/load.py` -- `load_counts_series`.
+* `antiGen/list_variant_recall.py` -- `--alphabet`, `--train-examples`/`--test-examples`,
+  `--root-counts`, `--variant-counts-dir`, `--counts-since`, `--common-pool`;
+  `--data-dir` optional.
+* `antiGen/background_{tree,discrimination,contrast}.py` -- the corpus backbone,
+  `--backbone-examples`, `--root-counts`, `--reference-query`.
+* `examples/slurm/{eval_sc2_varrecall,background_discrimination_sc2}.sh` -- `DATA_DIR` /
+  `CKPT_DIR` / `TREE_JSON` / `REF_JSON` overrides and an `EXTRA` passthrough, so the
+  20-letter arm comes off the published scripts rather than a fork.

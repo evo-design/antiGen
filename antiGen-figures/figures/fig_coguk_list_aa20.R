@@ -124,7 +124,13 @@ options(
   ## Deliberately absent -- see the header. Named rather than left at the
   ## published default, which would draw the old corpus's rows under this
   ## figure's title.
+  ## The yield row's grid is antiGen-data-revised's dated BA.2 count files, one per
+  ## QUARTER, the first being this arm's own 2021-01-01 cutoff -- which is 1.0 years
+  ## into the pandemic on the axis the published figure uses, and 0.25 years per step
+  ## against its 0.1. Stating both puts the two figures' panels G-J on one axis.
   coguk.varr_dir     = "data/evals_sc2_lists_varrecall_aa20",
+  coguk.varr_x0      = 1.0,
+  coguk.varr_dx      = 0.25,
   coguk.bg_dir       = "data/evals_sc2_background_aa20",
   coguk.fig_main     = "coguk_list_aa20",
   coguk.fig_supp     = "coguk_list_aa20_supp",

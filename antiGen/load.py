@@ -27,25 +27,63 @@ def _match_variant(label, variant):
     return label == variant or f"({variant})" in label
 
 
-def _parse_split_label(line, filepath):
-    """Return True if this record is in the training window.
+def _parse_split_label(lines, i, filepath, split_date):
+    """Return ``(is_training, next_i, cutoffs)`` for the split field at ``lines[i]``.
 
-    Two generators write this field. The original antiGen-data tool writes the bare
-    word ``TRAINING`` or ``TESTING``; antiGen-data-revised writes
-    ``POST_CUTOFF: True``/``False``, which is the same fact negated. Anything else is
-    an error rather than a silent False, because reading an unrecognised label as
-    "not training" empties the training pool and the run fails much later with a
-    confusing message.
+    THREE DIALECTS, and the third is a set rather than a fact.
+
+    * ``TRAINING`` / ``TESTING`` -- the original antiGen-data tool.
+    * ``POST_CUTOFF: True|False`` -- antiGen-data-revised, one cutoff baked in; the
+      same fact negated.
+    * ``POST_CUTOFF:`` as a bare header followed by zero or more ``<date>,True``
+      lines -- antiGen-data-revised once one test tree started serving every cutoff.
+      The flag stopped being a boolean and became **the set of cutoffs at or after
+      which this record is a test example**, which is what the tree always held
+      (``minLeafDated``) and what makes one corpus answer 24 split dates.
+
+    Under the third dialect the answer depends on which split is being asked for, so
+    ``split_date`` selects it: the record is in the TRAINING window exactly when the
+    set does not carry that date. The train arms write the header with nothing under
+    it -- a tree that stops before its own cutoff has no post-cutoff records to flag --
+    so an empty set is training at every date and those files need no ``split_date``.
+
+    ``split_date`` is REQUIRED the moment a record carries a non-empty set, rather
+    than defaulting to anything. A default would silently pick a split: on the test
+    corpus "no date" would read every one of its 75,606 records as training and hand a
+    scorer an empty test pool, which is the failure mode this module already refuses
+    for an unrecognised label.
+
+    Anything else is an error rather than a silent False, because reading an
+    unrecognised label as "not training" empties the training pool and the run fails
+    much later with a confusing message.
     """
+    line = lines[i].strip()
     if line in ("TRAINING", "TESTING"):
-        return line == "TRAINING"
+        return line == "TRAINING", i + 1, None
     if line.startswith("POST_CUTOFF:"):
         value = line.split(":", 1)[1].strip()
         if value in ("True", "False"):
-            return value == "False"
+            return value == "False", i + 1, None
+        if value == "":
+            # The set dialect: consume the <date>,True lines under the header.
+            j = i + 1
+            cutoffs = set()
+            while j < len(lines) and lines[j].strip().endswith(("True", "False")):
+                label, val = lines[j].strip().rsplit(",", 1)
+                if val == "True":
+                    cutoffs.add(label.strip())
+                j += 1
+            if cutoffs and split_date is None:
+                raise ValueError(
+                    f"{filepath}: POST_CUTOFF is a SET of cutoffs here (this record "
+                    f"carries {len(cutoffs)}, e.g. {sorted(cutoffs)[0]}), so which "
+                    f"train/test split to read has to be named. Pass split_date "
+                    f"(--split-date on the CLI).")
+            return (split_date not in cutoffs), j, cutoffs
     raise ValueError(
-        f"{filepath}: expected 'TRAINING'/'TESTING' or 'POST_CUTOFF: True|False' "
-        f"where the train/test split label belongs, got {line!r}")
+        f"{filepath}: expected 'TRAINING'/'TESTING', 'POST_CUTOFF: True|False' or a "
+        f"'POST_CUTOFF:' header followed by '<date>,True' lines where the train/test "
+        f"split label belongs, got {line!r}")
 
 
 def _detect_position_base(records, seq_len, filepath):
@@ -83,18 +121,20 @@ def _detect_position_base(records, seq_len, filepath):
     return None
 
 
-def load_examples(filepath, allowed_aas, variant, source=None):
+def load_examples(filepath, allowed_aas, variant, source=None, split_date=None):
     """Load pre-computed training/testing examples from a text file.
 
     Reads is_testing_root and is_descended_from_variant directly from
     IS_VARIANT_ROOT and IS_DESCENDED_FROM_VARIANT fields, matching the
     variant name either as the full clade label or inside parentheses.
 
-    Accepts both generators' dialects of the format: ``TRAINING``/``TESTING`` or
-    ``POST_CUTOFF:`` for the split label, and 0- or 1-indexed mutation positions,
-    which are detected from the file and returned 0-indexed either way. Repeated
-    ``(pos, alt)`` entries under MUTATIONS_TO_CHILDREN are counts: each one adds 1 to
-    that cell of the mutation matrix.
+    Accepts every generator dialect of the format: ``TRAINING``/``TESTING``,
+    ``POST_CUTOFF: True|False``, or a ``POST_CUTOFF:`` header over a SET of
+    ``<date>,True`` cutoffs -- see :func:`_parse_split_label`, and pass ``split_date``
+    to say which split the third one is being read at. Mutation positions may be 0- or
+    1-indexed, which is detected from the file and returned 0-indexed either way.
+    Repeated ``(pos, alt)`` entries under MUTATIONS_TO_CHILDREN are counts: each one
+    adds 1 to that cell of the mutation matrix.
 
     Returns a list of Example objects.
     """
@@ -106,6 +146,7 @@ def load_examples(filepath, allowed_aas, variant, source=None):
     # Pass 1: parse to plain Python. Positions stay as written, because which base
     # they are in is a property of the file and is only knowable once it is all read.
     raw = []
+    seen_cutoffs = set()  # every cutoff any record flags, for the check below
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -137,12 +178,14 @@ def load_examples(filepath, allowed_aas, variant, source=None):
             ref_aa, pos, alt_aa = parts[0], int(parts[1]), parts[2]
             parent_mutation = (pos, alt_aa)
 
-        # TRAINING / TESTING, or POST_CUTOFF:
+        # TRAINING / TESTING, or POST_CUTOFF: (a value, or a header over a set)
         i += 1
-        is_training = _parse_split_label(lines[i].strip(), filepath)
+        is_training, i, cutoffs = _parse_split_label(lines, i, filepath, split_date)
+        if cutoffs:
+            seen_cutoffs.update(cutoffs)
 
         # IS_DESCENDED_FROM_VARIANT:
-        i += 1  # "IS_DESCENDED_FROM_VARIANT:"
+        # i is now on the "IS_DESCENDED_FROM_VARIANT:" line
         i += 1
         is_descended_from_variant = False
         while i < len(lines) and lines[i].strip().endswith(("True", "False")):
@@ -236,11 +279,26 @@ def load_examples(filepath, allowed_aas, variant, source=None):
             source=source,
         ))
 
+    # A split_date that no record flags, in a file that flags SOMETHING, is a date
+    # this corpus does not have -- a typo, or a cutoff it was not built for. Left
+    # alone it reads every record as training and hands the caller an empty test
+    # pool, so it is named here against the dates the file does carry. A file with no
+    # flags at all (every train arm) is silent: an unused split_date is not an error
+    # there, it is the normal case.
+    if split_date is not None and seen_cutoffs and split_date not in seen_cutoffs:
+        raise ValueError(
+            f"{filepath}: no record is post-cutoff at split_date {split_date!r}; "
+            f"this corpus carries {len(seen_cutoffs)} cutoff(s): "
+            f"{', '.join(sorted(seen_cutoffs))}")
+
     n_testing_roots = sum(1 for ex in examples if ex.is_testing_root)
     n_variant_desc = sum(1 for ex in examples if ex.is_descended_from_variant)
     n_train = sum(1 for ex in examples if ex.is_training)
+    split_note = ""
+    if seen_cutoffs:
+        split_note = f", split at {split_date} of {len(seen_cutoffs)} cutoffs"
     print(f"Loaded {len(examples)} examples from {filepath} "
-          f"(L={seq_len}, {base}-indexed positions)")
+          f"(L={seq_len}, {base}-indexed positions{split_note})")
     print(f"  {n_train} training, {len(examples) - n_train} testing; "
           f"{n_testing_roots} variant testing root(s), {n_variant_desc} variant-descended for '{variant}'")
     return examples
@@ -342,3 +400,62 @@ def load_counts_matrix(path, allowed_aas):
           f"{int((counts > 0).sum())} nonzero cells over "
           f"{meta.get('#sequences', '?')} sequences")
     return counts
+
+
+def load_counts_series(counts_dir, allowed_aas, since=None):
+    """Read a directory of dated count matrices as a CUMULATIVE emergence series.
+
+    ``antiGen-data-revised`` writes ``counts_ba2/counts_<YYYY-MM-DD>.tsv``, one per
+    split date, each holding the variant-descended sequences observed **on or after**
+    that date. The published yield row wants the opposite reading -- what has emerged
+    **by** t -- and the two are exact complements, because the windows partition the
+    variant's sequences at every date:
+
+        emerged_by(D) = counts(earliest) - counts(D)
+
+    ``counts(earliest)`` is the whole variant set, since every variant sequence post-
+    dates the first grid point. So nothing is approximated here and no time is read off
+    a filename other than to order the series.
+
+    THE DIRECTION IS CHECKED, NOT ASSUMED. A forward window is non-increasing in D cell
+    by cell; a cumulative file would be non-decreasing. Reading one as the other would
+    run the emergence curve backwards and still produce a monotone, plausible panel, so
+    the series is rejected unless every cell is non-increasing across the whole grid.
+
+    ``since`` drops grid points before a date -- the figure's own train/test cutoff,
+    normally, since steps before it are all-zero by construction and only stretch the
+    panel's left tail. The baseline is still the earliest file on disk, so dropping
+    points does not change any value.
+
+    Returns ``(dates, mats)``: the kept dates in order, and a list of (seq_len, E)
+    float32 tensors of counts emerged by each.
+    """
+    import glob as glob_mod
+    paths = sorted(glob_mod.glob(os.path.join(counts_dir, "counts_*.tsv")))
+    if not paths:
+        raise ValueError(f"{counts_dir}: no counts_*.tsv")
+    dates = [os.path.basename(p)[len("counts_"):-len(".tsv")] for p in paths]
+    if dates != sorted(dates):
+        raise ValueError(f"{counts_dir}: filenames do not sort into date order: {dates}")
+    mats = [load_counts_matrix(p, allowed_aas) for p in paths]
+
+    for i in range(1, len(mats)):
+        rising = (mats[i] > mats[i - 1] + 1e-6)
+        if bool(rising.any()):
+            n = int(rising.sum())
+            raise ValueError(
+                f"{counts_dir}: {n} cell(s) increase from {dates[i - 1]} to {dates[i]}. "
+                f"These files must be FORWARD windows (sequences on or after the date), "
+                f"which are non-increasing; a cumulative series read as one would run "
+                f"the emergence curve backwards.")
+
+    total = mats[0]
+    emerged = [total - m for m in mats]
+    keep = [i for i, d in enumerate(dates) if since is None or d >= since]
+    if not keep:
+        raise ValueError(f"{counts_dir}: --since {since} drops every one of "
+                         f"{len(dates)} grid points ({dates[0]}..{dates[-1]})")
+    print(f"Loaded {len(paths)} dated count matrices from {counts_dir}: "
+          f"{dates[0]}..{dates[-1]}, {total.sum():.0f} total observations; "
+          f"keeping {len(keep)} step(s) from {dates[keep[0]]}")
+    return [dates[i] for i in keep], [emerged[i] for i in keep]

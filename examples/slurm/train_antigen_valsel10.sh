@@ -48,6 +48,7 @@ N=${N:-10}
 EPOCHS=${EPOCHS:-96}
 VAL_FRAC=${VAL_FRAC:-0.1}
 EXTRA=("$@")
+REPO_SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 echo "examples = $EXAMPLES"
 echo "out-root = $OUT_ROOT"
@@ -65,6 +66,15 @@ for i in $(seq 0 $((N - 1))); do
     DIR="$OUT_ROOT/antigen_vs_s$i"
     echo ""
     echo "=== run $i/$((N - 1)): split-seed=$SPLIT_SEED init-seed=$INIT_SEED -> $DIR ==="
+    # Resume rather than redo. A run is identified by its directory, and a directory
+    # holding a `_best.pt` has already answered this (split, init) draw -- so a job that
+    # was cancelled, or a cutoff whose runs were produced by an earlier submission, is
+    # picked up where it stopped instead of spending the GPU again. Delete the directory
+    # to force a rerun. Same convention as train_esm2_valsel10.sh.
+    if ls "$DIR"/fitness_*_best.pt >/dev/null 2>&1; then
+        echo "    already has a _best.pt; skipping (delete the directory to redo it)"
+        continue
+    fi
     mkdir -p "$DIR"
     antiGen-train \
         --model-type transformer \
@@ -79,12 +89,24 @@ for i in $(seq 0 $((N - 1))); do
 done
 
 echo ""
-echo "=== the _best.pt of each run; the selected epoch is on this job's stdout above,"
-echo "=== one 'Best pooled validation NLL ... at epoch N' per run, and every N must be"
-echo "=== INTERIOR -- a run selecting the last epoch means this budget binds too."
+echo "=== selected epochs, and the budget check ==="
+# THE CHECK, NOT A NOTE ASKING FOR ONE. This block used to print the file names and tell
+# the reader to confirm each selected epoch was interior; nobody does that, and on the
+# 2023-01-01 corpus NINE OF TEN runs selected the last epoch while the job exited OK.
+# A run that selects the last epoch has not chosen an epoch -- its validation curve was
+# still descending when the budget ran out -- so the arm collapses to "train to the
+# budget", which is what the base rung already is. That is a failure, and it is loud now.
 for i in $(seq 0 $((N - 1))); do
-    f=$(ls "$OUT_ROOT/antigen_vs_s$i"/fitness_*_best.pt 2>/dev/null | head -1)
-    if [ -n "$f" ]; then echo "  s$i: $(basename "$f")"; else echo "  s$i: NO _best.pt"; rc=1; fi
+    DIR="$OUT_ROOT/antigen_vs_s$i"
+    f=$(ls "$DIR"/fitness_*_best.pt 2>/dev/null | head -1)
+    if [ -z "$f" ]; then echo "  s$i: NO _best.pt"; rc=1; continue; fi
+    ep=$(python -I "$REPO_SELF/best_epoch.py" "$DIR")
+    set -- $ep
+    echo "  s$i: best epoch $1  NLL $2  (last $3, holdout $4 mutations)"
+    if [ "$1" != "?" ] && [ -n "$3" ] && [ "$1" = "$3" ]; then
+        echo "       ^^ SELECTED THE LAST EPOCH: this budget BINDS"
+        rc=1
+    fi
 done
 
 echo "Job finished at: $(date)"

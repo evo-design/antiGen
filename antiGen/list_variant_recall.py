@@ -77,7 +77,9 @@ from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 fit_substitution_baseline, load_baselines,
                                 load_checkpoint, positional_marginal_counts,
                                 WhereTimesWhichPredictor)
-from antiGen.load import load_examples, load_pssms
+from antiGen.config import LEGACY_AAS
+from antiGen.load import (load_counts_matrix, load_counts_series,
+                          load_examples, load_pssms)
 from antiGen.models.factory import create_model
 from antiGen.mutation_lists import describe as describe_list, load_mutation_list
 
@@ -153,7 +155,47 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--dataset', default='sc2', choices=sorted(datasets.DATASETS))
-    ap.add_argument('--data-dir', required=True)
+    ap.add_argument('--data-dir', default=None,
+                    help='Legacy layout: examples_cutoff_*.txt beside pssms/. Optional, '
+                         'and omitted entirely for the revised corpus, which names its '
+                         'inputs below instead.')
+    ap.add_argument('--alphabet', default=LEGACY_AAS,
+                    help='Residue alphabet. The default is the 22-token frame every '
+                         'published invocation uses; antiGen-data-revised resolves every '
+                         'site to a real residue, so its arms pass the 20 standard ones.')
+    ap.add_argument('--test-examples', nargs='+', default=None,
+                    help="The corpus holding the variant root and the test window. The "
+                         "revised generator writes the two halves as separate files.")
+    ap.add_argument('--train-examples', nargs='+', default=None,
+                    help='The training pool, for the wild-type reference and the '
+                         'cross-tree baselines.')
+    ap.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
+                    help='Which train/test split to read, for a corpus whose '
+                         'POST_CUTOFF field is a set of cutoff dates.')
+    ap.add_argument('--root-counts', default=None, metavar='TSV',
+                    help="The revised count matrix over the training window, where "
+                         "pssms/root.csv used to be. Fixes the de novo cut.")
+    ap.add_argument('--variant-counts-dir', default=None, metavar='DIR',
+                    help="A directory of counts_<YYYY-MM-DD>.tsv holding the "
+                         "variant-descended sequences observed ON OR AFTER each date. "
+                         "Replaces pssms/<variant>/time_*.csv as the emergence grid; "
+                         "see load_counts_series for the complement that turns one into "
+                         "the other.")
+    ap.add_argument('--common-pool', action='store_true',
+                    help="Score every model against the SAME candidate set: the whole "
+                         "eval range less the query's own residue, with a cell a model "
+                         "cannot score ranked last rather than dropped. Without it the "
+                         "pool is each model's own emission set, so n_valid -- which is "
+                         "this metric's DENOMINATOR -- varies by model and a model that "
+                         "abstains on part of the RBD is scored against a smaller top "
+                         "decile (NOTES s51). The published arm gets this from a "
+                         "rescore_common_pool.py pass instead; passing it here does the "
+                         "same thing in one step, and fig_coguk_list.R refuses a CSV "
+                         "whose n_selected varies.")
+    ap.add_argument('--counts-since', default=None, metavar='YYYY-MM-DD',
+                    help="Drop grid points before this date -- normally the arm's own "
+                         "train/test cutoff, since earlier steps are zero by "
+                         "construction.")
     ap.add_argument('--checkpoint-dir', required=True)
     ap.add_argument('--output-dir', required=True)
     ap.add_argument('--mutation-list', action='append', required=True,
@@ -171,16 +213,29 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    gap_idx, stop_idx = allowed_aas.index('-'), allowed_aas.index('*')
+    # None when the alphabet carries no such column; build_model_gap_stop_mask takes
+    # that and masks nothing, which is the right no-op on a 20-letter frame (NOTES s54).
+    gap_idx = allowed_aas.index('-') if '-' in allowed_aas else None
+    stop_idx = allowed_aas.index('*') if '*' in allowed_aas else None
     print(f"Device: {device}")
 
     variant = args.variant or datasets.default_variant(args.dataset)
-    files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
-    if not files:
-        raise SystemExit(f"No examples_cutoff_*.txt in {args.data_dir}")
-    all_examples = load_examples(files[0], allowed_aas, variant)
+    if args.test_examples or args.train_examples:
+        if not (args.test_examples and args.train_examples):
+            raise SystemExit("--train-examples and --test-examples go together.")
+        all_examples = []
+        for path in list(args.train_examples) + list(args.test_examples):
+            all_examples += load_examples(path, allowed_aas, variant,
+                                          split_date=args.split_date)
+    else:
+        if not args.data_dir:
+            raise SystemExit("--data-dir, or --train-examples with --test-examples.")
+        files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
+        if not files:
+            raise SystemExit(f"No examples_cutoff_*.txt in {args.data_dir}")
+        all_examples = load_examples(files[0], allowed_aas, variant)
     seq_len = len(all_examples[0].aa_idx)
     eval_range = (list(range(seq_len)) if args.eval_range == 'full'
                   else (list(range(seq_len)) if args.dataset in ('flu', 'rsv_a', 'denv2')
@@ -196,7 +251,19 @@ def main():
     print(f"Eval range: {len(eval_range)} positions "
           f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)")
 
-    pssm_root, pssm_variant = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
+    if args.variant_counts_dir or args.root_counts:
+        if not (args.variant_counts_dir and args.root_counts):
+            raise SystemExit("--root-counts and --variant-counts-dir go together: one "
+                             "fixes the de novo cut, the other the emergence grid.")
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+        steps, pssm_variant = load_counts_series(args.variant_counts_dir, allowed_aas,
+                                                 since=args.counts_since)
+        print(f"Emergence grid: {len(steps)} step(s), {steps[0]} .. {steps[-1]}")
+    else:
+        if not args.data_dir:
+            raise SystemExit("--data-dir, or --root-counts with --variant-counts-dir.")
+        pssm_root, pssm_variant = load_pssms(
+            os.path.join(args.data_dir, "pssms"), variant, E)
     if not pssm_variant:
         raise SystemExit("No variant PSSMs: there is no time grid to sweep.")
     pssm_variant_sub = [pv[eval_range, :] for pv in pssm_variant]
@@ -208,6 +275,15 @@ def main():
     wt_idx = root.aa_idx[eval_range]
     wt_keep = torch.ones(len(eval_range), E, dtype=torch.bool)
     wt_keep.scatter_(1, wt_idx.unsqueeze(-1), False)
+
+    # The common candidate pool: every cell of the eval range except the query's own
+    # residue, identical for every model. On a 20-letter alphabet that is 201 x 20 - 201
+    # = 3,819 cells and nothing is excluded for being a gap or a stop, because there are
+    # no such columns to exclude.
+    pool_mask = wt_keep.clone() if args.common_pool else None
+    if pool_mask is not None:
+        print(f"Common candidate pool: {int(pool_mask.sum())} cells for every model "
+              f"(top-{args.qtile:g} = {args.qtile * int(pool_mask.sum()):.1f})")
 
     lists = []
     for item in (args.mutation_list or []):
@@ -250,7 +326,8 @@ def main():
         s = scores_2d.clone().float()
         s[~wt_keep] = float('nan')
         for (label, subset, thr), masks in target_sets.items():
-            for i, (n_targets, n_selected, value) in enumerate(curve(s, masks, args.qtile)):
+            for i, (n_targets, n_selected, value) in enumerate(
+                    curve(s, masks, args.qtile, pool_mask=pool_mask)):
                 rows.append(dict(model=name, list=label, subset=subset, threshold=thr,
                                  step=i, n_targets=n_targets,
                                  n_selected=round(n_selected, 2), value=value))

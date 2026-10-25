@@ -275,3 +275,79 @@ def test_counts_matches_the_legacy_csv_on_the_same_data():
         a = load_counts_matrix(tsv, STANDARD_AAS)
         b, _ = load_pssms(pssm_dir, "V", len(STANDARD_AAS))
         assert torch.equal(a, b)
+
+
+# ── The third dialect: POST_CUTOFF as a SET of cutoffs ──────────────────────────
+# One test tree serves every split date, so the field stopped being a boolean and
+# became the set of cutoffs at or after which a record is a test example. Which split
+# is being read is then the caller's to name.
+
+def _cutoff_set_file(tmp):
+    """The set dialect, 1-indexed. The child is post-cutoff at the two later dates."""
+    return _write(tmp, "\n".join([
+        _record(0, "None", "None", "POST_CUTOFF:", ROOT_SEQ, ["4,E", "10,W"]),
+        _record(1, 0, "A,4,E", "\n".join(["POST_CUTOFF:",
+                                          "2022-01-01,True",
+                                          "2023-01-01,True"]),
+                CHILD_SEQ, ["1,L"]),
+    ]))
+
+
+def test_the_split_date_selects_which_cutoff_is_read():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _cutoff_set_file(tmp)
+        # At a date the child carries, the child is testing and the root is training.
+        ex = load_examples(path, STANDARD_AAS, "none", split_date="2023-01-01")
+        assert [e.is_training for e in ex] == [True, False]
+        # At a date no record carries, every record is in the training window -- which
+        # is the same file read at an earlier split, not a different file.
+        ex = load_examples(path, STANDARD_AAS, "none", split_date="2022-01-01")
+        assert [e.is_training for e in ex] == [True, False]
+
+
+def test_an_empty_cutoff_set_is_training_and_needs_no_date():
+    """Every train arm writes the header with nothing under it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _write(tmp, "\n".join([
+            _record(0, "None", "None", "POST_CUTOFF:", ROOT_SEQ, ["4,E", "10,W"]),
+            _record(1, 0, "A,4,E", "POST_CUTOFF:", CHILD_SEQ, ["1,L"]),
+        ]))
+        ex = load_examples(path, STANDARD_AAS, "none")
+    assert [e.is_training for e in ex] == [True, True]
+
+
+def test_a_non_empty_set_without_a_split_date_is_an_error():
+    """Defaulting would silently pick a split and hand back an empty test pool."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with pytest.raises(ValueError, match="POST_CUTOFF is a SET"):
+            load_examples(_cutoff_set_file(tmp), STANDARD_AAS, "none")
+
+
+def test_a_split_date_the_corpus_does_not_carry_is_an_error():
+    """Otherwise a typo reads every record as training and fails much later."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with pytest.raises(ValueError, match="no record is post-cutoff"):
+            load_examples(_cutoff_set_file(tmp), STANDARD_AAS, "none",
+                          split_date="2023-02-01")
+
+
+def test_an_unused_split_date_on_an_unflagged_file_is_not_an_error():
+    """A train arm passed the run's date must not trip the check above."""
+    with tempfile.TemporaryDirectory() as tmp:
+        ex = load_examples(_revised_file(tmp), STANDARD_AAS, "none",
+                           split_date="2023-01-01")
+    assert [e.is_training for e in ex] == [True, False]
+
+
+def test_the_set_dialect_describes_the_same_tree_as_the_boolean_one():
+    """Read at the date the child carries, the two dialects are one tree."""
+    with tempfile.TemporaryDirectory() as tmp:
+        a = load_examples(_revised_file(tmp), STANDARD_AAS, "none")
+        b = load_examples(_cutoff_set_file(tmp), STANDARD_AAS, "none",
+                          split_date="2023-01-01")
+    assert len(a) == len(b)
+    for x, y in zip(a, b):
+        assert x.is_training == y.is_training
+        assert x.parent_mutation == y.parent_mutation
+        assert torch.equal(x.aa_idx, y.aa_idx)
+        assert torch.equal(x.mat, y.mat)

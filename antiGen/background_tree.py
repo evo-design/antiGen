@@ -224,3 +224,145 @@ def describe(report):
         f"  {report['n_host_cells']} cells hosted in range, "
         f"{report['n_host_events']} host events"
     )
+
+
+def build_backbone_from_examples(examples_path, seq_len, allowed_aas, variant,
+                                 eval_range=None, split_date=None):
+    """Build a :class:`Backbone` from antiGen-data-revised's example corpus.
+
+    WHY NOT A NEXTSTRAIN PARSE. ``build_backbone`` recovers genotypes by replaying
+    per-branch mutation strings onto a reference -- an ancestral reconstruction. The
+    revised corpus already holds the answer: every record IS a genotype, with its parent,
+    the mutation on the branch into it, and the mutations on the branches out of it. Run
+    against the repo's all-time Nextstrain build, the reconstruction disagreed with
+    itself on **191 of 2,308 branch mutations**; reading the corpus removes the
+    reconstruction and that whole class of error.
+
+    THIS IS THE ATTACHED TREE. The published row deliberately used the guide tree BEFORE
+    attachment, because attachment lands ~170k tips on the same backbone and "backgrounds
+    that host this mutation" then partly counts sampling depth. Used here on instruction,
+    and the consequence is real: 23,806 distinct post-cutoff background genotypes carry
+    an RBD child mutation, against the guide tree's ~402.
+
+    **NO TIMES.** The corpus carries no per-node date, so ``node_time`` is NaN and this
+    backbone CANNOT support the published host-vs-time-matched-control contrast.
+    ``background_contrast.py`` refuses that pairing rather than silently matching on NaN;
+    the contrast this backbone is for is ``--reference-query``, which compares a cell's
+    percentile at the genotypes that hosted it against one fixed reference genotype.
+
+    The variant root is always a query, whether or not it hosts anything, so it can serve
+    as that reference.
+    """
+    from antiGen.load import load_examples
+
+    examples = load_examples(examples_path, allowed_aas, variant,
+                             split_date=split_date)
+    in_eval = None if eval_range is None else set(eval_range)
+    n = len(examples)
+
+    # `Example` keeps its PARENT's id but not its own, so the edge list needs record
+    # position to equal EXAMPLE_ID. That holds for every corpus this reads -- the
+    # generators number records densely from 0 in file order -- and is checked rather
+    # than assumed, because a gap would silently rewire the tree: every parent link
+    # past the gap would point one record too far back.
+    parents = np.full(n, -1, dtype=np.int32)
+    for i, e in enumerate(examples):
+        if e.parent_id is None:
+            continue
+        if not 0 <= e.parent_id < n:
+            raise SystemExit(f"{examples_path}: record {i} names parent "
+                             f"{e.parent_id}, outside 0..{n - 1}")
+        if e.parent_id >= i:
+            raise SystemExit(f"{examples_path}: record {i} names parent {e.parent_id}, "
+                             f"which is not earlier in the file -- record position and "
+                             f"EXAMPLE_ID have come apart, so parent links cannot be "
+                             f"resolved by position")
+        parents[i] = e.parent_id
+
+    # DFS numbering, iteratively: the corpus is tens of thousands of records.
+    children = [[] for _ in range(n)]
+    roots = []
+    for i in range(n):
+        (children[parents[i]] if parents[i] >= 0 else roots).append(i)
+    node_in = np.full(n, -1, dtype=np.int32)
+    node_out = np.full(n, -1, dtype=np.int32)
+    counter = 0
+    for r in roots:
+        stack = [(r, False)]
+        while stack:
+            v, closing = stack.pop()
+            if closing:
+                node_out[v] = counter
+                continue
+            node_in[v] = counter
+            counter += 1
+            stack.append((v, True))
+            for c in reversed(children[v]):
+                stack.append((c, False))
+
+    seqs = ["".join(allowed_aas[i] for i in e.aa_idx.tolist()) for e in examples]
+    # parent_mutation is already (pos, alt_idx).
+    branch_muts = [[] if e.parent_mutation is None else [tuple(e.parent_mutation)]
+                   for e in examples]
+
+    # A query is a POST-CUTOFF record that hosts at least one mutation in the eval
+    # range; identical genotypes collapse to one query, as in build_backbone. The
+    # variant root joins them unconditionally so it can be the reference.
+    seq_to_q, query_seq, query_nodes, query_branches = {}, [], [], []
+    node_qidx = np.full(n, -1, dtype=np.int32)
+    hosts = {}
+
+    def ensure_query(i):
+        q = seq_to_q.get(seqs[i])
+        if q is None:
+            q = len(query_seq)
+            seq_to_q[seqs[i]] = q
+            query_seq.append(seqs[i])
+            query_nodes.append([])
+            query_branches.append(0)
+        if node_qidx[i] < 0:
+            node_qidx[i] = q
+            query_nodes[q].append(i)
+        return q
+
+    variant_root_q = -1
+    for i, e in enumerate(examples):
+        if e.is_testing_root:
+            variant_root_q = ensure_query(i)
+    for i, e in enumerate(examples):
+        if e.is_training:
+            continue
+        # Child mutations live in the dense (seq_len, E) count matrix.
+        nz = (e.mat > 0).nonzero()
+        # A repeated (pos, alt) under MUTATIONS_TO_CHILDREN is a COUNT (NOTES s53), and
+        # `mat` holds it. build_backbone increments once per child branch carrying the
+        # cell, so the count is what matches its convention -- not the number of
+        # distinct cells.
+        cells = [(int(p), int(a), float(e.mat[p, a])) for p, a in nz.tolist()
+                 if in_eval is None or int(p) in in_eval]
+        if not cells:
+            continue
+        q = ensure_query(i)
+        query_branches[q] += int(sum(c for _p, _a, c in cells))
+        for pos, alt, cnt in cells:
+            hosts.setdefault((pos, alt), {})
+            hosts[(pos, alt)][i] = hosts[(pos, alt)].get(i, 0) + int(cnt)
+
+    report = dict(
+        tree_json=examples_path, segment="S", seq_len=seq_len,
+        root_time=float("nan"), cutoff=float("nan"), n_nodes=n,
+        n_leaves=sum(1 for i in range(n) if not children[i]),
+        n_mutations=sum(len(m) for m in branch_muts),
+        n_wt_mismatch=0, n_unparsable=0,
+        n_query_nodes=int((node_qidx >= 0).sum()),
+        n_queries=len(query_seq), n_host_cells=len(hosts),
+        n_host_events=sum(sum(d.values()) for d in hosts.values()),
+        times_available=False, variant_root_query=int(variant_root_q),
+    )
+    return Backbone(
+        seq_len=seq_len, allowed_aas=allowed_aas, root_time=float("nan"),
+        cutoff=float("nan"), root_seq=seqs[roots[0]] if roots else seqs[0],
+        node_parent=parents, node_time=np.full(n, np.nan), node_in=node_in,
+        node_out=node_out, node_clade=["" for _ in range(n)], node_qidx=node_qidx,
+        branch_muts=branch_muts, query_seq=query_seq, query_nodes=query_nodes,
+        query_branches=query_branches, hosts=hosts, report=report)

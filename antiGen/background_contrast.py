@@ -94,7 +94,7 @@ import os
 import numpy as np
 
 from antiGen.background_discrimination import rank_fractions
-from antiGen.load import load_pssms
+from antiGen.load import load_counts_matrix, load_pssms
 from antiGen.mutation_lists import load_mutation_list
 
 SUMMARY = "background_summary.csv"
@@ -115,8 +115,22 @@ def read_backbone(background_dir):
 
 
 def build_contrast_sets(manifest, queries, nodes, hosts, window,
-                        min_control_branches=0):
-    """cell -> (host qidx list, control qidx list), under the matching rule."""
+                        min_control_branches=0, reference_query=None):
+    """cell -> (host qidx list, control qidx list), under the matching rule.
+
+    ``reference_query`` replaces the matching rule with ONE fixed control genotype --
+    the BA.2 root, normally. The published rule pairs each host with the genotypes that
+    are close in TIME and unrelated in the tree, which needs per-node dates;
+    antiGen-data-revised's example corpus carries none, so on that substrate the
+    contrast becomes "does the model score this cell higher at the background that
+    actually hosted it than at one fixed reference background".
+
+    That is a weaker question than the published one and should not be read against it:
+    the control is a single sequence rather than a time-matched set, so an idiosyncrasy
+    of the reference moves every cell's contrast the same way instead of averaging out.
+    A cell the reference already carries, or whose only host IS the reference, is
+    dropped -- there is no contrast to take.
+    """
     eval_range = list(range(manifest["eval_range_start1"] - 1, manifest["eval_range_end1"]))
     pos_of = {p: i for i, p in enumerate(eval_range)}
     eval_seq = [q["eval_seq"] for q in queries]
@@ -135,6 +149,25 @@ def build_contrast_sets(manifest, queries, nodes, hosts, window,
         by_cell.setdefault(cell, []).append((int(row["node"]), int(row["qidx"])))
 
     out = {}
+    if reference_query is not None:
+        if not 0 <= reference_query < len(queries):
+            raise SystemExit(f"--reference-query {reference_query} is outside "
+                             f"0..{len(queries) - 1}")
+        for cell, entries in by_cell.items():
+            host_qs = sorted({q for _n, q in entries})
+            col = pos_of[cell[0] - 1]
+            if reference_query in host_qs:
+                continue
+            if eval_seq[reference_query][col] == cell[1]:
+                continue
+            out[cell] = (host_qs, [reference_query], [n for n, _q in entries])
+        return out, eval_range, pos_of
+
+    if np.isnan(node_time).any():
+        raise SystemExit(
+            "this backbone carries no node times, so the published time-matched rule "
+            "cannot be applied to it; use --reference-query")
+
     for cell, entries in by_cell.items():
         host_nodes = [n for n, _q in entries]
         host_qs = sorted({q for _n, q in entries})
@@ -241,13 +274,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--background-dir', required=True)
-    ap.add_argument('--data-dir', required=True, help='for pssms/root.csv (the de novo mask)')
+    ap.add_argument('--data-dir', default=None,
+                    help='for pssms/root.csv (the de novo mask)')
+    ap.add_argument('--root-counts', default=None, metavar='TSV',
+                    help="antiGen-data-revised's count matrix over the training window, "
+                         "where pssms/root.csv used to be. The alphabet is not a flag "
+                         "here: it is read from the background run's manifest, so this "
+                         "cannot disagree with the maps it is masking.")
     ap.add_argument('--output-dir', default=None, help='defaults to --background-dir')
     ap.add_argument('--mutation-list', action='append', default=None, help='LABEL=PATH')
     ap.add_argument('--variant', default='21L (BA.2)')
     ap.add_argument('--window', type=float, default=0.5,
                     help='years; a control must have a node this close to a host node')
     ap.add_argument('--min-controls', type=int, default=10)
+    ap.add_argument('--reference-query', type=int, default=None, metavar='QIDX',
+                    help="Contrast each cell's hosts against ONE fixed control "
+                         "genotype rather than a time-matched set -- the only option "
+                         "on a substrate without dates. The backbone manifest names "
+                         "the variant root's query index.")
     ap.add_argument('--min-control-branches', type=int, default=0,
                     help='require this many post-cutoff child branches of a control, to '
                          'check the result is not a host/control fecundity difference')
@@ -276,9 +320,15 @@ def main():
 
     sets, eval_range, pos_of = build_contrast_sets(manifest, queries, nodes, hosts,
                                                    args.window,
-                                                   args.min_control_branches)
+                                                   args.min_control_branches,
+                                                   args.reference_query)
     seq_len = manifest["seq_len"]
-    pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"), args.variant, E)
+    if args.root_counts:
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+    elif args.data_dir:
+        pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"), args.variant, E)
+    else:
+        raise SystemExit("--data-dir, or --root-counts.")
     seen = (pssm_root > 0).numpy()
 
     # ── Cell sets ───────────────────────────────────────────────────────────

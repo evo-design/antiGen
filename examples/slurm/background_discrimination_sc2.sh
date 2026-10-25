@@ -54,18 +54,36 @@ print(f"preflight OK: torch={torch.__version__} torchvision={torchvision.__versi
       f"transformers={transformers.__version__}")
 PY
 
+# DATA_DIR / CKPT_DIR / TREE_JSON / REF_JSON are env overrides so the 20-letter arm
+# comes off this script rather than a fork. That arm names its corpus explicitly in
+# EXTRA -- --alphabet, --train-examples, --root-counts -- and then DATA_DIR must be
+# EMPTY, since a published --data-dir beside those flags is a path read for nothing
+# (NOTES s53). CONTRAST_ARGS is separate because background_contrast.py takes the
+# corpus too and its flags are not the discrimination pass's.
+DATA_DIR=${DATA_DIR-/home/ivan.specht/antiGen-data/output1}
+CKPT_DIR=${CKPT_DIR:-/large_storage/hielab/ispecht/fitness-inference}
+TREE_JSON=${TREE_JSON:-$REPO/antiGen-data/tree.json}
+REF_JSON=${REF_JSON:-$REPO/antiGen-data/ref.json}
+DATA_ARG=(); [ -n "$DATA_DIR" ] && DATA_ARG=(--data-dir "$DATA_DIR")
+read -r -a CONTRAST_ARGS <<< "${CONTRAST_EXTRA:-}"
+echo "data-dir  = ${DATA_DIR:-<none: named explicitly in EXTRA>}"
+echo "tree/ref  = $TREE_JSON | $REF_JSON"
+echo "ckpt-dir  = $CKPT_DIR"
+echo "out       = $OUT"
+echo "extra     = ${EXTRA[*]}"
+
 python "$REPO/antiGen/background_discrimination.py" \
     --dataset sc2 \
-    --data-dir /home/ivan.specht/antiGen-data/output1 \
-    --tree-json "$REPO/antiGen-data/tree.json" \
-    --ref-json "$REPO/antiGen-data/ref.json" \
-    --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
+    "${DATA_ARG[@]}" \
+    --tree-json "$TREE_JSON" \
+    --ref-json "$REF_JSON" \
+    --checkpoint-dir "$CKPT_DIR" \
     --output-dir "$OUT" \
     --multitree-baselines "${EXTRA[@]}" || exit 1
 
 python "$REPO/antiGen/background_contrast.py" \
     --background-dir "$OUT" \
-    --data-dir /home/ivan.specht/antiGen-data/output1 \
-    --mutation-list coguk="$REPO/coguk.csv"
+    "${DATA_ARG[@]}" \
+    --mutation-list coguk="$REPO/coguk.csv" "${CONTRAST_ARGS[@]}"
 
 echo "Job finished at: $(date)"

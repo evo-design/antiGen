@@ -65,7 +65,8 @@ import numpy as np
 import torch
 
 from antiGen import datasets
-from antiGen.background_tree import build_backbone, describe as describe_backbone
+from antiGen.background_tree import (build_backbone, build_backbone_from_examples,
+                                     describe as describe_backbone)
 from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.eval import (config_label, dataset_of_train_args, discover_checkpoints,
                           peek_checkpoint_meta)
@@ -73,7 +74,8 @@ from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
                                 fit_substitution_baseline, load_baselines,
                                 load_checkpoint, positional_marginal_counts,
                                 WhereTimesWhichPredictor)
-from antiGen.load import load_examples, load_pssms
+from antiGen.config import LEGACY_AAS
+from antiGen.load import load_counts_matrix, load_examples, load_pssms
 from antiGen.models.factory import create_model
 
 def peek_root_example(path):
@@ -316,12 +318,31 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--dataset', default='sc2', choices=sorted(datasets.DATASETS))
-    ap.add_argument('--data-dir', required=True,
+    ap.add_argument('--alphabet', default=LEGACY_AAS,
+                    help='Residue alphabet. The default is the 22-token frame every '
+                         'published invocation uses; the revised corpus passes 20.')
+    ap.add_argument('--train-examples', nargs='+', default=None,
+                    help='The training pool, in place of the data-dir glob. The revised '
+                         'generator writes the corpus halves as separate files.')
+    ap.add_argument('--root-counts', default=None, metavar='TSV',
+                    help="The revised count matrix, where pssms/root.csv used to be.")
+    ap.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
+                    help='Which split to read, for a POST_CUTOFF set corpus.')
+    ap.add_argument('--data-dir', default=None,
                     help='antiGen-data output dir (examples + pssms), for the alphabet, '
                          'sequence length, root PSSM and the training examples the '
                          'factored baselines are fitted on')
-    ap.add_argument('--tree-json', required=True)
-    ap.add_argument('--ref-json', required=True)
+    ap.add_argument('--tree-json', default=None)
+    ap.add_argument('--ref-json', default=None)
+    ap.add_argument('--backbone-examples', default=None, metavar='FILE',
+                    help="Take the backgrounds from antiGen-data-revised's example "
+                         "corpus instead of a Nextstrain tree: every record is already "
+                         "a genotype with its parent and its child mutations, so no "
+                         "ancestral reconstruction runs and there is nothing for it to "
+                         "disagree with. This is the ATTACHED tree, and it carries no "
+                         "dates, so the run it feeds must be contrasted with "
+                         "background_contrast.py --reference-query rather than the "
+                         "published time-matched rule.")
     ap.add_argument('--segment', default='S')
     ap.add_argument('--cutoff', type=float, default=1.0,
                     help="years after the root date, as antiGen-data's CLI takes it")
@@ -344,13 +365,22 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    gap_idx, stop_idx = allowed_aas.index('-'), allowed_aas.index('*')
+    # None when the alphabet has no such column; build_model_gap_stop_mask masks
+    # nothing then, which is the right no-op at 20 letters (NOTES s54).
+    gap_idx = allowed_aas.index('-') if '-' in allowed_aas else None
+    stop_idx = allowed_aas.index('*') if '*' in allowed_aas else None
     print(f"Device: {device}")
 
     variant = args.variant or datasets.default_variant(args.dataset)
-    examples_files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
+    if args.train_examples:
+        examples_files = list(args.train_examples)
+    elif args.data_dir:
+        examples_files = sorted(glob.glob(
+            os.path.join(args.data_dir, "examples_cutoff_*.txt")))
+    else:
+        raise SystemExit("--data-dir, or --train-examples.")
     if not examples_files:
         raise SystemExit(f"No examples_cutoff_*.txt found in {args.data_dir}")
     examples_root = peek_root_example(examples_files[0])
@@ -363,7 +393,8 @@ def main():
     # costs ~19 GB, so it is loaded only when they are asked for.
     training_examples = None
     if args.multitree_baselines:
-        all_examples = load_examples(examples_files[0], allowed_aas, variant)
+        all_examples = load_examples(examples_files[0], allowed_aas, variant,
+                                     split_date=args.split_date)
         training_examples = [e for e in all_examples if e.is_training]
         if "".join(allowed_aas[i] for i in training_examples[0].aa_idx.tolist()) != examples_root:
             raise SystemExit("the root example parsed two ways disagree")
@@ -371,27 +402,42 @@ def main():
           f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)")
 
     # ── The backbone, before attachment ─────────────────────────────────────
-    bb = build_backbone(args.tree_json, args.ref_json, args.segment, seq_len,
-                        allowed_aas, args.cutoff, eval_range=eval_range)
+    if args.backbone_examples:
+        bb = build_backbone_from_examples(args.backbone_examples, seq_len, allowed_aas,
+                                          variant, eval_range=eval_range,
+                                          split_date=args.split_date)
+    else:
+        if not (args.tree_json and args.ref_json):
+            raise SystemExit("--tree-json with --ref-json, or --backbone-examples.")
+        bb = build_backbone(args.tree_json, args.ref_json, args.segment, seq_len,
+                            allowed_aas, args.cutoff, eval_range=eval_range)
     print(describe_backbone(bb.report))
     if bb.report['n_wt_mismatch']:
         raise SystemExit(f"{bb.report['n_wt_mismatch']} branch mutations disagree with "
                          f"the reconstructed parent residue; the reconstruction is wrong")
     # The reference the backbone is grown from must be the sequence antiGen-data put at
     # the root of the examples file; if it is not, every genotype here is off.
-    if bb.root_seq != examples_root:
+    if args.backbone_examples:
+        print("  backbone and corpus are the same file; no reconstruction to check")
+    elif bb.root_seq != examples_root:
         diff = sum(1 for a, b in zip(bb.root_seq, examples_root) if a != b)
         raise SystemExit(f"backbone root genotype differs from the examples root at "
-                         f"{diff} position(s); --ref-json / --tree-json do not match "
-                         f"--data-dir")
+                         f"{diff} position(s); the backbone and the corpus are not the "
+                         f"same tree")
     print("  root genotype matches the examples file's root")
+
     write_backbone(args.output_dir, bb, allowed_aas, eval_range, args)
 
     aa_queries = torch.tensor(
         [[allowed_aas.index(c) for c in seq] for seq in bb.query_seq], dtype=torch.long)
     print(f"Query tensor: {tuple(aa_queries.shape)}")
 
-    pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
+    if args.root_counts:
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+    else:
+        if not args.data_dir:
+            raise SystemExit("--data-dir, or --root-counts.")
+        pssm_root, _ = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
     baseline_subdir = {'flu': 'baselines_flu', 'rsv_a': 'baselines_rsv_a',
                        'denv2': 'baselines_denv2'}.get(args.dataset, 'baselines')
     baseline_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data",

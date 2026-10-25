@@ -38,13 +38,30 @@ import torch, torchvision, transformers
 print(f"preflight OK: torch={torch.__version__} torchvision={torchvision.__version__}")
 PY
 
+# DATA_DIR / CKPT_DIR are env overrides, and EXTRA passes anything else straight
+# through, so the 20-letter arm comes off this script rather than a fork. That arm names
+# its inputs explicitly instead -- --alphabet, --train-examples, --test-examples,
+# --root-counts and --variant-counts-dir, because antiGen-data-revised writes the corpus
+# as two files, its count matrix where pssms/root.csv used to be, and the variant's
+# emergence grid as one dated counts file per split date -- and then DATA_DIR must be
+# EMPTY. Passing the published --data-dir beside those flags would be a path read for
+# nothing, which is the shape of defect NOTES s53 spent a section on.
+DATA_DIR=${DATA_DIR-/home/ivan.specht/antiGen-data/output1}
+CKPT_DIR=${CKPT_DIR:-/large_storage/hielab/ispecht/fitness-inference}
+DATA_ARG=()
+[ -n "$DATA_DIR" ] && DATA_ARG=(--data-dir "$DATA_DIR")
+EXTRA=("$@")
+echo "data-dir = ${DATA_DIR:-<none: named explicitly in EXTRA>}"
+echo "ckpt-dir = $CKPT_DIR"
+echo "extra    = ${EXTRA[*]}"
+
 python "$REPO/antiGen/list_variant_recall.py" \
     --dataset sc2 \
-    --data-dir /home/ivan.specht/antiGen-data/output1 \
-    --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
+    "${DATA_ARG[@]}" \
+    --checkpoint-dir "$CKPT_DIR" \
     --output-dir "$OUTDIR" \
     --qtile "$QTILE" \
     --multitree-baselines \
-    --mutation-list coguk="$REPO/coguk.csv" || exit 1
+    --mutation-list coguk="$REPO/coguk.csv" "${EXTRA[@]}" || exit 1
 
 echo "Job finished at: $(date)"

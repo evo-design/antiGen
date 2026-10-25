@@ -253,6 +253,15 @@ def main():
     ap.add_argument('--test-examples', action='append', default=None, metavar='PATH',
                     help='Examples file(s) to take the TESTING pool from -- only the '
                          'post-cutoff records in them are kept.')
+    ap.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
+                    help="Which train/test split to read, for a corpus whose "
+                         "POST_CUTOFF field is a SET of cutoff dates rather than one "
+                         "boolean (antiGen-data-revised's single test tree, which "
+                         "serves 24 of them). A record is a TEST example exactly when "
+                         "its set carries this date. Required the moment any record "
+                         "carries a non-empty set -- a default would silently pick a "
+                         "split -- and ignored on the train arms, whose sets are all "
+                         "empty.")
     ap.add_argument('--root-counts', default=None, metavar='TSV',
                     help="antiGen-data-revised's positional count matrix over the "
                          "training window, used in place of pssms/root.csv. It is the "
@@ -337,12 +346,14 @@ def main():
                              "one of the two pools would otherwise be empty.")
         training_examples, testing_examples = [], []
         for path in args.train_examples:
-            recs = load_examples(path, allowed_aas, variant)
+            recs = load_examples(path, allowed_aas, variant,
+                                 split_date=args.split_date)
             kept = [e for e in recs if e.is_training]
             print(f"  training pool: kept {len(kept)} of {len(recs)} from {path}")
             training_examples += kept
         for path in args.test_examples:
-            recs = load_examples(path, allowed_aas, variant)
+            recs = load_examples(path, allowed_aas, variant,
+                                 split_date=args.split_date)
             kept = [e for e in recs if not e.is_training]
             print(f"  testing pool: kept {len(kept)} of {len(recs)} from {path}")
             testing_examples += kept
@@ -351,7 +362,8 @@ def main():
         examples_files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
         if not examples_files:
             raise SystemExit(f"No examples_cutoff_*.txt found in {args.data_dir}")
-        all_examples = load_examples(examples_files[0], allowed_aas, variant)
+        all_examples = load_examples(examples_files[0], allowed_aas, variant,
+                                     split_date=args.split_date)
         testing_examples = [e for e in all_examples if not e.is_training]
         training_examples = [e for e in all_examples if e.is_training]
     if not training_examples or not testing_examples:

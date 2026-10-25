@@ -48,6 +48,16 @@ set -o pipefail
 
 REPO=/home/ivan.specht/antiGen
 REV=${REV:-/home/ivan.specht/antiGen-data-revised/output/sc2-2021/train}
+# The corpus by name, because the revised generator stamps the cutoff into the
+# filenames and serves every split date from ONE test tree: TEST is that tree and
+# SPLIT_DATE picks which of its 24 cutoffs is being read (empty for the 2021 arm,
+# whose own test file has the split baked in). Defaults reproduce s56 exactly.
+EXAMPLES=${EXAMPLES:-$REV/examples_2021_cur.txt}
+COUNTS=${COUNTS:-$REV/counts_2021_cur.tsv}
+TEST=${TEST:-/home/ivan.specht/antiGen-data-revised/output/sc2-2021/test/examples_all_cur.txt}
+SPLIT_DATE=${SPLIT_DATE:-}
+SPLIT_ARG=()
+[ -n "$SPLIT_DATE" ] && SPLIT_ARG=(--split-date "$SPLIT_DATE")
 OUT_ROOT=${OUT_ROOT:-/large_storage/hielab/ispecht/fitness-inference/valsel10_aa20}
 STAGE=${STAGE:-/large_storage/hielab/ispecht/fitness-inference/ckpt_stage_vs10_aa20}
 MAPS=${MAPS:-/large_storage/hielab/ispecht/fitness-inference/list_score_maps_aa20}
@@ -76,9 +86,9 @@ echo ""
 echo "=== 2. scoring the $N members into the shared map cache ==="
 python -u "$REPO/antiGen/list_macro.py" \
     --dataset sc2 --alphabet "$ALPHABET" \
-    --train-examples "$REV/examples_2021_cur.txt" \
-    --test-examples /home/ivan.specht/antiGen-data-revised/output/sc2-2021/test/examples_all_cur.txt \
-    --root-counts "$REV/counts_2021_cur.tsv" \
+    --train-examples "$EXAMPLES" \
+    --test-examples "$TEST" "${SPLIT_ARG[@]}" \
+    --root-counts "$COUNTS" \
     --checkpoint-dir "$STAGE" \
     --output-dir "$WORK/members" \
     --dump-scores "$MAPS" \
@@ -104,7 +114,7 @@ PY
 python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
-    --root-counts "$REV/counts_2021_cur.tsv" \
+    --root-counts "$COUNTS" \
     --mutation-list coguk="$REPO/coguk.csv" \
     --members vs10Antigen,simple_d128_n2_lr0.0001 \
     --compare simple_d128_n2_lr0.0001 \

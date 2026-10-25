@@ -145,6 +145,8 @@ apply_paper_defaults()
 ## rather than a fork of it that would drift.
 MACRO_DIR <- getOption("coguk.macro_dir", "data/evals_sc2_lists_macro")
 VARR_DIR  <- getOption("coguk.varr_dir",  "data/evals_sc2_lists_varrecall")
+VARR_X0   <- getOption("coguk.varr_x0", 0.1)   # x of step 0, years into the pandemic
+VARR_DX   <- getOption("coguk.varr_dx", 0.1)   # years per step
 BG_DIR    <- getOption("coguk.bg_dir",    "data/evals_sc2_background")
 FIG_MAIN  <- getOption("coguk.fig_main",  "coguk_list_results")
 FIG_SUPP  <- getOption("coguk.fig_supp",  "coguk_list_supp")
@@ -579,6 +581,26 @@ longform_recall_metrics <- c(
   sprintf("%s, cell-weighted",  DN_NOUN)
 )
 
+## A CUT CAN BE DROPPED, and the reason is arithmetic rather than taste. "De novo" is
+## "absent from the training window", so it shrinks as the cutoff moves later: the
+## CoG-UK list's 247 RBD cells leave 142 de novo at a 2021 cutoff and 21 at a 2023 one,
+## of which 4 are observed in the test window (NOTES s65). Four cells is not a panel,
+## and drawing it would put a bar chart where there is no measurement. Naming the
+## metrics here removes them from the long frame, from the holes report and from the
+## figure's rows, so the figure says three panels rather than six empty-ish ones.
+## Empty by default, so every existing figure is untouched.
+.drop_metrics <- getOption("coguk.drop_metrics", character(0))
+if (length(.drop_metrics) > 0) {
+  if (!all(.drop_metrics %in% RECALL_METRICS))
+    stop("coguk.drop_metrics names a metric that does not exist: ",
+         paste(setdiff(.drop_metrics, RECALL_METRICS), collapse = ", "))
+  .keep <- !(RECALL_METRICS %in% .drop_metrics)
+  if (!any(.keep)) stop("coguk.drop_metrics drops every recall metric")
+  RECALL_METRICS <- RECALL_METRICS[.keep]
+  longform_recall_metrics <- longform_recall_metrics[.keep]
+  cat(sprintf("dropping recall metric(s): %s\n", paste(.drop_metrics, collapse = ", ")))
+}
+
 recall_long <- do.call(rbind, lapply(RECALL_METRICS, function(metric) {
   pooling <- sub("_.*", "", metric)
   variant <- if (grepl("unseen", metric)) paste0("list_", LIST, "_unseen_fullpool")
@@ -627,7 +649,13 @@ if (have_varr) {
     drop_unrequested_valsel(drop_unrequested_mt2021(varr))))
   varr$metric <- paste0(ifelse(varr$threshold == 1, "varr_1", "varr_100"), "_",
                         ifelse(varr$subset == "unseen", "unseen", "all"))
-  varr$x <- (varr$step + 1) / 10
+  ## Step -> x, as a declared mapping rather than a constant. The published variant
+  ## PSSMs are a 0.1-year grid whose first step is 0.1 years into the pandemic, so
+  ## x = (step + 1)/10; antiGen-data-revised's dated count files are QUARTERS whose
+  ## first step is the arm's own train/test cutoff. Both land on the same axis -- years
+  ## into the pandemic -- but only if the origin and the spacing are stated. Defaults
+  ## reproduce the published figure exactly.
+  varr$x <- VARR_X0 + varr$step * VARR_DX
   ## Both references are model-independent, now exactly rather than nearly. They
   ## depend on the model only through N_RBD, which USED to vary by ~10% with the
   ## gap/stop columns a model does not emit -- so these were a median over a band.
@@ -1161,19 +1189,28 @@ varr_bar <- function(metric) {
 #' Assemble one of the two figures: three two-panel rows of recall, then the
 #' BA.2 yield row (a curve beside its summary bars).
 assemble <- function(recall_metrics, varr_metric, bg_metrics) {
+  ## Generic over the number of recall cuts, because one of them can be dropped
+  ## (coguk.drop_metrics). With the published two the widths and labels below are
+  ## exactly what they were; with one, the rows carry a single panel and the
+  ## two-panel width ratios do not apply, so cowplot splits the row evenly.
+  n_rc <- length(recall_metrics)
+  on_y <- c(TRUE, rep(FALSE, n_rc - 1))   # y labels only on the leftmost panel
+  w_curve <- if (n_rc == 2) c(1.06, 1) else NULL
+  w_bar   <- if (n_rc == 2) c(1.9, 1)   else NULL
+  lab <- function(k) LETTERS[k:(k + n_rc - 1)]
   rows <- list(
     legend_grob,
-    plot_grid(plotlist = Map(recall_curve_panel, recall_metrics, c(TRUE, FALSE)),
-              nrow = 1, labels = LETTERS[1:2], rel_widths = c(1.06, 1)),
+    plot_grid(plotlist = Map(recall_curve_panel, recall_metrics, on_y),
+              nrow = 1, labels = lab(1), rel_widths = w_curve),
     plot_grid(plotlist = Map(function(m, f) decile_bar(m, f, recall_metrics),
-                             recall_metrics, c(TRUE, FALSE)),
-              nrow = 1, labels = LETTERS[3:4], rel_widths = c(1.9, 1)),
+                             recall_metrics, on_y),
+              nrow = 1, labels = lab(1 + n_rc), rel_widths = w_bar),
     plot_grid(plotlist = Map(function(m, f) auc_bar(m, f, recall_metrics),
-                             recall_metrics, c(TRUE, FALSE)),
-              nrow = 1, labels = LETTERS[5:6], rel_widths = c(1.9, 1))
+                             recall_metrics, on_y),
+              nrow = 1, labels = lab(1 + 2 * n_rc), rel_widths = w_bar)
   )
   heights <- c(0.14, 1, 1.5, 1.5)
-  next_label <- 7
+  next_label <- 1 + 3 * n_rc
   if (have_varr) {
     for (vm in varr_metric) {
       rows <- c(rows, list(plot_grid(

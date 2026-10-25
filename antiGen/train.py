@@ -80,6 +80,15 @@ def parse_args():
                              'Overrides dataset routing. More than one file trains a single '
                              'model jointly on all of them; each file is one "source" '
                              'phylogeny and may have its own sequence length (esm2 only).')
+    parser.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
+                    help="Which train/test split to read, for a corpus whose "
+                         "POST_CUTOFF field is a SET of cutoff dates rather than one "
+                         "boolean (antiGen-data-revised's single test tree, which "
+                         "serves 24 of them). A record is a TEST example exactly when "
+                         "its set carries this date. Required the moment any record "
+                         "carries a non-empty set -- a default would silently pick a "
+                         "split -- and ignored on the train arms, whose sets are all "
+                         "empty.")
     parser.add_argument('--alphabet', type=str, default=STANDARD_AAS,
                         help=f'Amino-acid alphabet, one character per output column '
                              f'(default: the 20 standard residues, {STANDARD_AAS}). '
@@ -495,7 +504,8 @@ def main():
         if name in examples_by_source:
             raise SystemExit(f"Duplicate source name '{name}' — use NAME=PATH to disambiguate")
         print(f"Loading examples from {path} (source '{name}')...")
-        examples = load_examples(path, allowed_aas, args.variant, source=name)
+        examples = load_examples(path, allowed_aas, args.variant, source=name,
+                                 split_date=args.split_date)
         if args.ignore_dead_ends:
             # Filter before splitting so train and val are drawn from one population.
             examples = [e for e in examples if e.mat.sum() >= 0.5]

@@ -30,6 +30,11 @@ echo "Job started at: $(date) on $(hostname) (job $SLURM_JOB_ID)"
 set -o pipefail
 REPO=/home/ivan.specht/antiGen
 REV=${REV:-/home/ivan.specht/antiGen-data-revised/output/sc2-2021/train}
+# The two corpus files by name, because the revised generator stamps the cutoff into
+# them: a later split is sc2-<D>/train/examples_<D>_cur.txt, not a different directory
+# holding the same filename. Defaults reproduce the 2021 arm exactly.
+EXAMPLES=${EXAMPLES:-$REV/examples_2021_cur.txt}
+COUNTS=${COUNTS:-$REV/counts_2021_cur.tsv}
 MAPS=${MAPS:-/large_storage/hielab/ispecht/fitness-inference/list_score_maps_aa20}
 WORK=${WORK:-/large_storage/hielab/ispecht/fitness-inference/hybrid_arm}
 N=${N:-10}
@@ -43,8 +48,8 @@ echo ""
 echo "=== 1. fit, select w on each holdout, write $N blended maps (+ 2 gate maps) ==="
 python -u "$REPO/antiGen/hybrid_baseline.py" \
     --maps-dir "$MAPS" \
-    --train-examples "$REV/examples_2021_cur.txt" \
-    --root-counts "$REV/counts_2021_cur.tsv" \
+    --train-examples "$EXAMPLES" \
+    --root-counts "$COUNTS" \
     --alphabet "$ALPHABET" \
     --n-splits "$N" --val-frac 0.1 \
     --name-prefix "$PREFIX" --gate \
@@ -110,7 +115,7 @@ PY
 python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
-    --root-counts "$REV/counts_2021_cur.tsv" \
+    --root-counts "$COUNTS" \
     --mutation-list coguk="$REPO/coguk.csv" \
     --members "$PREFIX,where_times_which,pssm_root,simple_d128_n2_lr0.0001" \
     --compare where_times_which,pssm_root,simple_d128_n2_lr0.0001 \
