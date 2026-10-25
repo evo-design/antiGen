@@ -77,12 +77,13 @@ struct Tree {
     int addNode(int par, const std::string& name);
 };
 
-// Reads a Nextstrain v2 dataset and keeps only name / children / S mutations.
+// Reads a Nextstrain v2 dataset and keeps only name / children / <gene> mutations.
 // Mutations beyond maxSite are dropped (maxSite == 0 keeps everything).
-std::vector<RawNode> parseNextstrainTree(const std::string& path, int maxSite = 0);
+std::vector<RawNode> parseNextstrainTree(const std::string& path, const std::string& gene,
+                                         int maxSite = 0);
 
-// Reads the root-sequence sidecar and returns its "S" entry.
-std::string parseRootSequenceS(const std::string& path);
+// Reads the root-sequence sidecar and returns its <gene> entry.
+std::string parseRootSequenceS(const std::string& path, const std::string& gene);
 
 // The input tree, one node per input node, with each leaf's sequence recorded as
 // its diff against rootSeq. `mismatches` collects branches whose from-allele

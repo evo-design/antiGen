@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -36,6 +37,9 @@ const char* kUsage =
     "options:\n"
     "  --tree <path>      Nextstrain v2 dataset JSON (tree, sets, place)\n"
     "  --root-seq <path>  root-sequence sidecar JSON (required)\n"
+    "  --gene <key>       the CDS to read: the root-sequence key and the\n"
+    "                     branch_attrs.mutations key, e.g. 'S' (default), 'E', 'G',\n"
+    "                     'F', 'H'. nSites follows the sidecar entry's length\n"
     "  --out <path>       TSV out: the tree, the allele sets, or the prepared\n"
     "                     sequences\n"
     "  --out-tree <path>  for 'sets' and 'place', also write the tree here\n"
@@ -95,6 +99,7 @@ struct Options {
     std::string command;
     std::string tree;
     std::string rootSeq;
+    std::string gene = "S";  // the CDS to read: root-sequence key and branch_attrs.mutations key
     std::string out;
     std::string outTree;
     std::string outExamples;
@@ -221,7 +226,7 @@ bool needValue(int argc, char** argv, int i, const char* flag, std::string& dst)
 // here is each leaf's sequence, from the mutation path down to it.
 Tree loadTree(const Options& opt, const std::string& rootS, int nSites,
               std::vector<RawNode>* rawOut) {
-    std::vector<RawNode> raw = parseNextstrainTree(opt.tree, nSites);
+    std::vector<RawNode> raw = parseNextstrainTree(opt.tree, opt.gene, nSites);
 
     size_t rawTips = 0, rawEdgesWithMut = 0, rawMutCount = 0, maxDeg = 0;
     for (size_t i = 0; i < raw.size(); ++i) {
@@ -230,7 +235,8 @@ Tree loadTree(const Options& opt, const std::string& rootS, int nSites,
         if (i > 0 && !raw[i].sMut.empty()) ++rawEdgesWithMut;
         if (i > 0) rawMutCount += raw[i].sMut.size();
     }
-    std::printf("S protein    : %zu aa in the sidecar, %d sites kept\n", rootS.size(), nSites);
+    std::printf("%-5s gene    : %zu aa in the sidecar, %d sites kept\n",
+                opt.gene.c_str(), rootS.size(), nSites);
     std::printf("tree         : %zu nodes, %zu tips, %zu edges, largest multifurcation %zu\n",
                 raw.size(), rawTips, raw.size() - 1, maxDeg);
     std::printf("               %zu edges carry S mutations (%zu mutations total); the other\n",
@@ -264,7 +270,7 @@ Tree loadTree(const Options& opt, const std::string& rootS, int nSites,
 }
 
 int runTree(const Options& opt) {
-    std::string rootS = parseRootSequenceS(opt.rootSeq);
+    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene);
     int nSites = sitesOf(rootS);
 
     Tree t = loadTree(opt, rootS, nSites, nullptr);
@@ -287,7 +293,7 @@ int runTree(const Options& opt) {
 }
 
 int runSets(const Options& opt) {
-    std::string rootS = parseRootSequenceS(opt.rootSeq);
+    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene);
     int nSites = sitesOf(rootS);
 
     std::vector<RawNode> raw;
@@ -394,12 +400,15 @@ int runSets(const Options& opt) {
 
 
 int runPrepare(const Options& opt) {
-    const std::string rootS  = parseRootSequenceS(opt.rootSeq);
+    const std::string rootS  = parseRootSequenceS(opt.rootSeq, opt.gene);
     PrepareConfig     cfg;
     cfg.fasta    = opt.fasta;
     cfg.metadata = opt.metadata;
     cfg.nSites   = sitesOf(rootS);
     cfg.rootSeq  = rootS.substr(0, cfg.nSites);
+    // Coverage floor is 90% of the gene length, not a baked SC2 constant
+    // (0.9 * 1273 = 1146 is preserved exactly for spike).
+    cfg.minCovered = static_cast<int>(std::lround(0.9 * cfg.nSites));
     cfg.cutoff   = static_cast<int32_t>(opt.dateCutoff);
     cfg.useClock = !opt.noClock;
     if (opt.clockTol   >= 0) cfg.clockTolMonths = opt.clockTol;
@@ -600,7 +609,7 @@ bool sameSets(const AlleleSets& a, const AlleleSets& b, std::string& why, int& b
 }
 
 int runPlace(const Options& opt) {
-    const std::string rootS  = parseRootSequenceS(opt.rootSeq);
+    const std::string rootS  = parseRootSequenceS(opt.rootSeq, opt.gene);
     const int         nSites = sitesOf(rootS);
 
     std::vector<RawNode> raw;
@@ -833,6 +842,7 @@ int main(int argc, char** argv) {
         bool ok = true;
         if      (a == "--tree")      ok = needValue(argc, argv, i++, "--tree", opt.tree);
         else if (a == "--root-seq")  ok = needValue(argc, argv, i++, "--root-seq", opt.rootSeq);
+        else if (a == "--gene")      ok = needValue(argc, argv, i++, "--gene", opt.gene);
         else if (a == "--out")       ok = needValue(argc, argv, i++, "--out", opt.out);
         else if (a == "--out-tree")  ok = needValue(argc, argv, i++, "--out-tree", opt.outTree);
         else if (a == "--fasta")     ok = needValue(argc, argv, i++, "--fasta", opt.fasta);

@@ -28,7 +28,8 @@ static Mutation parseMutation(const std::string& s) {
 
 // Parses one tree node. The node is appended before its children are read,
 // because Nextstrain writes "children" ahead of "name".
-static int parseNode(JsonReader& r, std::vector<RawNode>& out, int maxSite) {
+static int parseNode(JsonReader& r, std::vector<RawNode>& out, const std::string& gene,
+                     int maxSite) {
     int self = static_cast<int>(out.size());
     out.emplace_back();
 
@@ -37,7 +38,7 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, int maxSite) {
             out[self].name = r.readString();
         } else if (key == "children") {
             forEachElement(r, [&]() {
-                int child = parseNode(r, out, maxSite);
+                int child = parseNode(r, out, gene, maxSite);
                 out[self].children.push_back(child);
             });
         } else if (key == "node_attrs") {
@@ -63,8 +64,8 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, int maxSite) {
         } else if (key == "branch_attrs") {
             forEachMember(r, [&](const std::string& bk) {
                 if (bk != "mutations") { r.skipValue(); return; }
-                forEachMember(r, [&](const std::string& gene) {
-                    if (gene != "S") { r.skipValue(); return; }
+                forEachMember(r, [&](const std::string& g) {
+                    if (g != gene) { r.skipValue(); return; }
                     forEachElement(r, [&]() {
                         Mutation m = parseMutation(r.readString());
                         if (maxSite == 0 || m.site <= maxSite) out[self].sMut.push_back(m);
@@ -78,7 +79,8 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, int maxSite) {
     return self;
 }
 
-std::vector<RawNode> parseNextstrainTree(const std::string& path, int maxSite) {
+std::vector<RawNode> parseNextstrainTree(const std::string& path, const std::string& gene,
+                                         int maxSite) {
     std::string text = readWholeFile(path);
     JsonReader r(text);
     std::vector<RawNode> nodes;
@@ -86,22 +88,22 @@ std::vector<RawNode> parseNextstrainTree(const std::string& path, int maxSite) {
 
     forEachMember(r, [&](const std::string& key) {
         if (key != "tree") { r.skipValue(); return; }
-        parseNode(r, nodes, maxSite);
+        parseNode(r, nodes, gene, maxSite);
         found = true;
     });
     if (!found) throw std::runtime_error("no \"tree\" member in " + path);
     return nodes;
 }
 
-std::string parseRootSequenceS(const std::string& path) {
+std::string parseRootSequenceS(const std::string& path, const std::string& gene) {
     std::string text = readWholeFile(path);
     JsonReader r(text);
     std::string s;
     forEachMember(r, [&](const std::string& key) {
-        if (key == "S") s = r.readString();
+        if (key == gene) s = r.readString();
         else r.skipValue();
     });
-    if (s.empty()) throw std::runtime_error("no \"S\" sequence in " + path);
+    if (s.empty()) throw std::runtime_error("no \"" + gene + "\" sequence in " + path);
     return s;
 }
 
