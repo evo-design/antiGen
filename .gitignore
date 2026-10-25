@@ -85,3 +85,4 @@ experiments/multitree/out/
 # The Bundibugyo build zeroshot_eval.py scores, pulled from Nextstrain like the
 # rest of the trees above.
 recent.json
+antiGen-data-revised/output/

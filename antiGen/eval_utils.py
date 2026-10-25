@@ -285,7 +285,7 @@ class CellDumper:
 
 @torch.no_grad()
 def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
-                        cell_sink=None):
+                        cell_sink=None, mask_gap_stop=False):
     """Validation NLL per observed mutation, overall and per source phylogeny.
 
     ``loaders_by_source`` maps a source name to a DataLoader. Each loader must be
@@ -317,6 +317,14 @@ def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
     aas = model.config.alphabet.amino_acids
     stop_idx = aas.index('*') if '*' in aas else None
     mask_stop = stop_idx is not None and not getattr(model, 'OUTPUTS_LEGITIMATE_STOP', True)
+    # mask_gap_stop (opt-in): mask BOTH gap and stop columns for EVERY model and drop their
+    # target events from the denominator -- recall/NLL over real AA substitutions only.
+    # Default (False): the ORIGINAL behaviour -- mask only the stop column, and only for a
+    # model that does not legitimately emit one (e.g. BLOSUM62); target events are kept.
+    if mask_gap_stop:
+        _mask_idx = [aas.index(c) for c in ('-', '*') if c in aas]
+    else:
+        _mask_idx = [stop_idx] if mask_stop else []
 
     per_source, total_loss, total_n = {}, 0.0, 0.0
     for name, loader in loaders_by_source.items():
@@ -329,6 +337,9 @@ def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
             target_batch = target_batch.to(device)
             seq_len = aa_batch.shape[1]
             logits = model(aa_batch).float()
+            if mask_gap_stop and _mask_idx:     # opt-in only: drop gap/stop target events
+                target_batch = target_batch.clone()
+                target_batch[:, :, _mask_idx] = 0
             probs = compute_probs(logits, target_batch, aa_batch)
             batch_loss, _ = compute_loss_full(probs, target_batch)
             loss_sum += batch_loss.item()
@@ -349,8 +360,8 @@ def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
                 cell_sink(name, normalized)
 
             scores = logits.clone()
-            if mask_stop:
-                scores[:, :, stop_idx] = float('nan')
+            for _c in _mask_idx:                # gap/stop are not rankable candidates
+                scores[:, :, _c] = float('nan')
             full_range = list(range(seq_len))
             for q in qtiles:
                 n_hits, _ = compute_hit_rate(scores, target_batch, aa_batch,
@@ -503,9 +514,17 @@ class WhereTimesWhichPredictor(BaseFitnessPredictor):
 
 
 @torch.no_grad()
-def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
-    """NLL per mutation and hit rates of a fixed ``(seq_len, vocab)`` score map."""
+def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25),
+                      mask_gap_stop=False, alphabet=ALLOWED_AAS):
+    """NLL per mutation and hit rates of a fixed ``(seq_len, vocab)`` score map.
+
+    Gap/stop columns are dropped from the ranking and sentinel target events from the
+    count, matching validate_per_source, so baselines and the model are scored over the
+    same real-residue cells.
+    """
     log_map = torch.log(score_map.to(device))
+    _mask_idx = ([alphabet.index(c) for c in ('-', '*') if c in alphabet]
+                 if mask_gap_stop and score_map.shape[-1] == len(alphabet) else [])
     loss_sum = n_mutations = 0.0
     hits = {q: 0.0 for q in qtiles}
     example_loss, example_n = [], []
@@ -513,6 +532,9 @@ def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
         aa_batch = aa_batch.to(device)
         target_batch = target_batch.to(device)
         logits = log_map.unsqueeze(0).expand(aa_batch.shape[0], -1, -1).contiguous()
+        if _mask_idx:                           # drop gap/stop target events from counts
+            target_batch = target_batch.clone()
+            target_batch[:, :, _mask_idx] = 0
         probs = compute_probs(logits, target_batch, aa_batch)
         batch_loss, _ = compute_loss_full(probs, target_batch)
         loss_sum += batch_loss.item()
@@ -526,9 +548,14 @@ def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
             (-(target_batch * torch.log(normalized))).sum(dim=(1, 2)).tolist())
         example_n.extend(target_batch.sum(dim=(1, 2)).tolist())
 
+        scores = logits
+        if _mask_idx:                           # gap/stop not rankable candidates
+            scores = logits.clone()
+            for _c in _mask_idx:
+                scores[:, :, _c] = float('nan')
         full_range = list(range(aa_batch.shape[1]))
         for q in qtiles:
-            n_hits, _ = compute_hit_rate(logits, target_batch, aa_batch,
+            n_hits, _ = compute_hit_rate(scores, target_batch, aa_batch,
                                          qtile=q, eval_range=full_range)
             hits[q] += n_hits
     return {

@@ -36,6 +36,9 @@ class ModelType(str, Enum):
     PSSM = "pssm"  # Per-position log(count+1) from variant-root PSSM (no training)
     CODON = "codon"  # Genetic-code single-nucleotide accessibility (no training)
     SUBSTITUTION = "substitution"  # Learned codon x BLOSUM62 log-linear mixture (5 params)
+    CODON_BLOSUM = "codon_blosum"  # BLOSUM62 x codon accessibility x mutability (no training)
+    SITE_PROPENSITY = "site_propensity"  # per-virus substitution matrix x per-position scalar (counted)
+    COUNTED_PSSM = "counted_pssm"  # event-count PSSM + Dirichlet backoff + optional recency (counted)
     EVCOUPLINGS = "evcouplings"  # EVcouplings mean-field DCA (no training)
     EVE = "eve"  # EVE VAE (pre-train on MSA, optional finetune)
     TRANCEPTION = "tranception"  # Tranception autoregressive LM (pre-train on MSA, optional finetune)
@@ -259,6 +262,103 @@ class PSSMConfig:
 
 
 @dataclass(frozen=True)
+class CodonBlosumConfig:
+    """Configuration for the codon-corrected BLOSUM62 baseline.
+
+    Every ingredient is external (BLOSUM62, the standard genetic code, PAM30-derived mutability),
+    so this predictor is training-free and virus-agnostic exactly like BLOSUM62 -- the defaults are
+    not fitted to any antiGen dataset and should not be tuned per virus without saying so.
+
+    Attributes:
+        kappa: transition:transversion weighting in the codon term.
+        epsilon: uniform floor so non-codon-adjacent substitutions are unlikely, not impossible.
+        w_blosum: exponent on the BLOSUM62 exchangeability term.
+        w_codon: exponent on the codon-accessibility term.
+        use_mutability: include a per-residue relative-mutability term. OFF by default, and
+            deliberately so -- see the module docstring of codon_blosum_fitness_predictor. In
+            short: BLOSUM62 already encodes mutability in its diagonal, which this predictor
+            discards by row-conditioning, and re-adding it from PAM30 mixes two external sources
+            that rank residues differently (Spearman 0.54; they disagree sharply on Gly and His).
+            Keeping it off leaves the baseline single-sourced: BLOSUM62 plus one mechanistic
+            correction.
+    """
+    kappa: float = 4.0
+    epsilon: float = 0.05
+    w_blosum: float = 1.0
+    w_codon: float = 1.0
+    use_mutability: bool = False
+
+
+@dataclass(frozen=True)
+class SitePropensityConfig:
+    """Smoothing for the substitution-matrix x position-propensity baseline.
+
+    Both factors are counted off ONE virus's TRAINING split, so unlike CodonBlosumConfig these
+    numbers are fitted per virus and the defaults are a smoothing choice, not an external constant.
+
+    Attributes:
+        alpha_matrix: add-alpha pseudocount on every off-diagonal cell of the (E, E) substitution
+            matrix. A wild-type residue never seen mutating gets a uniform row rather than an
+            all-zero one.
+        alpha_position: add-alpha pseudocount on the per-position mutation total. This is the
+            consequential one: with 0 a column that never moved in training becomes impossible
+            (log 0 = -inf) and the flattened softmax in eval assigns it exactly zero probability,
+            which is far stronger than the evidence supports. At 1.0 such a column is merely the
+            least likely. Typical virus: ~500 columns and a few thousand events, so 1.0 is a mild
+            prior worth roughly one observation per column.
+    """
+    alpha_matrix: float = 1.0
+    alpha_position: float = 1.0
+
+
+@dataclass(frozen=True)
+class CountedPSSMConfig:
+    """Knobs for the event-count PSSM with a Dirichlet backoff prior and recency decay.
+
+    All five are per-virus FITTING choices, not external constants, so ``compute_run_prefix``
+    encodes kappa, halflife and the time axis: two arms differing only in shrinkage or decay must
+    stay distinct eval rows rather than collapsing onto one. See
+    ``models/counted_pssm_fitness_predictor`` for the estimator; in short::
+
+        q(i, a | x) = (N[i,a] + kappa * s_i * M[x_i,a]) / (N_total + kappa)
+
+    Attributes:
+        kappa_mode: which Dirichlet factorisation. ``"joint"`` puts ONE Dirichlet on the whole
+            ``(L, E)`` simplex; because its prior mass on a column is ``kappa * s_i`` with
+            ``s_i`` proportional to that column's event count, the shrinkage weight
+            ``n_i/(n_i + kappa*s_i)`` works out the SAME for every column and the estimator is
+            algebraically fixed-lambda (Jelinek-Mercer) interpolation. ``"per_column"`` is the
+            hierarchical (Dirichlet-tree) factorisation -- one Dirichlet over columns and one
+            over residues WITHIN each column, each column getting the same ``kappa`` rather than
+            a share of it -- so the weight ``n_i/(n_i + kappa)`` varies by column and a
+            well-observed column trusts its own counts. Note ``kappa`` changes units between the
+            two (events against ``N_total`` vs against ``n_i``), hence a separate grid.
+        kappa: prior events' worth of confidence in the rank-1 backoff model ``s_i * M[x,a]``.
+            0 is the smoothed raw count PSSM; large values converge on ``site_propensity``
+            exactly. Read it against the arm's event total -- ``kappa = N_total`` weights data and
+            prior equally. The string ``"auto"`` selects it on an inner temporal holdout of the
+            TRAINING split (never on TESTING).
+        halflife: recency halflife in units of ``time_axis``. 0 means no decay. ``"auto"``
+            selects it on the same inner holdout, over a grid expressed as fractions of the
+            training time span so one grid serves every virus.
+        time_axis: ``"date"`` (the record's TIME line, years since the tree root -- the quantity
+            the TRAINING/TESTING cutoff itself uses) or ``"depth"`` (root-to-example mutation
+            depth, a clock-dependent proxy available on builds predating the TIME line).
+        alpha_matrix, alpha_position: add-alpha smoothing on the two backoff factors, with the
+            same meaning and defaults as ``SitePropensityConfig``'s, so the ``kappa -> inf``
+            limit reproduces that model rather than something near it.
+        inner_frac: share of the TRAINING split, latest-by-time, held out for ``"auto"``.
+    """
+    kappa: float | str = 0.0
+    kappa_mode: str = "joint"
+    halflife: float | str = 0.0
+    time_axis: str = "date"
+    alpha_matrix: float = 1.0
+    alpha_position: float = 1.0
+    inner_frac: float = 0.2
+
+
+@dataclass(frozen=True)
 class GatedFitnessConfig:
     """Configuration for a gated mixture of two fitness predictors.
 
@@ -302,6 +402,9 @@ class ModelConfig:
     codon: CodonConfig = field(default_factory=CodonConfig)
     substitution: SubstitutionConfig = field(default_factory=SubstitutionConfig)
     gated: GatedFitnessConfig = field(default_factory=GatedFitnessConfig)
+    codon_blosum: CodonBlosumConfig = field(default_factory=CodonBlosumConfig)
+    site_propensity: SitePropensityConfig = field(default_factory=SitePropensityConfig)
+    counted_pssm: CountedPSSMConfig = field(default_factory=CountedPSSMConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to dictionary for checkpoint storage."""
@@ -373,6 +476,26 @@ class ModelConfig:
             "pssm": {
                 "path": self.pssm.path,
                 "data_dir": self.pssm.data_dir,
+            },
+            "site_propensity": {
+                "alpha_matrix": self.site_propensity.alpha_matrix,
+                "alpha_position": self.site_propensity.alpha_position,
+            },
+            "counted_pssm": {
+                "kappa": self.counted_pssm.kappa,
+                "kappa_mode": self.counted_pssm.kappa_mode,
+                "halflife": self.counted_pssm.halflife,
+                "time_axis": self.counted_pssm.time_axis,
+                "alpha_matrix": self.counted_pssm.alpha_matrix,
+                "alpha_position": self.counted_pssm.alpha_position,
+                "inner_frac": self.counted_pssm.inner_frac,
+            },
+            "codon_blosum": {
+                "kappa": self.codon_blosum.kappa,
+                "epsilon": self.codon_blosum.epsilon,
+                "w_blosum": self.codon_blosum.w_blosum,
+                "w_codon": self.codon_blosum.w_codon,
+                "use_mutability": self.codon_blosum.use_mutability,
             },
             "gated": {
                 "partner_a_type": self.gated.partner_a_type,
@@ -452,6 +575,29 @@ class ModelConfig:
             data_dir=pssm_dict.get("data_dir"),
         )
 
+        sp_dict = d.get("site_propensity", {})
+        site_propensity_config = SitePropensityConfig(
+            alpha_matrix=sp_dict.get("alpha_matrix", 1.0),
+            alpha_position=sp_dict.get("alpha_position", 1.0),
+        )
+        cp_dict = d.get("counted_pssm", {})
+        counted_pssm_config = CountedPSSMConfig(
+            kappa=cp_dict.get("kappa", 0.0),
+            kappa_mode=cp_dict.get("kappa_mode", "joint"),
+            halflife=cp_dict.get("halflife", 0.0),
+            time_axis=cp_dict.get("time_axis", "date"),
+            alpha_matrix=cp_dict.get("alpha_matrix", 1.0),
+            alpha_position=cp_dict.get("alpha_position", 1.0),
+            inner_frac=cp_dict.get("inner_frac", 0.2),
+        )
+        cb_dict = d.get("codon_blosum", {})
+        codon_blosum_config = CodonBlosumConfig(
+            kappa=cb_dict.get("kappa", 4.0),
+            epsilon=cb_dict.get("epsilon", 0.05),
+            w_blosum=cb_dict.get("w_blosum", 1.0),
+            w_codon=cb_dict.get("w_codon", 1.0),
+            use_mutability=cb_dict.get("use_mutability", True),
+        )
         gated_dict = d.get("gated", {})
         gated_config = GatedFitnessConfig(
             partner_a_type=gated_dict.get("partner_a_type", "fitness_predictor"),
@@ -472,6 +618,9 @@ class ModelConfig:
             codon=codon_config,
             substitution=substitution_config,
             gated=gated_config,
+            codon_blosum=codon_blosum_config,
+            site_propensity=site_propensity_config,
+            counted_pssm=counted_pssm_config,
         )
 
 

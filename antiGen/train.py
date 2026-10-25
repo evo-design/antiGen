@@ -140,6 +140,24 @@ def parse_args():
                              'checkpoint is not the best one for any single tree; this '
                              'is what the per-tree epoch rule needs. Selection uses '
                              'validation data only, exactly as --save-best does.')
+    parser.add_argument('--mask-gap-stop', action='store_true',
+                        help='Mask gap/stop columns in validation metrics (drop them as '
+                             'candidate cells and sentinel target events). Off by default; '
+                             'the forecast arms pass it so val recall@10 matches the masked '
+                             'test metric.')
+    parser.add_argument('--save-every-epoch', action='store_true',
+                        help='Also save a checkpoint at EVERY epoch as '
+                             'fitness_<prefix>_epoch<N>.pt, for per-epoch test scoring / '
+                             'val-vs-test correspondence and seed ensembling.')
+    parser.add_argument('--select-metric', choices=['nll_pooled', 'recall10_macro'],
+                        default='nll_pooled',
+                        help="Checkpoint-selection objective for --save-best / "
+                             "--save-best-per-source. 'nll_pooled' (default) keeps the "
+                             "original mutation-count-weighted pooled validation NLL. "
+                             "'recall10_macro' selects the epoch with the highest "
+                             "recall@10%% MACRO-averaged across sources (every tree "
+                             "weighted equally), and per source its own best recall@10%%. "
+                             "Requires 0.1 in --val-qtiles.")
     parser.add_argument('--experiment', type=str, default=None,
                         help='Free-text tag marking an experimental arm; recorded in the '
                              'manifest and train_args, and skipped by antiGen-eval unless it '
@@ -837,9 +855,9 @@ def main():
             where = where_only_baseline_scores(
                 train_by_source[name], seq_len_by_source[name], E)
             baseline_metrics[name] = {
-                'frequency': fixed_map_metrics(counts, loader, device,
+                'frequency': fixed_map_metrics(counts, loader, device, mask_gap_stop=args.mask_gap_stop,
                                                qtiles=tuple(args.val_qtiles)),
-                'where_only': fixed_map_metrics(where, loader, device,
+                'where_only': fixed_map_metrics(where, loader, device, mask_gap_stop=args.mask_gap_stop,
                                                 qtiles=tuple(args.val_qtiles)),
             }
         # Learned substitution matrix (codon x BLOSUM62, 25 free scalars) fitted on each
@@ -848,7 +866,7 @@ def main():
         for name, loader in (val_loaders.items()
                              if args.model_type != 'substitution' else ()):
             fitted = fit_substitution_baseline(train_by_source[name], device, allowed_aas)
-            scored = validate_per_source(fitted, {name: loader}, device,
+            scored = validate_per_source(fitted, {name: loader}, device, mask_gap_stop=args.mask_gap_stop,
                                          qtiles=tuple(args.val_qtiles))
             baseline_metrics[name]['substitution'] = scored['per_source'][name]
             baseline_metrics[name]['substitution']['params'] = {
@@ -865,7 +883,7 @@ def main():
                 positional_marginal_counts(train_by_source[name],
                                            seq_len_by_source[name], E),
                 fitted).to(device)
-            factored_val = validate_per_source(factored, {name: loader}, device,
+            factored_val = validate_per_source(factored, {name: loader}, device, mask_gap_stop=args.mask_gap_stop,
                                                qtiles=tuple(args.val_qtiles))
             baseline_metrics[name]['where_times_which'] = \
                 factored_val['per_source'][name]
@@ -880,13 +898,13 @@ def main():
                             codon=CodonConfig(kappa=args.codon_kappa,
                                               pseudocount=args.codon_pseudocount)),
                 device)
-            codon_val = validate_per_source(codon_model, val_loaders, device,
+            codon_val = validate_per_source(codon_model, val_loaders, device, mask_gap_stop=args.mask_gap_stop,
                                             qtiles=tuple(args.val_qtiles))
             for name, stats in codon_val['per_source'].items():
                 baseline_metrics[name]['codon'] = stats
             del codon_model
         if val_loaders:
-            zero_shot = validate_per_source(model, val_loaders, device,
+            zero_shot = validate_per_source(model, val_loaders, device, mask_gap_stop=args.mask_gap_stop,
                                             qtiles=tuple(args.val_qtiles))
             print("Zero-shot (before any optimizer step):")
             _print_validation(zero_shot, baseline_metrics, sources)
@@ -940,7 +958,7 @@ def main():
 
             if val_loaders:
                 dumper = CellDumper() if args.dump_cells else None
-                val = validate_per_source(model, val_loaders, device,
+                val = validate_per_source(model, val_loaders, device, mask_gap_stop=args.mask_gap_stop,
                                           qtiles=tuple(args.val_qtiles),
                                           cell_sink=dumper)
                 _print_validation(val, baseline_metrics, sources)
@@ -957,9 +975,28 @@ def main():
                 # sources peak at different epochs, so the pooled checkpoint above is
                 # not the best one for any particular tree. Selection still uses only
                 # validation data, so this is as causally clean as --save-best.
+                # Selection objective (lower is better for both). For recall10_macro the
+                # per-source key is 1 - recall@10 and the pooled key is its MACRO mean
+                # across sources (every tree equal); the recorded hit_rate curve is
+                # untouched, so recall stays readable from the logs.
+                if args.select_metric == 'recall10_macro':
+                    _probe = next(iter(val['per_source'].values()))['hit_rate']
+                    if '0.1' not in _probe:
+                        raise SystemExit("--select-metric recall10_macro needs 0.1 in "
+                                         "--val-qtiles")
+                    per_src_sel = {s: 1.0 - st['hit_rate']['0.1']
+                                   for s, st in val['per_source'].items()}
+                    pooled_sel = sum(per_src_sel.values()) / max(len(per_src_sel), 1)
+                    sel_desc = 'macro(1-recall@10)'
+                else:
+                    per_src_sel = {s: st['nll_per_mutation']
+                                   for s, st in val['per_source'].items()}
+                    pooled_sel = val['overall']['nll_per_mutation']
+                    sel_desc = 'pooled NLL/mut'
+
                 if args.save_best_per_source:
                     for src, stats in val['per_source'].items():
-                        s_nll = stats['nll_per_mutation']
+                        s_nll = per_src_sel[src]
                         if s_nll < best_val_nll_by_source.get(src, float('inf')):
                             best_val_nll_by_source[src] = s_nll
                             best_epoch_by_source[src] = epoch
@@ -971,7 +1008,7 @@ def main():
                                 os.path.join(args.output_dir,
                                              f"fitness_{run_prefix}_best_{src}.pt"))
 
-                pooled = val['overall']['nll_per_mutation']
+                pooled = pooled_sel
                 improved = pooled < best_val_nll
                 if improved:
                     best_val_nll, best_epoch = pooled, epoch
@@ -981,13 +1018,20 @@ def main():
                                              seq_len_by_source, source_summary, epoch,
                                              global_step, avg_train_loss, None),
                             best_path)
-                        print(f"  New best pooled val NLL {pooled:.8f}; "
+                        print(f"  New best {sel_desc} {pooled:.8f}; "
                               f"saved {best_path}")
                     if dumper is not None:
                         n_bytes = dumper.save(cells_path, epoch=epoch,
                                               nll_per_mutation=pooled)
                         print(f"  Dumped per-cell maps for epoch {epoch} to "
                               f"{cells_path} ({n_bytes / 1e6:.1f} MB uncompressed)")
+                if getattr(args, 'save_every_epoch', False):
+                    torch.save(
+                        build_checkpoint(model, model_config, args, run_prefix,
+                                         seq_len_by_source, source_summary, epoch,
+                                         global_step, avg_train_loss, None),
+                        os.path.join(args.output_dir,
+                                     f"fitness_{run_prefix}_epoch{epoch}.pt"))
                 del dumper
 
             if args.max_batches is not None and global_step >= args.max_batches:

@@ -54,6 +54,15 @@ def create_model(
     elif config.model_type == ModelType.PSSM:
         from antiGen.models.pssm_fitness_predictor import PSSMFitnessPredictor
         model = PSSMFitnessPredictor(config)
+    elif config.model_type == ModelType.CODON_BLOSUM:
+        from antiGen.models.codon_blosum_fitness_predictor import CodonBLOSUMFitnessPredictor
+        model = CodonBLOSUMFitnessPredictor(config)
+    elif config.model_type == ModelType.SITE_PROPENSITY:
+        from antiGen.models.site_propensity_fitness_predictor import SitePropensityFitnessPredictor
+        model = SitePropensityFitnessPredictor(config)
+    elif config.model_type == ModelType.COUNTED_PSSM:
+        from antiGen.models.counted_pssm_fitness_predictor import CountedPSSMFitnessPredictor
+        model = CountedPSSMFitnessPredictor(config)
     elif config.model_type == ModelType.EVCOUPLINGS:
         from antiGen.models.evcouplings_fitness_predictor import EVcouplingsFitnessPredictor
         model = EVcouplingsFitnessPredictor(config)
