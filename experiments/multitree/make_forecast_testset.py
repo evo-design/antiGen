@@ -41,8 +41,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_tree_examples import (apply_mutations, build_reference,          # noqa: E402
-                                load_json_maybe_gzip, parse_mutations)
+from make_tree_examples import (ALLOWED, STANDARD_AA, apply_mutations,      # noqa: E402
+                                build_reference, load_json_maybe_gzip, parse_mutations)
 
 
 def decimal_year(date_str):
@@ -55,16 +55,16 @@ def node_date(node):
     return nd.get("value") if isinstance(nd, dict) else None
 
 
-def reconstruct(tree_json, ref_seq, genes, offsets, seq_len, stats):
+def reconstruct(tree_json, ref_seq, genes, offsets, seq_len, stats, allowed=ALLOWED):
     """Genotype at every node: the reference with each branch's mutations applied down."""
     seq = {id(tree_json): apply_mutations(
-        ref_seq, parse_mutations(tree_json, genes, offsets, seq_len, stats),
+        ref_seq, parse_mutations(tree_json, genes, offsets, seq_len, stats, allowed),
         tree_json.get("name", "ROOT"), stats)}
     stack = [tree_json]
     while stack:
         node = stack.pop()
         for child in node.get("children", ()):
-            muts = parse_mutations(child, genes, offsets, seq_len, stats)
+            muts = parse_mutations(child, genes, offsets, seq_len, stats, allowed)
             seq[id(child)] = apply_mutations(seq[id(node)], muts,
                                              child.get("name", "?"), stats)
             stack.append(child)
@@ -72,7 +72,7 @@ def reconstruct(tree_json, ref_seq, genes, offsets, seq_len, stats):
 
 
 def post_cutoff_branches(tree_json, genes, offsets, seq_len, cutoff, stats,
-                         window="all"):
+                         window="all", allowed=ALLOWED):
     """(parent, child, [(pos, alt)]) for branches in the testing window.
 
     ``window="all"`` -- every branch whose CHILD postdates D. This is the testing
@@ -100,7 +100,7 @@ def post_cutoff_branches(tree_json, genes, offsets, seq_len, cutoff, stats,
             pd, cd = node_date(parent), node_date(node)
             if cd is not None and cd > cutoff and (
                     window == "all" or (pd is not None and pd <= cutoff)):
-                muts = parse_mutations(node, genes, offsets, seq_len, stats)
+                muts = parse_mutations(node, genes, offsets, seq_len, stats, allowed)
                 if muts:
                     out.append((parent, node, [(pos, to) for _, pos, to in muts]))
         for child in node.get("children", ()):
@@ -108,13 +108,13 @@ def post_cutoff_branches(tree_json, genes, offsets, seq_len, cutoff, stats,
     return out
 
 
-def snapshot_substitutions(tree_json, genes, offsets, seq_len, stats):
+def snapshot_substitutions(tree_json, genes, offsets, seq_len, stats, allowed=ALLOWED):
     """Every (pos, alt) seen anywhere in the snapshot -- the novelty reference."""
     seen = set()
     stack = [tree_json]
     while stack:
         node = stack.pop()
-        for _, pos, to in parse_mutations(node, genes, offsets, seq_len, stats):
+        for _, pos, to in parse_mutations(node, genes, offsets, seq_len, stats, allowed):
             seen.add((pos, to))
         stack.extend(node.get("children", ()))
     return seen
@@ -134,6 +134,10 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--strip-trailing-stop", action="store_true")
     p.add_argument("--ambiguous-ref", choices=["error", "gap"], default="error")
+    p.add_argument("--drop-gap-stop", action="store_true",
+                   help="Drop targets/mutations to-or-from gap ('-') or stop ('*'), so "
+                        "the test denominator and the novelty reference match the attach "
+                        "arm (which never emits gap/stop). Eval masks these anyway.")
     p.add_argument("--window", choices=["all", "crossing"], default="all",
                    help="Which post-D branches are the test set. 'all' (default) is "
                         "every branch whose child postdates D -- the testing window. "
@@ -173,11 +177,13 @@ def main(argv=None):
 
     stats = {"malformed": 0, "ambiguous": 0, "out_of_range": 0, "from_mismatch": 0}
 
-    seq = reconstruct(cur_json["tree"], cur_ref, args.genes, offsets, seq_len, stats)
+    allowed = STANDARD_AA if args.drop_gap_stop else ALLOWED
+    seq = reconstruct(cur_json["tree"], cur_ref, args.genes, offsets, seq_len, stats,
+                      allowed)
     known = snapshot_substitutions(snap_json["tree"], args.genes, snap_offsets,
-                                   seq_len, stats)
+                                   seq_len, stats, allowed)
     branches = post_cutoff_branches(cur_json["tree"], args.genes, offsets, seq_len,
-                                    cutoff, stats, window=args.window)
+                                    cutoff, stats, window=args.window, allowed=allowed)
 
     # One example per crossing-branch parent: several children of one parent can each
     # cross D, and the examples format already carries several targets per query.

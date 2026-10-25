@@ -36,6 +36,10 @@ import urllib.request
 
 ALPHABET = "ACDEFGHIKLMNPQRSTVWY*-"
 ALLOWED = frozenset(ALPHABET)
+# The 20 standard residues only. With --drop-gap-stop, gap/stop mutations are dropped
+# exactly as X/ambiguity already are, so the no-attach arm's targets match the attach
+# arm (antiGen-data-revised treats gap/stop/X as missing data and never emits them).
+STANDARD_AA = frozenset("ACDEFGHIKLMNPQRSTVWY")
 
 
 # ── Input ─────────────────────────────────────────────────────────────────────
@@ -108,12 +112,13 @@ class Node:
         self.example_id = None
 
 
-def parse_mutations(node_json, genes, offsets, seq_len, stats):
+def parse_mutations(node_json, genes, offsets, seq_len, stats, allowed=ALLOWED):
     """Translate this branch's per-segment mutations into concatenated 0-based coords.
 
     Mutations that fall outside the sequence (e.g. the stop-codon position after
-    ``--strip-trailing-stop``) or that involve a character outside the antiGen alphabet
-    (``X``, ambiguity codes) are dropped, as in ``build_tree`` (main.cpp:159-195).
+    ``--strip-trailing-stop``) or that involve a character outside ``allowed``
+    (``X``, ambiguity codes -- and, when ``allowed`` is ``STANDARD_AA``, gaps and
+    stops too) are dropped, as in ``build_tree`` (main.cpp:159-195).
     """
     muts = []
     by_segment = node_json.get("branch_attrs", {}).get("mutations", {})
@@ -125,7 +130,7 @@ def parse_mutations(node_json, genes, offsets, seq_len, stats):
             except ValueError:
                 stats["malformed"] += 1
                 continue
-            if frm not in ALLOWED or to not in ALLOWED:
+            if frm not in allowed or to not in allowed:
                 stats["ambiguous"] += 1
                 continue
             idx = offsets[gene] + pos - 1
@@ -136,11 +141,11 @@ def parse_mutations(node_json, genes, offsets, seq_len, stats):
     return muts
 
 
-def parse_tree(tree_json, genes, offsets, seq_len, stats):
+def parse_tree(tree_json, genes, offsets, seq_len, stats, allowed=ALLOWED):
     """Build the Node tree iteratively (the ncov tree is deep enough to blow the
     recursion limit)."""
     root = Node(tree_json.get("name", "ROOT"),
-                parse_mutations(tree_json, genes, offsets, seq_len, stats))
+                parse_mutations(tree_json, genes, offsets, seq_len, stats, allowed))
     stack = [(tree_json, root)]
     n_nodes = 0
     while stack:
@@ -148,7 +153,7 @@ def parse_tree(tree_json, genes, offsets, seq_len, stats):
         n_nodes += 1
         for child_json in node_json.get("children", []):
             child = Node(child_json.get("name", "?"),
-                         parse_mutations(child_json, genes, offsets, seq_len, stats))
+                         parse_mutations(child_json, genes, offsets, seq_len, stats, allowed))
             node.children.append(child)
             stack.append((child_json, child))
     stats["nodes_parsed"] = n_nodes
@@ -331,6 +336,10 @@ def parse_args(argv=None):
     p.add_argument("--seed", type=int, default=123,
                    help="Seed for the per-branch mutation ordering (default: 123, "
                         "matching the C++ generator's seed; the shuffle itself differs).")
+    p.add_argument("--drop-gap-stop", action="store_true",
+                   help="Drop mutations to/from gap ('-') or stop ('*'), so the "
+                        "no-attach targets match the attach arm (antiGen-data-revised "
+                        "treats gap/stop/X as missing data and never emits them).")
     return p.parse_args(argv)
 
 
@@ -355,7 +364,8 @@ def main(argv=None):
              "cancelled_branches": 0, "node_examples": 0, "intermediate_examples": 0,
              "target_mutations": 0, "branch_mutations": 0}
 
-    root = parse_tree(tree_json["tree"], args.genes, offsets, seq_len, stats)
+    allowed = STANDARD_AA if args.drop_gap_stop else ALLOWED
+    root = parse_tree(tree_json["tree"], args.genes, offsets, seq_len, stats, allowed)
     collapse_zero_mutation_branches(root, stats)
 
     # The root genotype is the reference with the root branch's own mutations applied
