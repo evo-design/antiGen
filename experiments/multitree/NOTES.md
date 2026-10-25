@@ -9717,3 +9717,70 @@ streams cannot pass for agreement.
 * `antiGen-figures/baselines/BA2_escape_LYCoV1404.csv` -- **committed**, having been
   untracked since s64. Until now the published figure depended on a file that was not
   in the repo, so a fresh clone would have rendered a different figure and said nothing.
+
+## 76. The blend measured, and a positional argument that ate `--alphabet` (2026-10-25)
+
+s73's rung has rows. `coguk_list_aa20` re-rendered with **34 models**, panels A-F and
+G-J; K-L are still holes behind `bg_aa20`.
+
+### What it does
+
+Top decile, q = 0.1, `list_coguk_fullpool`, macro column:
+
+| rung | all cells | de novo |
+|---|---|---|
+| antiGen | 0.5225 | 0.4732 |
+| **`wxw_dirichlet`** | **0.5111** | **0.4218** |
+| `where_times_which` | 0.4581 | 0.4218 |
+| `pssm_root` | 0.4491 | 0.1000 |
+| `substitution` | 0.3162 | -- |
+
+Max yield, end of series, all cells: **`wxw_dirichlet` 0.2592**, ahead of
+`where_times_which` 0.2461 and of all five combination rules (best 0.2252). It is 3rd
+on the top-decile panel and 1st on the yield panel.
+
+**The de novo column is the interesting one: it is EQUAL to its parent, to eight
+figures.** That is the model behaving exactly as specified rather than a coincidence. A
+de novo cell is one the training window never observed, so `N[i,a] = 0` and its score
+is `kappa * pi / (N_total + kappa)` -- a constant times the prior. The update can only
+ever PROMOTE cells that were observed, so de novo cells can only be pushed DOWN the
+ranking relative to `where_times_which`, never up. Here none were pushed out of the
+decile, so the two agree exactly. **The blend buys its gain entirely on cells the
+training window has seen, and costs nothing on the ones it has not.**
+
+`pssm_root` at exactly 0.1000 on de novo is the tie-heavy degenerate case s72 recorded,
+not a third data point.
+
+### A positional argument that ate `--alphabet`, and a job that passed anyway
+
+`macro_aa20` 3442498 "COMPLETED" in **8 seconds** having scored nothing.
+`eval_sc2_list_macro.sh` takes a LEADING POSITIONAL -- `RANGE=${1:-default}` then
+`shift || true` before `EXTRA=("$@")` -- so the first flag handed to it is consumed.
+Mine was `--alphabet`; `list_macro.py` then saw a bare `ACDEFGHIKLMNPQRSTVWY`, argparse
+died on the next flag, **and the slurm job still exited 0**, which satisfied the
+`afterok` dependency of the varrecall pass queued behind it.
+
+`eval_sc2_varrecall.sh` has no such shift, which is why the identical `COMMON` array
+worked there unchanged and only one of the two passes was broken. **The two scripts do
+not share a calling convention**, and nothing says so at either call site. Fixed by
+passing `default` explicitly, with the reason recorded at the array.
+
+Worth naming: the log line that gives it away is `Extra args:` with the flag missing
+and its value orphaned. Reading it was the only reason this was caught -- the job state
+said COMPLETED and the downstream job ran.
+
+### Two of my own checks that were wrong
+
+* I filtered `git status` through `grep -vE "aa20_supp|..."`, which also matched
+  `coguk_list_aa20_supp.png` and hid a genuinely modified file. Caught by comparing the
+  hash against HEAD directly. **A filter written to exclude one family quietly excluded
+  another that shares a substring.**
+* An earlier `until` loop read `squeue` and treated a failed read as an empty queue,
+  reporting a running job as finished (s73). Same class: a check that cannot
+  distinguish "no" from "could not tell".
+
+### Code
+
+* `experiments/multitree/submit_lists_aa20.sh` -- the leading `default`.
+* `antiGen-figures/figs/coguk_list_aa20{,_supp}.png` + PDFs, and the three refreshed
+  CSVs under `data/evals_sc2_lists_{macro,varrecall}_aa20`.

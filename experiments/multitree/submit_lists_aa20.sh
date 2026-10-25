@@ -33,6 +33,13 @@ for name in macro_aa20 varr_aa20; do
     fi
 done
 
+# eval_sc2_list_macro.sh takes a LEADING POSITIONAL -- `RANGE=${1:-default}` and then
+# `shift || true` before `EXTRA=("$@")` -- so the first flag handed to it is eaten.
+# Omitting `default` cost --alphabet: list_macro.py then saw a bare
+# ACDEFGHIKLMNPQRSTVWY, argparse failed on the next flag, and the SLURM JOB STILL
+# REPORTED COMPLETED (8 seconds), which satisfied the varrecall dependency behind it.
+# eval_sc2_varrecall.sh has no such shift, which is why the same COMMON array works
+# there unchanged -- the two scripts do not share a calling convention.
 COMMON=(--alphabet $ALPHABET
         --train-examples "$REVISED/sc2-2021/train/examples_2021_cur.txt"
         --test-examples  "$REVISED/sc2-2021/test/examples_all_cur.txt"
@@ -54,6 +61,7 @@ MACRO_ID=$(
 OUTDIR=$STORE/evals_sc2_lists_macro_aa20 \
 sbatch --parsable --job-name=macro_aa20 --partition="$PARTITION" --export=ALL \
     examples/slurm/eval_sc2_list_macro.sh \
+    default \
     "${COMMON[@]}" \
     --multitree-baselines \
     --dump-scores "$STORE/list_score_maps_aa20")
