@@ -202,6 +202,68 @@ longform_names <- c(
 )
 stopifnot(length(all_models) == length(longform_names))
 
+## --- The combination rules, as named rungs ---------------------------------
+##
+## `with_ensemble` already splices `ens_*` ROWS into every metric, but a row whose
+## name is not in `all_models` gets NA from the match() in `add_group_and_label` and
+## then falls into the "antiGen" group, which is this file's default for anything
+## unlisted. Five rules all becoming NA draw as ONE bar, and as one sawtooth line
+## across the curve panels (NOTES s72).
+##
+## The names come from `ensemble_figure_rows.tsv`, the sidecar
+## `experiments/multitree/ensemble_test_rows.py` writes beside the CSVs -- read from
+## disk rather than hand-copied here, because the row ids are blake2b digests of the
+## rule definitions and a stale copy would silently label one rule as another.
+##
+## They get their OWN groups rather than joining an existing one. A mixture is not an
+## antiGen model -- it may contain DMS panels and composition baselines -- and the
+## two kinds here are different things: three plain means over the drawn rungs, and
+## two blends selected on held-out halves. `fig_coguk_list.R` draws the same five
+## under the same labels and the same two group names, and the two figures are read
+## against each other.
+ENSEMBLE_ROWS_FILE <- getOption("sc2.ensemble_rows_file", "ensemble_figure_rows.tsv")
+ENSEMBLE_COLORS    <- getOption("sc2.ensemble_colors", character(0))
+ens_rows <- NULL
+if (!is.null(ENSEMBLE_DIR)) {
+  ens_tsv <- file.path(ENSEMBLE_DIR, ENSEMBLE_ROWS_FILE)
+  if (file.exists(ens_tsv)) {
+    ens_rows <- read.delim(ens_tsv, header = FALSE, stringsAsFactors = FALSE,
+                           col.names = c("id", "label", "group"))
+    stopifnot(nrow(ens_rows) > 0, !any(is.na(ens_rows$group)),
+              !any(ens_rows$id %in% all_models))
+    for (g in unique(ens_rows$group)) {
+      ids <- ens_rows$id[ens_rows$group == g]
+      subsets[[paste0("ens_", g)]] <- ids
+      longform_subset_names <- c(longform_subset_names, g)
+      all_models     <- c(all_models, ids)
+      ## `sc2.ensemble_labels` overrides the sidecar's display name per id. The
+      ## sidecar stays the source of IDENTITY -- the id is a blake2b digest of the
+      ## rule and the group assignment comes with it -- but this figure's legends sit
+      ## inside narrow curve panels, where the list figure's full names ("Where x
+      ## which + PSSM hybrid, 10x val-selected blend") run off the panel and over the
+      ## y-axis title. A shorter name for the same object, not a different object.
+      lab <- ens_rows$label[ens_rows$group == g]
+      override <- getOption("sc2.ensemble_labels", character(0))
+      hit <- ids %in% names(override)
+      lab[hit] <- unname(override[ids[hit]])
+      longform_names <- c(longform_names, lab)
+      ## Appended, so the new groups sort AFTER the published five in the explicit
+      ## factor below and the published colours keep their positions.
+      MODEL_TYPE_LEVELS <- c(MODEL_TYPE_LEVELS, g)
+      col <- if (g %in% names(ENSEMBLE_COLORS)) ENSEMBLE_COLORS[[g]] else "#bc6c25"
+      MODEL_TYPE_COLORS      <- c(MODEL_TYPE_COLORS, col)
+      MODEL_TYPE_COLORS_SUPP <- c(MODEL_TYPE_COLORS_SUPP, col)
+    }
+    stopifnot(length(all_models) == length(longform_names))
+    message("  [ensemble] ", nrow(ens_rows), " rule(s) in ",
+            length(unique(ens_rows$group)), " group(s): ",
+            paste(unique(ens_rows$group), collapse = ", "))
+  } else {
+    message("  [ensemble] no ", ENSEMBLE_ROWS_FILE, " in ", ENSEMBLE_DIR,
+            "; rule rows would draw as NA")
+  }
+}
+
 ## The pooled evaluation CSVs identify runs by their full training tag; map
 ## those onto the short names used in `subsets` above.
 RUN_TAG_TO_MODEL <- c(
@@ -365,6 +427,27 @@ performance <- rbind(
 )
 
 
+## One NAMED palette, built after the inventory is final.
+##
+## Both colour vectors were matched to groups POSITIONALLY, which is why one panel
+## carried `MODEL_TYPE_COLORS[c(1, 3, 4)]` -- a hand-counted subset of the groups that
+## survive its filter. Any change to the group list silently invalidates indices like
+## that; adding two groups turned it into "5 needed but only 3 provided", which at
+## least failed loudly, and would have mis-coloured rather than failed if the count
+## had happened to match. Indexing by NAME cannot go wrong that way.
+##
+## MODEL_TYPE_COLORS_SUPP covers every level; MODEL_TYPE_COLORS is the same list less
+## the fine-tune group, so the named palette reproduces both.
+GROUP_PALETTE <- setNames(MODEL_TYPE_COLORS_SUPP, MODEL_TYPE_LEVELS)
+
+#' The colours for exactly the groups present, in the figure's level order.
+group_colors <- function(groups) {
+  present <- levels(droplevels(factor(groups, levels = MODEL_TYPE_LEVELS)))
+  stopifnot(all(present %in% names(GROUP_PALETTE)))
+  unname(GROUP_PALETTE[present])
+}
+
+
 ## --- Attach display names and groups ---------------------------------------
 
 add_group_and_label <- function(df) {
@@ -373,6 +456,15 @@ add_group_and_label <- function(df) {
     df$group[df$model %in% subsets[[j]]] <- longform_subset_names[j]
   }
   df$group[is.na(df$group)] <- "antiGen"
+  ## EXPLICIT LEVELS. `scale_fill_manual(values = ...)` with an unnamed vector matches
+  ## values to levels POSITIONALLY, and a character column is factored by ggplot in
+  ## the locale's collation order. The published five happen to collate into the
+  ## intended order under this locale, which is why it has never shown -- but
+  ## "Ensembles" sorts FOURTH, between "Deep Mutational Scans" and "Pandemic Data in
+  ## Training Window", so appending its colour at the end would have mis-coloured
+  ## every group after it. The same trap s71 named for panel M.
+  stopifnot(all(df$group %in% MODEL_TYPE_LEVELS))
+  df$group <- factor(df$group, levels = MODEL_TYPE_LEVELS)
   df$model <- factor(longform_names[match(df$model, all_models)],
                      levels = longform_names)
   df
@@ -637,13 +729,12 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
   if (!SUPP) {
-    colors_here <- MODEL_TYPE_COLORS[c(1, 3, 4)]
     df <- df[!(df$model %in%
                  longform_names[all_models %in% c(subsets$trained_models,
                                                   subsets$dms_models)]), ]
-  } else {
-    colors_here <- MODEL_TYPE_COLORS_SUPP
   }
+  ## By name, over whatever survived the filter above, rather than a fixed index set.
+  colors_here <- group_colors(df$group)
 
   df_filtered <- df %>%
     filter(metric == metric_name) %>%

@@ -38,6 +38,7 @@ evals_*/
 # sibling, so `list_variant_recall.csv` ended up TRACKED INSIDE AN IGNORED
 # DIRECTORY -- `git status` reports it as modified and `git add <path>` refuses
 # it, which is a confusing pair of answers to get about one file (NOTES s76).
+!antiGen-figures/data/evals_sc2_aa20/
 !antiGen-figures/data/evals_sc2_lists_macro_aa20/
 !antiGen-figures/data/evals_sc2_lists_varrecall_aa20/
 !antiGen-figures/data/evals_sc2_background_aa20/

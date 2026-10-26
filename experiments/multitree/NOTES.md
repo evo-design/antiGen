@@ -9784,3 +9784,114 @@ said COMPLETED and the downstream job ran.
 * `experiments/multitree/submit_lists_aa20.sh` -- the leading `default`.
 * `antiGen-figures/figs/coguk_list_aa20{,_supp}.png` + PDFs, and the three refreshed
   CSVs under `data/evals_sc2_lists_{macro,varrecall}_aa20`.
+
+## 77. K-L land, and the two new groups on `sc2_results_aa20` (2026-10-25)
+
+### The background row, finally with rows in it
+
+`bg_aa20` 3442500 COMPLETED in **2h31m59s**: it scored `wxw_dirichlet` (resume-skipping
+the other 30 maps) and contrasted all 31 in one pass. **248 rows**, against the 0 of
+s73. 1,212 of 1,212 hosted cells usable once `--min-controls` matched the rule s66
+actually installed; 159 CoG-UK cells, 105 of them de novo.
+
+`coguk_list_aa20` now draws **all twelve panels**: 34 models on A-F and G-J, 29 on K-L.
+
+**The five combination rules are absent from K-L and that is correct.** The background
+pass scores checkpoints and baselines through the model path; a cached-map rule has no
+background maps to score. The figure NAMES them as missing per metric rather than
+quietly drawing eleven panels and a short one.
+
+### A control that was free and worth having
+
+Every query-INDEPENDENT map comes out at exactly **+0.00 pp** with no interval -- PSSM,
+PSSM Conservation, all three MSA Transformers, all five DMS panels including
+LY-CoV1404, EVEscape, pyr0. That is the only answer they can give: a fixed `(L, E)`
+map scores a cell identically whatever background it is handed, so it cannot
+discriminate backgrounds by construction. Query-dependent models separate from them
+cleanly (antiGen +15.2, Codon table +11.8, Tranception +11.8). **The row's headline
+number is also its own sanity check**, and nothing had to be added to get it.
+
+### What the blend costs on this panel
+
+| rung | top decile, all cells | background lift, all cells |
+|---|---|---|
+| `where_times_which` | 0.4581 | **+10.05 pp** |
+| `wxw_dirichlet` | **0.5111** | +4.39 pp |
+
+The blend wins the recall panels and **loses more than half the background lift**. That
+is the mechanism, not a surprise: `N[i,a]` does not depend on the query, so mixing it
+into the score dilutes exactly the term that varies with the background. On de novo
+cells, where `N = 0`, the two are close again (~6 pp each) -- the same boundary as s76's
+de novo tie. **It buys top-decile ranking with background sensitivity**, and the two
+panels disagree about it on purpose.
+
+### `sc2_results_aa20`: the two new groups, and a colour bug found on the way
+
+On instruction, mirroring `coguk_list_aa20`: the five rules get their own two groups
+(Ensembles; Val-selected, averaged over 10 holdouts) with the same labels and colours,
+read from `ensemble_figure_rows.tsv` rather than hand-copied -- the ids are blake2b
+digests of the rule definitions and a stale copy would label one rule as another.
+
+`BA2_escape_LYCoV1404` needed nothing: s75 put it in the shared drawer's `dms_models`,
+and `fig_sc2_aa20.R` sources that drawer. Six NA rows were really five.
+
+**`group` was a plain character**, so ggplot factored it in the LOCALE'S COLLATION
+ORDER and `scale_fill_manual` matched its unnamed colour vector positionally. The
+published five happen to collate into the intended order here, which is why it has
+never shown -- but `"Ensembles"` sorts FOURTH, between "Deep Mutational Scans" and
+"Pandemic Data in Training Window", so appending its colour at the end would have
+mis-coloured every group after it. Now an explicit factor on `MODEL_TYPE_LEVELS`. The
+same trap s71 named for panel M, in a second place.
+
+Gated: published `sc2_results.png` and all six rendered supplements **byte-identical**
+through both changes.
+
+### Emergence headers rewritten, not re-run
+
+`relabel_emergence_headers.py`: 16 files, `t_0.1 .. t_2.1` -> `t_1.0349 .. t_6.0342`,
+exactly the values s72 predicted. Values untouched, so the 11-hour eval is not
+repeated. It imports `emergence_step_labels` rather than restating it, REFUSES a CSV
+whose column count does not match the grid (the signature of a file from another run,
+where confident wrong dates on real numbers would be the outcome), and is idempotent:
+the second run reports `0 rewritten, 16 already correct`. `data/evals_sc2` untouched.
+
+### Three of my own, all cheap because they failed loudly
+
+* **`python: not found`, exit 127.** `submit_ensemble_rows.sh` called bare `python`;
+  the batch environment does not always carry miniconda on PATH. It died in 0 seconds
+  having done nothing, which is the good version -- a wrapper resolving to a DIFFERENT
+  python would have produced numbers. Pinned to an absolute interpreter.
+* **`sbatch: Batch script is empty!`** Fixing the above, I put the explanatory comment
+  INSIDE the backslash-continued argument list. A `#` line there terminates the
+  continuation, so sbatch got no `--wrap` at all. **Comments go above the command**, and
+  that is a correctness rule here rather than a style one.
+* An `sbatch` hung long enough to outlive its shell, so a job I reported as submitted
+  never existed. Checked by job name afterwards rather than by assuming the exit.
+
+### Code
+
+* `experiments/multitree/relabel_emergence_headers.py` -- new.
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- the ensemble inventory, the
+  explicit `group` factor.
+* `experiments/multitree/submit_ensemble_rows.sh` -- absolute `$PYTHON`, 30m walltime.
+* `antiGen-figures/figs/coguk_list_aa20{,_supp}.png` + PDFs, twelve panels.
+* `antiGen-figures/figs/sc2_results_aa20.png` + `aa20_supp_*` -- drawn with the two
+  groups, no NA.
+* `experiments/multitree/install_sc2_aa20.sh` -- copies `ensemble_figure_rows.tsv`,
+  which the CSV globs had been dropping. Without it the figure's name table has no
+  entry for the five rules and they draw as ONE NA bar, so an install was silently
+  reproducing the bug this section fixes. It is reported as MISSING if absent.
+
+### Two more things the render itself found
+
+* **`MODEL_TYPE_COLORS[c(1, 3, 4)]`** -- the DMS correlation panel carried a
+  hand-counted index subset of the groups that survive its filter. Adding two groups
+  turned it into "5 needed but only 3 provided", which failed loudly; had the count
+  happened to match it would have MIS-COLOURED instead. Both colour vectors are now
+  one named palette and `group_colors()` indexes it by name, so the class of bug is
+  gone rather than this instance of it.
+* **The full labels run off the panel.** `fig_coguk_list.R` puts its legend in a wide
+  bar panel; here it sits inside a curve panel, and "Where x which + PSSM hybrid, 10x
+  val-selected blend" overlapped the y-axis title. `sc2.ensemble_labels` overrides the
+  display name per id. **The sidecar remains the source of IDENTITY** -- id, group and
+  colour are unchanged, and only the string on this figure's legend is shorter.
