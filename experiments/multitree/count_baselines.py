@@ -9,19 +9,30 @@ classes stay in agreement by construction.
     fit(train_examples, L, E)         -> dict of sufficient stats (N, occ, s, M)
     score_map(name, stats, aa_batch)  -> (B, L, E) log-score tensor for one rung
 
-Rungs:
-  pssm        occurrence PSSM: log1p of residue-composition counts (wild-type-agnostic)
-  frequency   event-count PSSM: log N[i,a]            (== counted_pssm kappa->0; the
-              Laplace-smoothed version is eval_utils.frequency_baseline_scores)
-  site_prop   s_i * M[wt_i,a]                          (== counted_pssm kappa->inf)
-  cpssm_dir   (N[i,a] + kappa*s_i*M[wt_i,a]) / (N_total + kappa), kappa = N_total
-              -- your PSSM + Dirichlet-backoff model (antiGen/models/counted_pssm)
+Rungs (math key -> display name used in tables/figures, see DISPLAY_NAMES):
+  pssm        "Occurrence PSSM"      log1p of residue-composition counts (wild-type-agnostic)
+  frequency   "Event Counts"         event-count PSSM: log N[i,a]  (== counted_pssm kappa->0;
+              the Laplace-smoothed version is eval_utils.frequency_baseline_scores)
+  site_prop   "Site x Substitution"  s_i * M[wt_i,a]               (== counted_pssm kappa->inf)
+  cpssm_dir   "Smoothed Counts"      (N[i,a] + kappa*s_i*M[wt_i,a]) / (N_total + kappa),
+              kappa = N_total -- the PSSM + Dirichlet-backoff model (antiGen/models/counted_pssm)
 """
 from __future__ import annotations
 import torch
 
 ALPHA = 0.5          # add-alpha smoothing on s and M, matching the canonical classes
 _FLOOR = 1e-30
+
+# Canonical human-facing names for the count rungs. Internal math keys stay fixed
+# (callers pass them to score_map); these are what tables, figures and reports print.
+DISPLAY_NAMES = {
+    "pssm":       "Occurrence PSSM",
+    "frequency":  "Event Counts",
+    "cpssm_k0":   "Event Counts",
+    "site_prop":  "Site x Substitution",
+    "cpssm_kinf": "Site x Substitution",
+    "cpssm_dir":  "Smoothed Counts",
+}
 
 
 def fit(train_examples, L: int, E: int):
