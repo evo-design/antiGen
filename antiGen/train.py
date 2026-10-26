@@ -149,6 +149,11 @@ def parse_args():
                         help='Also save a checkpoint at EVERY epoch as '
                              'fitness_<prefix>_epoch<N>.pt, for per-epoch test scoring / '
                              'val-vs-test correspondence and seed ensembling.')
+    parser.add_argument('--early-stop-patience', type=int, default=0,
+                        help='Stop training once the --select-metric has not improved on '
+                             'its best for this many consecutive validation epochs (0 = off). '
+                             'Every epoch is still checkpointed with --save-every-epoch, so '
+                             'the best epoch is recoverable regardless of where it stops.')
     parser.add_argument('--select-metric', choices=['nll_pooled', 'recall10_macro'],
                         default='nll_pooled',
                         help="Checkpoint-selection objective for --save-best / "
@@ -821,6 +826,7 @@ def main():
     optimizer_state = None
     best_val_nll, best_epoch = float('inf'), None
     best_val_nll_by_source, best_epoch_by_source = {}, {}
+    epochs_since_improve = 0
 
     skip_training = args.model_type in ('blosum62', 'codon', 'pssm', 'evcouplings') or \
         (args.model_type == 'eve' and args.freeze_backbone) or \
@@ -1010,6 +1016,7 @@ def main():
 
                 pooled = pooled_sel
                 improved = pooled < best_val_nll
+                epochs_since_improve = 0 if improved else epochs_since_improve + 1
                 if improved:
                     best_val_nll, best_epoch = pooled, epoch
                     if args.save_best:
@@ -1035,6 +1042,13 @@ def main():
                 del dumper
 
             if args.max_batches is not None and global_step >= args.max_batches:
+                break
+
+            if (args.early_stop_patience and val_loaders
+                    and epochs_since_improve >= args.early_stop_patience):
+                print(f"Early stop at epoch {epoch}: {sel_desc} has not improved on its "
+                      f"best (epoch {best_epoch}) for {epochs_since_improve} epochs "
+                      f"(patience {args.early_stop_patience}).")
                 break
 
         # Free training-only objects to reclaim memory before saving
