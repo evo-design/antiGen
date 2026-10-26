@@ -1,0 +1,1 @@
+{"date": "2025-01-01", "seq_len": 0, "window": "all", "novelty_reference": "attach_training", "train_file": "/home/aakarsh/projects/antiGen/experiments/multitree/data/forecast_attach/examples_denv4@2025-01-01_train.txt", "n_examples": 0, "n_targets": 0, "n_novel": 0, "per_example": {}}
