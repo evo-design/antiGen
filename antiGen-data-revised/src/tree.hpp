@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -77,13 +78,20 @@ struct Tree {
     int addNode(int par, const std::string& name);
 };
 
-// Reads a Nextstrain v2 dataset and keeps only name / children / <gene> mutations.
-// Mutations beyond maxSite are dropped (maxSite == 0 keeps everything).
-std::vector<RawNode> parseNextstrainTree(const std::string& path, const std::string& gene,
+// Comma-separated gene spec -> the gene names, trimmed, in order.
+std::vector<std::string> splitGenes(const std::string& spec);
+
+// Reads a Nextstrain v2 dataset and keeps only name / children / mutations for the
+// genes in geneOff, each shifted by its concatenated-frame offset. Mutations beyond
+// maxSite are dropped (maxSite == 0 keeps everything).
+std::vector<RawNode> parseNextstrainTree(const std::string& path,
+                                         const std::map<std::string, int>& geneOff,
                                          int maxSite = 0);
 
-// Reads the root-sequence sidecar and returns its <gene> entry.
-std::string parseRootSequenceS(const std::string& path, const std::string& gene);
+// Reads the root-sequence sidecar and returns the comma-separated genes concatenated
+// in order. If offsets != null, fills it with each gene's 0-based start in the concat.
+std::string parseRootSequenceS(const std::string& path, const std::string& geneSpec,
+                               std::map<std::string, int>* offsets = nullptr);
 
 // The input tree, one node per input node, with each leaf's sequence recorded as
 // its diff against rootSeq. `mismatches` collects branches whose from-allele

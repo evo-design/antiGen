@@ -4,8 +4,24 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <map>
 #include <stdexcept>
 #include <utility>
+
+std::vector<std::string> splitGenes(const std::string& spec) {
+    std::vector<std::string> out;
+    size_t i = 0;
+    while (i < spec.size()) {
+        size_t j = spec.find(',', i);
+        if (j == std::string::npos) j = spec.size();
+        size_t a = i, b = j;
+        while (a < b && std::isspace((unsigned char)spec[a])) ++a;
+        while (b > a && std::isspace((unsigned char)spec[b - 1])) --b;
+        if (b > a) out.push_back(spec.substr(a, b - a));
+        i = j + 1;
+    }
+    return out;
+}
 
 std::string formatMutation(const Mutation& m) {
     return std::string(1, m.from) + std::to_string(m.site) + std::string(1, m.to);
@@ -28,8 +44,8 @@ static Mutation parseMutation(const std::string& s) {
 
 // Parses one tree node. The node is appended before its children are read,
 // because Nextstrain writes "children" ahead of "name".
-static int parseNode(JsonReader& r, std::vector<RawNode>& out, const std::string& gene,
-                     int maxSite) {
+static int parseNode(JsonReader& r, std::vector<RawNode>& out,
+                     const std::map<std::string, int>& geneOff, int maxSite) {
     int self = static_cast<int>(out.size());
     out.emplace_back();
 
@@ -38,7 +54,7 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, const std::string
             out[self].name = r.readString();
         } else if (key == "children") {
             forEachElement(r, [&]() {
-                int child = parseNode(r, out, gene, maxSite);
+                int child = parseNode(r, out, geneOff, maxSite);
                 out[self].children.push_back(child);
             });
         } else if (key == "node_attrs") {
@@ -65,9 +81,12 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, const std::string
             forEachMember(r, [&](const std::string& bk) {
                 if (bk != "mutations") { r.skipValue(); return; }
                 forEachMember(r, [&](const std::string& g) {
-                    if (g != gene) { r.skipValue(); return; }
+                    auto it = geneOff.find(g);
+                    if (it == geneOff.end()) { r.skipValue(); return; }
+                    const int off = it->second;  // 0-based start of this gene in the concat
                     forEachElement(r, [&]() {
                         Mutation m = parseMutation(r.readString());
+                        m.site += off;  // gene-local 1-based site -> concatenated-frame site
                         if (maxSite == 0 || m.site <= maxSite) out[self].sMut.push_back(m);
                     });
                 });
@@ -79,7 +98,8 @@ static int parseNode(JsonReader& r, std::vector<RawNode>& out, const std::string
     return self;
 }
 
-std::vector<RawNode> parseNextstrainTree(const std::string& path, const std::string& gene,
+std::vector<RawNode> parseNextstrainTree(const std::string& path,
+                                         const std::map<std::string, int>& geneOff,
                                          int maxSite) {
     std::string text = readWholeFile(path);
     JsonReader r(text);
@@ -88,23 +108,36 @@ std::vector<RawNode> parseNextstrainTree(const std::string& path, const std::str
 
     forEachMember(r, [&](const std::string& key) {
         if (key != "tree") { r.skipValue(); return; }
-        parseNode(r, nodes, gene, maxSite);
+        parseNode(r, nodes, geneOff, maxSite);
         found = true;
     });
     if (!found) throw std::runtime_error("no \"tree\" member in " + path);
     return nodes;
 }
 
-std::string parseRootSequenceS(const std::string& path, const std::string& gene) {
+std::string parseRootSequenceS(const std::string& path, const std::string& geneSpec,
+                               std::map<std::string, int>* offsets) {
+    // One or more comma-separated genes, concatenated in the order given -- the
+    // concatenated frame the examples and the aligned FASTA live in. Each gene's
+    // 0-based start in the concat is recorded in *offsets so the tree parse can shift
+    // that gene's 1-based mutation sites into the same frame.
+    const std::vector<std::string> genes = splitGenes(geneSpec);
     std::string text = readWholeFile(path);
     JsonReader r(text);
-    std::string s;
+    std::map<std::string, std::string> seqs;
     forEachMember(r, [&](const std::string& key) {
-        if (key == gene) s = r.readString();
+        if (std::find(genes.begin(), genes.end(), key) != genes.end()) seqs[key] = r.readString();
         else r.skipValue();
     });
-    if (s.empty()) throw std::runtime_error("no \"" + gene + "\" sequence in " + path);
-    return s;
+    std::string concat;
+    for (const std::string& g : genes) {
+        auto it = seqs.find(g);
+        if (it == seqs.end() || it->second.empty())
+            throw std::runtime_error("no \"" + g + "\" sequence in " + path);
+        if (offsets) (*offsets)[g] = static_cast<int>(concat.size());
+        concat += it->second;
+    }
+    return concat;
 }
 
 int Tree::addNode(int par, const std::string& name) {

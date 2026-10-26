@@ -37,9 +37,11 @@ const char* kUsage =
     "options:\n"
     "  --tree <path>      Nextstrain v2 dataset JSON (tree, sets, place)\n"
     "  --root-seq <path>  root-sequence sidecar JSON (required)\n"
-    "  --gene <key>       the CDS to read: the root-sequence key and the\n"
-    "                     branch_attrs.mutations key, e.g. 'S' (default), 'E', 'G',\n"
-    "                     'F', 'H'. nSites follows the sidecar entry's length\n"
+    "  --gene <keys>      the CDS(es) to read: root-sequence keys and\n"
+    "                     branch_attrs.mutations keys, e.g. 'S' (default), 'E', 'F'.\n"
+    "                     Comma-separated for a multi-segment protein, concatenated in\n"
+    "                     the order given, e.g. 'SigPep,HA1,HA2' for flu HA. nSites\n"
+    "                     follows the concatenated length; the aligned FASTA must match\n"
     "  --out <path>       TSV out: the tree, the allele sets, or the prepared\n"
     "                     sequences\n"
     "  --out-tree <path>  for 'sets' and 'place', also write the tree here\n"
@@ -225,8 +227,8 @@ bool needValue(int argc, char** argv, int i, const char* flag, std::string& dst)
 // The tree, as given. Input node ids are tree node ids; the only thing derived
 // here is each leaf's sequence, from the mutation path down to it.
 Tree loadTree(const Options& opt, const std::string& rootS, int nSites,
-              std::vector<RawNode>* rawOut) {
-    std::vector<RawNode> raw = parseNextstrainTree(opt.tree, opt.gene, nSites);
+              const std::map<std::string, int>& geneOff, std::vector<RawNode>* rawOut) {
+    std::vector<RawNode> raw = parseNextstrainTree(opt.tree, geneOff, nSites);
 
     size_t rawTips = 0, rawEdgesWithMut = 0, rawMutCount = 0, maxDeg = 0;
     for (size_t i = 0; i < raw.size(); ++i) {
@@ -270,10 +272,11 @@ Tree loadTree(const Options& opt, const std::string& rootS, int nSites,
 }
 
 int runTree(const Options& opt) {
-    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene);
+    std::map<std::string, int> geneOff;
+    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene, &geneOff);
     int nSites = sitesOf(rootS);
 
-    Tree t = loadTree(opt, rootS, nSites, nullptr);
+    Tree t = loadTree(opt, rootS, nSites, geneOff, nullptr);
 
     std::unordered_set<std::string> distinct;
     std::string                     seq;
@@ -293,11 +296,12 @@ int runTree(const Options& opt) {
 }
 
 int runSets(const Options& opt) {
-    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene);
+    std::map<std::string, int> geneOff;
+    std::string rootS = parseRootSequenceS(opt.rootSeq, opt.gene, &geneOff);
     int nSites = sitesOf(rootS);
 
     std::vector<RawNode> raw;
-    Tree t = loadTree(opt, rootS, nSites, &raw);
+    Tree t = loadTree(opt, rootS, nSites, geneOff, &raw);
 
     size_t nsMut = 0, missingMut = 0;
     for (size_t i = 1; i < raw.size(); ++i) {
@@ -609,11 +613,12 @@ bool sameSets(const AlleleSets& a, const AlleleSets& b, std::string& why, int& b
 }
 
 int runPlace(const Options& opt) {
-    const std::string rootS  = parseRootSequenceS(opt.rootSeq, opt.gene);
+    std::map<std::string, int> geneOff;
+    const std::string rootS  = parseRootSequenceS(opt.rootSeq, opt.gene, &geneOff);
     const int         nSites = sitesOf(rootS);
 
     std::vector<RawNode> raw;
-    Tree       t    = loadTree(opt, rootS, nSites, &raw);
+    Tree       t    = loadTree(opt, rootS, nSites, geneOff, &raw);
     AlleleSets sets = computeAlleleSets(t, rootS, nSites);
     std::printf("allele sets  : parsimony score %lld over %d nodes\n", sets.parsimonyScore,
                 t.size());
