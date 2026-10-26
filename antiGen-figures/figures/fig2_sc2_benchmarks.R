@@ -407,6 +407,39 @@ recall_auc <- function(value) {
   sum(value[2:11] + value[1:10]) / 20
 }
 
+#' The curve's value at one x, selected BY X and not by position.
+#'
+#' `recall_auc` reduces a whole curve, so `summarise_curves` only ever hands its
+#' reducer the values. Reading a single point that way would mean indexing the
+#' vector -- `value[2]` for q = 0.1 -- which is correct only while the quantile grid
+#' is exactly the one it was written against. That is the same assumption that put a
+#' 2.5x error on the emergence axis (NOTES s72), so this matches on x and says so
+#' when the grid does not carry the point.
+summarise_curves_at <- function(df, metrics, x0, tol = 1e-9) {
+  rows <- lapply(metrics, function(metric) {
+    sub <- df[df$metric == metric, ]
+    hit <- sub[abs(sub$x - x0) < tol, ]
+    if (nrow(hit) == 0) {
+      stop("no point at x = ", x0, " in metric ", metric,
+           "; the grid carries ", paste(sort(unique(sub$x)), collapse = ", "))
+    }
+    n_models <- length(unique(sub$model))
+    if (nrow(hit) != n_models) {
+      stop("x = ", x0, " matched ", nrow(hit), " row(s) for ", n_models,
+           " model(s) in ", metric)
+    }
+    ## `group` is carried through when the caller's frame already has it.
+    ## `performance_by_x` is passed through `add_group_and_label` further down this
+    ## file, after which its `model` column holds DISPLAY labels rather than the raw
+    ## ids that function matches on -- so re-labelling the output of this one turns
+    ## every row into NA. Taking the columns as they already are is the fix and the
+    ## reason this says so.
+    keep <- intersect(c("model", "metric", "value", "group"), names(hit))
+    hit[, keep]
+  })
+  do.call(rbind, rows)
+}
+
 summarise_curves <- function(df, metrics, reduce) {
   models <- unique(df$model)
   rows <- lapply(metrics, function(metric) {
@@ -501,7 +534,8 @@ variant_emergence_performance_x <- relabel_metrics(performance_by_x,
 #' axis, purely to supply the model labels for the row.
 plot_auc <- function(performance_df, metric_names, labels, xlab, title_prefix,
                      legend_only = FALSE, xmin = 0, shorten_title = TRUE,
-                     SUPP = FALSE) {
+                     SUPP = FALSE,
+                     gutter = getOption("sc2.auc_gutter", 0.5)) {
   plots <- lapply(seq_along(metric_names), function(i) {
     title <- metric_names[i]
     if (shorten_title) title <- gsub("\\,.*", "", title)
@@ -543,13 +577,36 @@ plot_auc <- function(performance_df, metric_names, labels, xlab, title_prefix,
   if (legend_only) return(extract_legend(plots[[1]]))
 
   plot_grid(
-    # Label gutter: panel 1 with everything but the y-axis text hidden.
-    plots[[1]] + theme(legend.position = "none", axis.ticks.x = element_blank(),
-                       axis.text.x = element_text(color = "white")) +
-      ggtitle("") + xlab(""),
+    # Label gutter: panel 1's y-axis text over an EMPTY panel.
+    #
+    # It used to be panel 1 with the x-axis text merely painted white, which works
+    # only while the gutter is narrow enough that its panel is a sliver -- the bars
+    # are still drawn in it. Widening it to fit longer model names therefore does
+    # not reveal more text, it reveals a second, unlabelled copy of panel D, and the
+    # names stay clipped at the same place however wide the gutter gets (NOTES s79).
+    # Dropping the layers makes the panel genuinely empty, so the gutter's width
+    # buys room for the names and nothing else.
+    local({
+      g <- plots[[1]] + theme(legend.position = "none",
+                              axis.ticks.x = element_blank(),
+                              axis.text.x = element_text(color = "white"),
+                              panel.grid = element_blank()) +
+        ggtitle("") + xlab("")
+      g$layers <- list()
+      g
+    }),
     plots[[1]] + theme(legend.position = "none") + theme(axis.text.y = element_blank()),
     plots[[2]] + theme(legend.position = "none") + theme(axis.text.y = element_blank()),
-    rel_widths = c(0.5, 1, 1),
+    ## The gutter holds the y-axis model names, right-aligned against an empty
+    ## panel. Its width is FIXED, so names longer than the published roster's do
+    ## not widen it -- they overflow to the LEFT, off the figure. The five
+    ## combination rules are much longer than anything the published arm carries
+    ## ("Where x which + PSSM, val-selected (10x)" against "PSSM Conservation"),
+    ## which is what clipped D's labels and pushed E's axis title off the right
+    ## edge on the revised arm (NOTES s79). Default is the published value.
+    ## RELATIVE, so a row drawn at full figure width needs about half the number a
+    ## half-width row needs to leave the same absolute room for the names.
+    rel_widths = c(gutter, 1, 1),
     nrow = 1,
     labels = c("", labels),
     label_x = -0.07
@@ -1252,17 +1309,52 @@ precision_block <- plot_grid(
   labels = c("F", "", "")
 )
 
+## Recall at one quantile, beside the AUC that summarises the whole curve.
+##
+## `sc2.recall_at` is the quantile; unset means the published layout, so the
+## published figure keeps panels A-M and its lettering untouched.
+##
+## A FULL-WIDTH ROW OF ITS OWN, not a fourth row inside `recall_block`. The recall
+## and precision blocks sit side by side and their rows line up only because both
+## have three; adding a row to one would stagger the two cartoons against each
+## other. A separate row also keeps A-J exactly where they are and pushes only the
+## bottom row's letters along, so the revised figure and the published one can
+## still be read against each other panel for panel up to J.
+RECALL_AT <- getOption("sc2.recall_at", NA_real_)
+has_recall_at <- is.finite(RECALL_AT)
+bottom_labels <- if (has_recall_at) LETTERS[13:15] else LETTERS[11:13]
+
+main_rows <- list(
+  plot_grid(recall_block, precision_block, nrow = 1),
+  plot_auc(hit_rate_performance, longform_hit_rate_metrics, LETTERS[4:7],
+           "", "", legend_only = TRUE)
+)
+main_heights <- c(3, 0.1)
+
+if (has_recall_at) {
+  ## NOT re-labelled: `performance_by_x` is already grouped and labelled by this
+  ## point, so the rows come out ready to plot.
+  recall_at_performance <- summarise_curves_at(performance_by_x, HIT_RATE_METRICS,
+                                               RECALL_AT)
+  recall_at_performance <- relabel_metrics(recall_at_performance, HIT_RATE_METRICS,
+                                           longform_hit_rate_metrics)
+  main_rows <- c(main_rows, list(
+    plot_auc(recall_at_performance, longform_hit_rate_metrics[1:2], LETTERS[11:12],
+             sprintf("Recall at q = %g", RECALL_AT),
+             sprintf("Recall at q = %g", RECALL_AT), xmin = 0,
+             gutter = getOption("sc2.recall_at_gutter",
+                                getOption("sc2.auc_gutter", 0.5) / 2))))
+  main_heights <- c(main_heights, 1.1)
+}
+
+main_rows <- c(main_rows, list(
+  plot_grid(p_expr, ft_plot, gate_plot, nrow = 1,
+            rel_widths = c(2, 1, 1), labels = bottom_labels)))
+main_heights <- c(main_heights, 1.1)
+
 save_figure(
-  plot_grid(
-    plot_grid(recall_block, precision_block, nrow = 1),
-    plot_auc(hit_rate_performance, longform_hit_rate_metrics, LETTERS[4:7],
-             "", "", legend_only = TRUE),
-    plot_grid(p_expr, ft_plot, gate_plot, nrow = 1,
-              rel_widths = c(2, 1, 1), labels = LETTERS[11:13]),
-    ncol = 1,
-    rel_heights = c(3, 0.1, 1.1)
-  ),
-  FIG_MAIN, width = 13.5, height = 12
+  plot_grid(plotlist = main_rows, ncol = 1, rel_heights = main_heights),
+  FIG_MAIN, width = 13.5, height = if (has_recall_at) 15.2 else 12
 )
 
 

@@ -9895,3 +9895,72 @@ the second run reports `0 rewritten, 16 already correct`. `data/evals_sc2` untou
   val-selected blend" overlapped the y-axis title. `sc2.ensemble_labels` overrides the
   display name per id. **The sidecar remains the source of IDENTITY** -- id, group and
   colour are unchanged, and only the string on this figure's legend is shorter.
+
+## 79. Panel E's clipping, and recall at the decile beside recall AUC (2026-10-26)
+
+Both on request, both on `sc2_results_aa20` only.
+
+### The gutter was never a width knob
+
+`plot_auc` draws three things side by side: a LABEL GUTTER, then the two bar panels.
+The gutter was "panel 1 with everything but the y-axis text hidden" -- except nothing
+hid the bars. It worked because at `rel_widths = c(0.5, 1, 1)` the gutter's panel is a
+sliver and the names fill it.
+
+This arm's names are much longer than the published roster's
+("Where x which + PSSM, val-selected (10x)" against "PSSM Conservation"), so they
+overflowed: D's labels ran off the left of the figure and E's axis title off the right.
+
+**Widening the gutter does not fix it, and the way it fails is worth recording.** The
+names stayed clipped at exactly the same pixel at 0.95 and at 2.4, because the gutter's
+PANEL grows with it -- at 1.8 the figure gained a second, unlabelled copy of panel D
+sitting where the whitespace should be. The gutter is only a width knob if its panel is
+empty, so `g$layers <- list()`. Then 1.15 is enough and the panel is genuinely blank.
+
+**Two of my own measurements were worthless before that was clear.** I rendered trial
+gutters by setting `options(sc2.auc_gutter = ...)` and then sourcing the wrapper --
+which sets the same option further down, so both trials ran at the wrapper's value and
+"the clip point does not move" was an artefact of my own harness rather than a fact
+about the layout. The same shape of mistake as s72's md5sum-against-itself: a
+comparison that could not have come out differently.
+
+### Recall at q = 0.1, as its own row
+
+`sc2.recall_at` (unset on the published arm). Two bar panels reading the recall curve
+at one quantile, beside the AUC that summarises the whole of it -- different questions,
+and the decile is the operating point every other panel of this figure uses.
+
+**A full-width row of its own, not a fourth row inside `recall_block`.** The recall and
+precision blocks sit side by side and their rows line up only because both have three;
+a fourth in one would stagger the two cartoons against each other. A separate row also
+leaves A-J exactly where they are, so the two arms can still be read panel for panel up
+to J, and only the bottom row moves (K-M becomes M-O).
+
+`summarise_curves_at` selects **by x**, not by index. `value[2]` would be correct only
+for the grid it was written against, which is precisely the assumption that put a 2.5x
+error on the emergence axis in s72.
+
+**It drew two bars called NA first.** `performance_by_x` is passed through
+`add_group_and_label` further down the file, after which its `model` column holds
+DISPLAY names -- so re-labelling the output of a reducer over it matched display names
+against raw ids and produced NA for all but the coincidences. The frame was already
+grouped and labelled; taking its columns as they are is the fix.
+
+### Gated
+
+Published `sc2_results.png` and all six rendered supplements **byte-identical** through
+every change here -- the gutter rebuild, the new reducer, the new row and the per-call
+gutter argument.
+
+### Known, pre-existing, NOT introduced here
+
+Panel M's legend is clipped at the left ("tiGen" for "antiGen") and its y-axis title
+with it. Checked against the committed figure rather than assumed: it is identical
+there, so it dates from the two new legend groups of s77 widening the bottom legend
+past the figure, not from this section. Left alone because it is a separate fix.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- blank gutter, `sc2.auc_gutter`,
+  `plot_auc(gutter=)`, `summarise_curves_at`, `sc2.recall_at` and the row it adds.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- gutter 1.15, `sc2.recall_at = 0.1`.

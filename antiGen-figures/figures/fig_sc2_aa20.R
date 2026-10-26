@@ -103,6 +103,19 @@ options(
   ## The published figure hides two gate variants that do not exist on this arm.
   sc2.gate_drop_main = character(0),
 
+  ## The label gutter on the AUC bar panels. The published 0.5 is sized for the
+  ## published roster's names; this arm's five combination rules are much longer
+  ## ("Where x which + PSSM, val-selected (10x)" against "PSSM Conservation"), and
+  ## the gutter does not grow to fit -- the overflow runs off the left of the
+  ## figure and pushes panel E's axis title off the right (NOTES s79).
+  sc2.auc_gutter = 1.15,
+
+  ## Two extra bar panels reading the recall curve at ONE quantile, beside the AUC
+  ## that summarises the whole of it. The two answer different questions: AUC pays
+  ## for the whole curve, the decile is the operating point every other panel of
+  ## this figure uses. Unset on the published arm, so its lettering does not move.
+  sc2.recall_at = 0.1,
+
   ## --- outputs ---
   sc2.fig_main   = "sc2_results_aa20",
   sc2.fig_prefix = "aa20_",
