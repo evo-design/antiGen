@@ -118,7 +118,14 @@ subsets <- list(
     ## positional_marginal_counts), so they belong with the rungs that saw the
     ## training window -- not with the pre-pandemic ones.
     "substitution",
-    "where_times_which"
+    "where_times_which",
+    ## The Dirichlet blend of the two terms above with the observed mutation events
+    ## (antiGen/eval_utils.py:WhereTimesWhichDirichletPredictor). Fitted on the
+    ## training examples by the same `_fit()`, so it belongs in this group beside
+    ## its parent. Absent from this inventory it is NA in `add_group_and_label`,
+    ## which this file's fallback puts in the "antiGen" group -- it drew as a bar
+    ## called NA on every panel reading the eval CSVs (NOTES s84).
+    "wxw_dirichlet"
   ),
   dms_models = c(
     "Omicron_BA1_bind",
@@ -177,6 +184,9 @@ longform_names <- c(
   "EVmutation",
   "Substitution matrix",
   "Where × which",
+  ## Positional against `all_models`: this sits with `wxw_dirichlet`'s place in
+  ## `pandemic_training_data`, immediately after its parent.
+  "Where × which + events",
   "BA.1 DMS (bind)",
   "BA.1 DMS (expression)",
   "BA.2 DMS (bind)",
@@ -774,6 +784,17 @@ dms_long <- dms_performance %>%
                names_to = "metric", values_to = "correlation") %>%
   mutate(metric = ifelse(metric == "bind_corr", "Binding", "Expression"))
 
+## RUN TAGS -> SHORT NAMES, the same translation the pooled CSVs get further up.
+## `dms_long`'s names come from the directory names under MODEL_DIR, and the two arms
+## name those differently: the published `data/sc2/` uses the short names
+## (`simple`, `esm2_partial`), while `dump_variant_root_predictions.py` named
+## `data/sc2_aa20/` by full run tag (`simple_d128_n2_lr0.0001`). Unmapped, every
+## trained checkpoint on the revised arm matched no level, became NA, and -- since
+## this file's fallback puts anything unlisted in the "antiGen" group -- twelve
+## models were drawn merged into one blue bar labelled NA. A no-op on the published
+## arm, whose names are already short (NOTES s84).
+dms_tagged <- dms_long$model %in% names(RUN_TAG_TO_MODEL)
+dms_long$model[dms_tagged] <- unname(RUN_TAG_TO_MODEL[dms_long$model[dms_tagged]])
 dms_long$model <- factor(dms_long$model, levels = all_models)
 dms_long$group <- NA_character_
 for (i in seq_along(subsets)) {

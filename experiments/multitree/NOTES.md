@@ -10246,3 +10246,61 @@ the gate row, the colour change and the legend option.
   `GATE_BLUE` reassigned to it, eight colours inserted at the row's index.
 * `experiments/multitree/submit_cutoff_evals.sh` -- `gated_static_xfmr_pssm_lr0.0001`
   in `PANEL_ROWS`.
+
+## 84. `sc2_results_revised`, and two NA bugs it exposed (2026-10-27)
+
+A re-organisation, on request: every panel already existed, nothing was re-evaluated.
+
+    row 1   A  next-mutation recall cartoon              (sc2_results_aa20 A)
+            B  top decile, all list cells, cell-weighted (coguk_list_aa20 C)
+            C  top decile, de novo, cell-weighted        (coguk_list_aa20 D)
+    row 2   D  background lift, all list cells           (coguk_list_aa20 K)
+            E  background lift, de novo                  (coguk_list_aa20 L)
+            F  blank -- a zoomed case study goes here
+    row 3   G  DMS correlation                           (sc2_results_aa20 M)
+            H  antiGen / PSSM gate by train/test cutoff  (sc2_results_aa20 O)
+
+### The two drawers cannot share a session
+
+`fig2_sc2_benchmarks.R` and `fig_coguk_list.R` each define `theme_paper`,
+`save_figure`, `MODEL_GROUP` and more, so sourcing both hands the second one's
+definitions to the first one's panels. Each therefore runs in its OWN subprocess and
+ships panels back as RDS. The panels are CALLED (`decile_bar`, `bg_bar`, `p_expr`,
+`gate_plot`), not copied, so a change in either drawer reaches this figure.
+
+**They are baked to grobs before shipping.** A ggplot stores aesthetics as quosures
+evaluated at DRAW time against the environment they were written in -- `gate_plot` has
+`linetype = (model %in% GATE_BASELINES)`, and GATE_BASELINES exists only in the drawer.
+Shipped as a ggplot it rendered in the assembling session as "object not found", long
+after the panel looked fine. `ggplotGrob` resolves it where its globals are in scope.
+
+### Two NA bugs, one of them months old
+
+* **`wxw_dirichlet` was never in fig2's inventory.** It was added to panel M's
+  `sc2.gate_rows`, which is a separate by-name loader, and nowhere else -- so on every
+  panel reading the pooled CSVs it was NA, and this file's fallback puts anything
+  unlisted in the "antiGen" group. Now in `pandemic_training_data` beside its parent.
+* **`dms_long` never had `RUN_TAG_TO_MODEL` applied, and that predates this work.**
+  The panel's names come from the directory names under MODEL_DIR, and the two arms
+  name them differently: published `data/sc2/` uses short names (`simple`,
+  `esm2_partial`), while `dump_variant_root_predictions.py` named `data/sc2_aa20/` by
+  full run tag (`simple_d128_n2_lr0.0001`). Unmapped, **twelve** of twenty-seven
+  models -- antiGen itself, all eight ESM-2 variants, eve_ft and both Tranceptions --
+  matched no level and were drawn merged into one blue bar labelled NA. **96 NA rows,
+  now 0.** It has been wrong on panel K of `sc2_results_aa20` since s67 and was only
+  visible because this figure put that panel somewhere I looked at it.
+
+The pooled CSVs get that translation further up the same file; the DMS frame was simply
+missed. A no-op on the published arm, whose names are already short.
+
+### Gated
+
+Published `sc2_results.png` and all six rendered supplements **byte-identical** through
+both inventory changes.
+
+### Code
+
+* `antiGen-figures/figures/fig_sc2_revised.R`, `panels_coguk_export.R`,
+  `panels_sc2_export.R` -- new.
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `wxw_dirichlet` in the inventory;
+  `RUN_TAG_TO_MODEL` applied to `dms_long`.
