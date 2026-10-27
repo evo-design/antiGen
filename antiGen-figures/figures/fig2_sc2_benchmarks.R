@@ -1082,7 +1082,14 @@ make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
   } else {
     ## Inline in the lower-left corner, over the panel grid.
     p +
-      guides(color = guide_legend(nrow = 3, byrow = TRUE)) +
+      ## The ROW COUNT sets how wide the legend is: it fills rows first, so n entries
+      ## over `nrow` rows need ceil(n/nrow) columns. Three rows suited the published
+      ## six entries (two columns, inside the panel); at eight it becomes three
+      ## columns and spills off the left of the panel onto its neighbour. An option
+      ## rather than a formula because the right answer depends on label LENGTH as
+      ## much as on count, and the published default must not move.
+      guides(color = guide_legend(nrow = getOption("sc2.gate_legend_nrow", 3),
+                                  byrow = TRUE)) +
       theme(
         legend.position      = c(0.98, 0.02),
         legend.justification = c(1, 0),

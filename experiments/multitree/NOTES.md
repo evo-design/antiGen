@@ -10192,3 +10192,57 @@ on that panel costs.
 * `experiments/multitree/submit_cutoff_evals.sh` -- gate staged when present; `TIME`,
   `REQUEUE`, `CPUS`, `MEM`, `GRES`, `NICE`.
 * `CLAUDE.md` -- the CPU partition rule.
+
+## 83. Panel M draws the gate, on all sixteen cutoffs (2026-10-27)
+
+The sweep reconciled at 14:34 after 19 daemon cycles: sixteen gate checkpoints, sixteen
+cutoff evals carrying all eight `PANEL_ROWS`. `install_sc2_aa20.sh` reports **16 of 16,
+all present** for the first time.
+
+### What the gate does
+
+Top decile, by cutoff:
+
+| cutoff | antiGen | PSSM | gate |
+|---|---|---|---|
+| 2020-04-01 | 0.524 | 0.458 | **0.643** |
+| 2021-01-01 | 0.710 | 0.782 | **0.803** |
+| 2022-01-01 | 0.844 | 0.823 | **0.861** |
+| 2023-01-01 | 0.878 | 0.876 | **0.920** |
+| 2024-01-01 | 0.925 | 0.880 | 0.919 |
+
+**It beats both parents at fifteen of sixteen cutoffs.** Not by picking the better one:
+PSSM leads antiGen early (through 2021-10-01) and antiGen leads PSSM late, and the gate
+clears whichever is ahead on both sides of that crossover. The single exception is the
+last point, 2024-01-01, where antiGen alone is 0.925 against the gate's 0.919 -- the
+one cutoff where the training window is large enough that the PSSM partner costs more
+than it adds. That is the published arm's claim reproduced on the revised corpus, with
+an endpoint the published arm did not have.
+
+### Two colour bugs, one of them latent for the whole project
+
+* **`FINETUNE_COLORS[4]` and `GATE_BLUE` are both `#0077b6`** (R/common.R:74,77). While
+  no gate existed on this arm the collision was invisible -- nothing else used
+  GATE_BLUE. Giving the gate the colour it is NAMED for made two of eight lines
+  identical, and the legend showed two blue swatches for different models. The ESM-2
+  rung moves to `FINETUNE_COLORS[5]`.
+* **The legend's width is set by its ROW count.** `guide_legend(nrow = 3)` fills rows
+  first, so n entries need ceil(n/3) columns: six entries were two columns and fitted,
+  eight became three and ran off the panel onto panel N's legend, where the two
+  overlapped into illegibility. `sc2.gate_legend_nrow` (default 3, four on this arm).
+
+Both are the same shape as the positional-colour traps of s77 and s79: a constant that
+was unambiguous only because one of its users did not exist yet.
+
+### Gated
+
+Published `sc2_results.png` and all six rendered supplements **byte-identical** through
+the gate row, the colour change and the legend option.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `sc2.gate_legend_nrow`.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- the gate as panel M's second line,
+  `GATE_BLUE` reassigned to it, eight colours inserted at the row's index.
+* `experiments/multitree/submit_cutoff_evals.sh` -- `gated_static_xfmr_pssm_lr0.0001`
+  in `PANEL_ROWS`.

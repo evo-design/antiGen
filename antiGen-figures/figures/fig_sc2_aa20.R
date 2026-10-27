@@ -75,6 +75,12 @@ options(
   sc2.gate_rows = c(
     "simple_d128_n2_lr0.0001"                   = "antiGen",
     "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4" = "ESM-2 35M, partial FT",
+    ## The published panel's headline, restored. It is a trained checkpoint, not a
+    ## derived row -- a hard gate between antiGen and the PSSM -- and this arm had
+    ## never trained one, so panel M was answering a different question with the
+    ## ESM-2 rung standing where it used to be (NOTES s82). Second, beside antiGen,
+    ## because the panel exists to ask what the gate buys over its parents.
+    "gated_static_xfmr_pssm_lr0.0001"           = "antiGen / PSSM gate",
     "where_times_which"                         = "Where x which",
     ## Beside its parent: it is the same factored map with the observed events
     ## folded in as a conjugate update, and the panel's question is what each
@@ -103,12 +109,24 @@ options(
   ## order and `scale_color_manual` matches an unnamed vector to the levels
   ## POSITIONALLY, so the seventh colour goes where the seventh line is -- fourth,
   ## beside Where x which -- and not at the end.
-  sc2.gate_colors_main = c(ANTIGEN_BLUE, FINETUNE_COLORS[4], GATE_BLUE,
-                           FINETUNE_COLORS[2],
+  ## EIGHT, in `sc2.gate_rows` order. GATE_BLUE goes to the GATE -- that is what the
+  ## constant is named for and what the published figure spends it on; `where x which`
+  ## takes the muted companion it had before the gate existed. A colour appended at the
+  ## end rather than inserted at the row's index would hand the gate's blue to PSSM.
+  ## FINETUNE_COLORS[5], NOT [4], for the ESM-2 rung: `FINETUNE_COLORS[4]` and
+  ## `GATE_BLUE` are BOTH "#0077b6" (R/common.R:74,77). While the gate did not exist
+  ## on this arm that collision was invisible -- nothing else used GATE_BLUE. Giving
+  ## the gate the colour it is named for made two of the eight lines identical, and
+  ## the legend showed two blue swatches for different models.
+  ## Eight entries over four rows is two columns; over the published three rows it
+  ## is three columns, which runs off the panel and over panel N's legend.
+  sc2.gate_legend_nrow = 4,
+  sc2.gate_colors_main = c(ANTIGEN_BLUE, FINETUNE_COLORS[5], GATE_BLUE,
+                           FINETUNE_COLORS[1], FINETUNE_COLORS[2],
                            MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
                            MODEL_TYPE_COLORS[3]),
-  sc2.gate_colors_supp = c(ANTIGEN_BLUE, FINETUNE_COLORS[4], GATE_BLUE,
-                           FINETUNE_COLORS[2],
+  sc2.gate_colors_supp = c(ANTIGEN_BLUE, FINETUNE_COLORS[5], GATE_BLUE,
+                           FINETUNE_COLORS[1], FINETUNE_COLORS[2],
                            MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
                            MODEL_TYPE_COLORS[3]),
   ## The published figure hides two gate variants that do not exist on this arm.
