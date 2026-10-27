@@ -44,16 +44,39 @@ FORCE=${FORCE:-0}
 # runs 4 minutes to 1h14m and does not qualify. Overridden here rather than in
 # eval_all_sc2.sh, which other arms share.
 PARTITION=${PARTITION:-gpu_batch}
+# eval_all_sc2.sh asks for a GPU in its own header. A full cutoff eval wants one; a
+# resume that scores only the factored baselines does not, and `eval.py` picks its
+# device with `torch.cuda.is_available()` and falls back cleanly. GRES=NONE with
+# PARTITION=cpu runs those on the idle CPU pool instead of queueing behind the GPU work.
+GRES=${GRES:-gpu:1}
+# eval_all_sc2.sh asks for 256G and 8 CPUs, sized for a full eval that builds ESM-2
+# 650M. A resume that scores only the factored baselines never loads a network, and
+# that request is what left thirteen of these PENDING on a partition with hundreds of
+# idle cores: "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher
+# priority partitions" is what an oversized ask looks like from the outside.
+CPUS=${CPUS:-8}
+MEM=${MEM:-256G}
+# NICE belongs to the caller too. 1000 is right for a sixteen-job sweep behind the
+# critical path and wrong for a handful of short resumes, where it simply pins the
+# priority at 1 (NOTES s80).
+NICE=${NICE:-1000}
 
 # The decision of s67: beyond 2024-01-01 the test window falls under ~7,000 records
 # (2,232 by 2025-01, 170 by 2026-01), so later points would plot as equals while
 # resting on a fraction of the evidence.
 [ -f "$BLOSUM" ] || { echo "no blosum62 checkpoint at $BLOSUM" >&2; exit 1; }
 
-# The six lines of panel M, by the name the eval writes. A cutoff whose CSV lacks any
-# of them is re-run rather than counted as done.
+# The lines of panel M, by the name the eval writes. A cutoff whose CSV lacks any of
+# them is re-run rather than counted as done -- which is the whole point of listing
+# them here, and is what brings an older cutoff up to a line added later.
+#
+# `wxw_dirichlet` was added to eval.py after twelve of the fourteen cutoffs had already
+# been evaluated, so they carry six rows and the two newest carry seven. Naming it here
+# marks those twelve [redo]. The re-run is cheap: eval.py resumes from its own CSVs, so
+# it skips the models already there AND the baseline sweep (eval.py:1002 guards the
+# sweep on the baseline rows already being loaded), leaving one analytic model to score.
 PANEL_ROWS="simple_d128_n2_lr0.0001 esm2_esm2_t12_35M_UR50D_lr0.0001_partial4
-            where_times_which pssm_root blosum62 EVEscape"
+            where_times_which wxw_dirichlet pssm_root blosum62 EVEscape"
 
 CUTOFFS="2020-04-01 2020-07-01 2020-10-01 2021-01-01 2021-04-01 2021-07-01
          2021-10-01 2022-01-01 2022-04-01 2022-07-01 2022-10-01 2023-01-01
@@ -115,7 +138,8 @@ for D in $CUTOFFS; do
     # date by --split-date. Reading it any other way would give each point a different
     # test set AND a different split rule (NOTES s65).
     CKPT_DIR=$stage OUTDIR=$out DATA_DIR="" \
-    sbatch --job-name="cut_$D" --nice=1000 --partition="$PARTITION" \
+    sbatch --job-name="cut_$D" --nice="$NICE" --partition="$PARTITION" --gres="$GRES" \
+        --cpus-per-task="$CPUS" --mem="$MEM" \
         examples/slurm/eval_all_sc2.sh \
         --alphabet $ALPHABET \
         --train-examples "$REVISED/sc2-$D/train/examples_${D}_cur.txt" \

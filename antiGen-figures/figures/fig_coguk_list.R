@@ -567,7 +567,23 @@ drop_unrequested_ensemble <- function(df) {
 ## MODEL_LABEL below -- otherwise the "report the holes" pass would list them as
 ## missing from all twelve metrics on every run.
 DROP_MODELS <- getOption("coguk.drop_models", c("CoVFit", "pyr0"))
-drop_models <- function(df) df[!df$model %in% DROP_MODELS, , drop = FALSE]
+
+## A PATTERN as well as a name list, because some rows come in families.
+## `ensemble_panels.py` writes a one-member GATE map per member alongside the rule
+## maps, and `background_contrast.py` scores them like any other model -- so
+## `background_summary.csv` carries a `gate_<member>` row for every member checked.
+## They exist to be compared against their member's own row and then dropped; listing
+## nine names here would have to be edited every time the member set changes, and the
+## figure's "fail loudly on an unlisted model" rule turns a missed one into a stopped
+## render rather than a wrong bar. Empty by default.
+DROP_PATTERN <- getOption("coguk.drop_pattern", NULL)
+drop_models <- function(df) {
+  keep <- !df$model %in% DROP_MODELS
+  if (!is.null(DROP_PATTERN) && nzchar(DROP_PATTERN)) {
+    keep <- keep & !grepl(DROP_PATTERN, df$model)
+  }
+  df[keep, , drop = FALSE]
+}
 
 
 ## --- Recall: merge the four macro jobs -------------------------------------

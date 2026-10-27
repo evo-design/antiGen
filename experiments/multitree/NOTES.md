@@ -9964,3 +9964,80 @@ past the figure, not from this section. Left alone because it is a separate fix.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- blank gutter, `sc2.auc_gutter`,
   `plot_auc(gutter=)`, `summarise_curves_at`, `sc2.recall_at` and the row it adds.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- gutter 1.15, `sc2.recall_at = 0.1`.
+
+## 81. K-L gets its rule bars, and the gate comes back exactly zero (2026-10-26)
+
+`bg_contrast_aa20` 3458262 COMPLETED in 3h36m over 45 maps: the 31 rungs, the 5 rule
+maps `ensemble_panels.py` combined, and 9 one-member gate maps.
+
+### The gate, which is the point of the gate maps
+
+A one-member rule is a monotone transform of its member WITHIN each query, and the
+background contrast's statistic is a within-query PERCENTILE -- so unlike the recall
+side, where the same identity lands at 4e-9, here it should be exact.
+
+    gate rows compared: 72
+    worst |delta| in lift = 0.000e+00
+
+Bit for bit, over every (member, cellset) pair. **That is what makes the five `ens_`
+rows usable**: the combination step is demonstrably a no-op on one member, through the
+same `background_contrast.py` the rungs beside them went through.
+
+### The gate rows had to be dropped by PATTERN, not by name
+
+`background_summary.csv` now carries a `gate_<member>` row for every member checked,
+and `fig_coguk_list.R` stops on any model it has no group for -- correctly. Listing
+nine names in `coguk.drop_models` would need editing whenever the member set changes,
+and a missed one stops the render. `coguk.drop_pattern` (empty by default, `^gate_` on
+this arm) drops the family.
+
+`coguk_list_aa20` now draws **34 models on K-L**, EVmutation the only absentee, with
+all five rules in their two colour groups and their bootstrap intervals.
+
+### What the row says about the blend
+
+`Where x which + events` takes **+4.4 pp** against `Where x which`'s +10.0. It wins the
+recall panels and loses more than half the background lift, which s77 recorded as the
+mechanism rather than a surprise: `N[i,a]` does not vary with the query, so mixing it
+in dilutes the only term that does.
+
+### wxw_dirichlet on the main arm, and a resume subtlety
+
+`wxwd_main_aa20` 3460229, **14m47s ON CPU**. `eval.py` resume-skipped the 14
+checkpoints and, because the baseline rows were already loaded, skipped the baseline
+sweep too (eval.py:1002) -- so no network was ever built and the GPU was not needed.
+
+**It did NOT skip `codon`, `substitution` and `where_times_which`.** `read_unified_csv`
+sorts CSV rows into model_rows and baseline_rows, and those three are classified as
+BASELINES, so they fall outside `already_done` and are re-evaluated. Harmless -- they
+recompute to the same values -- but it is why a "one model" resume scored four, and
+why the run was 15 minutes rather than 5.
+
+Top decile, all mutations: `pssm_root` 0.782, `wxw_dirichlet` 0.724, antiGen 0.714,
+`where_times_which` 0.711. **PSSM leads here and was fourth on the list figure**
+(0.449 against antiGen's 0.522). Different cell set and different pooling, so the two
+are not in contradiction -- but a baseline moving from fourth to first between two
+panels of one arm is worth understanding before either is read as a result, and the
+all-cells macro run is the thing that speaks to it.
+
+### Scheduling, twice more
+
+* The 13 cutoff redos sat at **priority 1** with "Nodes required for job are DOWN,
+  DRAINED or reserved": `--nice=1000` hardcoded in the submit script, and 256G/8 CPUs
+  inherited from `eval_all_sc2.sh`'s header, which is sized for building ESM-2 650M.
+  A resume that scores only analytic baselines needs neither. `CPUS`, `MEM` and `NICE`
+  are now the caller's to set; at 96G/16/nice 0 the priority went to 45.
+* An `sbatch` in that sweep **timed out mid-run** and `set -e` aborted the script after
+  7 of 13. The re-runnable design absorbed it: a second run reported "submitted 6,
+  already queued 7". Worth recording as the payoff for the s70 rewrite rather than as
+  an incident.
+
+### Code
+
+* `antiGen-figures/figures/fig_coguk_list.R` -- `coguk.drop_pattern`; published figure
+  byte-identical (`776aa91c`, `49cc10be`).
+* `antiGen-figures/figures/fig_coguk_list_aa20.R` -- drops `^gate_`.
+* `experiments/multitree/submit_cutoff_evals.sh` -- `wxw_dirichlet` in `PANEL_ROWS`,
+  and `GRES` / `CPUS` / `MEM` / `NICE` overrides.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- panel M's seventh line and its colour,
+  inserted at the matching index of both colour vectors rather than appended.

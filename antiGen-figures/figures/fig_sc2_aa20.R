@@ -76,6 +76,11 @@ options(
     "simple_d128_n2_lr0.0001"                   = "antiGen",
     "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4" = "ESM-2 35M, partial FT",
     "where_times_which"                         = "Where x which",
+    ## Beside its parent: it is the same factored map with the observed events
+    ## folded in as a conjugate update, and the panel's question is what each
+    ## rung does as the training window grows -- which is the one thing the
+    ## update's weight depends on.
+    "wxw_dirichlet"                             = "Where x which + events",
     "pssm_root"                                 = "PSSM",
     "blosum62"                                  = "BLOSUM62",
     "EVEscape"                                  = "EVEscape"
@@ -94,10 +99,16 @@ options(
   ## Drawn dashed: the rungs that are not antiGen-derived.
   sc2.gate_baselines = c("PSSM", "BLOSUM62", "EVEscape", "Where x which"),
   ## In `sc2.gate_rows` order, which is the factor order the loader pins.
+  ## IN `sc2.gate_rows` ORDER. The by-name loader pins `model` as a factor in that
+  ## order and `scale_color_manual` matches an unnamed vector to the levels
+  ## POSITIONALLY, so the seventh colour goes where the seventh line is -- fourth,
+  ## beside Where x which -- and not at the end.
   sc2.gate_colors_main = c(ANTIGEN_BLUE, FINETUNE_COLORS[4], GATE_BLUE,
+                           FINETUNE_COLORS[2],
                            MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
                            MODEL_TYPE_COLORS[3]),
   sc2.gate_colors_supp = c(ANTIGEN_BLUE, FINETUNE_COLORS[4], GATE_BLUE,
+                           FINETUNE_COLORS[2],
                            MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
                            MODEL_TYPE_COLORS[3]),
   ## The published figure hides two gate variants that do not exist on this arm.

@@ -132,6 +132,11 @@ options(
   coguk.varr_x0      = 1.0,
   coguk.varr_dx      = 0.25,
   coguk.bg_dir       = "data/evals_sc2_background_aa20",
+  ## The one-member gate rows that `ensemble_panels.py` writes beside the rule maps.
+  ## They are the check that a rule's combination step is a no-op on one member --
+  ## compared against that member's own row, worst delta 0.000e+00 -- and are not
+  ## rungs of this figure.
+  coguk.drop_pattern = "^gate_",
   ## The Dirichlet blend of where x which with the observed mutation events, new on
   ## this arm (NOTES s73). It joins its parent's colour block rather than starting
   ## one: it is fitted on the same training examples by the same `_fit()`.
