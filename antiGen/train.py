@@ -189,6 +189,15 @@ def parse_args():
     parser.add_argument('--gate-partner-b', type=str, default='blosum62',
                         choices=_partner_choices,
                         help='ModelType.value of the second partner for --model-type gated.')
+    # The `pssm` partner reads a CSV in the `pssms/root.csv` shape. The published
+    # corpora ship one; antiGen-data-revised keeps the same numbers as a counts TSV,
+    # which every other reader takes via --root-counts. This points the partner at a
+    # converted copy (experiments/multitree/counts_to_pssm_csv.py) rather than giving
+    # the predictor a second format to parse or writing into the data repo.
+    parser.add_argument('--pssm-path', type=str, default=None, metavar='CSV',
+                        help="explicit pssms/root.csv-shaped file for the pssm model "
+                             "or the pssm partner of --model-type gated; overrides "
+                             "--data-dir for that partner only.")
     parser.add_argument('--gate-variant', type=str, default='static',
                         choices=['static', 'uncertainty'],
                         help='Gate module: "static" (per-position learnable, data-blind) or '
@@ -636,7 +645,7 @@ def main():
             model_type=ModelType.PSSM,
             seq_len=seq_len_aa,
             alphabet=alphabet_config,
-            pssm=PSSMConfig(data_dir=data_dir),
+            pssm=PSSMConfig(path=args.pssm_path, data_dir=data_dir),
         )
         model = create_model(model_config, device)
         print(f"Model: PSSM log(count+1) (no training, eval only) — source: {data_dir}/pssms/root.csv")
@@ -728,7 +737,7 @@ def main():
                 model_name=args.esm2_model_name,
                 freeze_backbone=args.freeze_backbone, finetune_layers=args.finetune_layers,
             ),
-            pssm=PSSMConfig(data_dir=data_dir),
+            pssm=PSSMConfig(path=args.pssm_path, data_dir=data_dir),
             gated=GatedFitnessConfig(
                 partner_a_type=args.gate_partner_a,
                 partner_b_type=args.gate_partner_b,

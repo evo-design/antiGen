@@ -9965,6 +9965,65 @@ past the figure, not from this section. Left alone because it is a separate fix.
   `plot_auc(gutter=)`, `summarise_curves_at`, `sc2.recall_at` and the row it adds.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- gutter 1.15, `sc2.recall_at = 0.1`.
 
+## 80. `wxw_dirichlet` everywhere, and four rounds of mis-sizing (2026-10-26)
+
+The rung existed on `coguk_list_aa20` and nowhere else: the main eval ran before it did,
+so `sc2_results_aa20`'s own 30-rung roster predates it and panel M's `PANEL_ROWS` named
+six lines that did not include it.
+
+### It is one model's pass, not a re-run
+
+`eval.py` resumes by reading its OWN output CSVs, skipping models already present and
+merging the new rows in. Pointed at a copy of `evals_sc2_aa20` it scored
+`wxw_dirichlet` and resume-skipped the other thirty. **14m47s, on CPU** -- no network is
+ever built, so the GPU was not needed at all.
+
+Two details worth keeping:
+
+* **The baseline sweep is skipped too**, and that is guarded rather than incidental:
+  `eval.py:1002` runs the sweep only `if any(suffix not in test_baseline_rows ...)`,
+  and those rows come off the existing CSVs via `read_unified_csv`. I had written in
+  the submit script that the sweep would re-run and "buy a check"; it does not run at
+  all. The comment was wrong and is corrected.
+* **It did NOT skip `codon`, `substitution` and `where_times_which`.** `read_unified_csv`
+  sorts rows into model_rows and baseline_rows, and those three are classified as
+  BASELINES -- so they fall outside `already_done` and are re-evaluated. Harmless, they
+  recompute to the same values, but it is why a "one model" resume scored four.
+
+**On a COPY, not in place.** A resume rewrites every CSV it touches, and those rows are
+what the figure stands on. The original is the thing to check the merge against.
+
+### Panel M, and the self-healing check paying off again
+
+Naming `wxw_dirichlet` in `PANEL_ROWS` marked twelve of fourteen cutoffs `[redo]`
+automatically -- the s71 mechanism doing exactly its job. The two newest already had the
+row, having been evaluated after the rung existed.
+
+### Four rounds of mis-sizing on one set of jobs
+
+Each fix addressed the dimension I had just been burned on and left the others:
+
+1. `--nice=1000`, hardcoded in the submit script. Right for a sixteen-job sweep behind
+   the critical path; it pinned the priority at **1**.
+2. **256G and 8 CPUs**, inherited from `eval_all_sc2.sh`'s header, which is sized for
+   building ESM-2 650M. A resume that scores an analytic map needs neither. Reason:
+   "Nodes required for job are DOWN, DRAINED or reserved".
+3. **The `cpu` partition**, chosen because it had idle cores -- without checking that it
+   carries `QoS=cpu_interact`, **2 concurrent jobs per user**. Fourteen jobs ran two at
+   a time with 432 cores free.
+4. **24 CPUs on `cpu_batch`**, against an account-wide `GrpTRES=cpu=288` for all of
+   hielab. Twelve jobs asked for the entire lab's allocation.
+
+`CPUS`, `MEM`, `NICE`, `GRES`, `TIME` and `PARTITION` are now all the caller's to set,
+because every one of them has been the blocker at least once.
+
+### A scancel worth recording
+
+On instruction, 310 of the user's own array tasks (`og_tp` 184, `og_ob2` 126) were
+cancelled to free the queue. Scoped by exact `--name`, after listing the distinct names,
+because a pattern would have been a guess about what else matched. It is irreversible
+and it was not enough on its own -- the partition caps above were the real limit.
+
 ## 81. K-L gets its rule bars, and the gate comes back exactly zero (2026-10-26)
 
 `bg_contrast_aa20` 3458262 COMPLETED in 3h36m over 45 maps: the 31 rungs, the 5 rule
@@ -10041,3 +10100,95 @@ all-cells macro run is the thing that speaks to it.
   and `GRES` / `CPUS` / `MEM` / `NICE` overrides.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- panel M's seventh line and its colour,
   inserted at the matching index of both colour vectors rather than appended.
+
+
+## 82. The antiGen/PSSM gate, and the partition tier that decides everything (2026-10-27)
+
+Panel M's published headline is `gated_static_xfmr_pssm` -- the one line the drawer
+BOLDS. It is a trained checkpoint, not a derived row, and this arm had never trained
+one: `cutoff_series` held `base/`, `esm2_35m_partial/` and the val-selected runs. The
+revised panel M has therefore been answering a different question, with the ESM-2 rung
+and where x which standing where the gate used to be.
+
+### Three things had to exist before it could train
+
+* **The PSSM partner could not be constructed.** `PSSMFitnessPredictor` reads a
+  `pssms/root.csv`-shaped file; antiGen-data-revised keeps those numbers as a counts
+  TSV, which is what every other reader takes via `--root-counts`.
+  `counts_to_pssm_csv.py` converts it and **checks the round trip against
+  `load_counts_matrix`** -- the function that produces the `pssm_root` RUNG on the same
+  panel. Worst delta **0.000e+00**. Without that check the gate could be antiGen blended
+  with something that merely resembles the PSSM drawn beside it.
+* **`--pssm-path`** on `train.py`, applied at both `PSSMConfig` sites.
+* **`train_cutoff_gate.sh`** runs the BASE recipe plus the gate -- same
+  `simple_d128_n2`, 32 epochs, batch 64, lr 1e-4 -- so the gate differs from the rung it
+  gates only by the gate. Anything else measures two things at once.
+
+### The cost estimate was wrong by 40x, in the expensive direction
+
+I quoted "6-11h each, the biggest single spend of this session". **The base training at
+2022-01-01 took 10m25s** (cutoff_series log 3428706: 14:31:20 -> 14:41:45). The 6-11h
+figure is the whole `cutoff_series` JOB -- base plus TEN 96-epoch val-selected runs,
+992 epochs against 32. The gate checkpoint is 6.9 MB against base's 6.8 MB.
+
+A consequence worth stating: the trainings scale with corpus size, so "~30 seconds" --
+measured on 2020-04-01, which trains on 190 examples -- is as wrong at the late end as
+6-11h was at the early end. The late cutoffs take minutes.
+
+### PriorityTier is the thing that predicts whether a job runs, and squeue never says so
+
+    tier 1000  gpu_batch, cpu_batch   -- but quota-capped
+    tier 10    quick_preemptible      -- starts in seconds
+    tier 1     preemptible            -- never started
+    tier 0     cpu_preemptible        -- never started
+
+`squeue` reports `(Priority)` for all of them. Having watched tier 10 start jobs in
+seconds and tier 0 never start any, I moved eight gate trainings to tier **1** and lost
+a night to it. The tiers are in CLAUDE.md now, because the reason string does not carry
+the one number that matters.
+
+### A reconciler, and then a reconciler that survives
+
+`reconcile_panelM.sh` asks what is MISSING rather than what FAILED, so it cannot be
+confused by a failure shape it did not anticipate -- a TIMEOUT, a preemption, a quota
+rejection, a job that exits 0 having done nothing. Every underlying script was already
+idempotent; what was missing was anything CALLING them again.
+
+**Running it as a foreground loop did not fix the problem it was built for.** The loop
+dies with its supervisor, and between 11:16 and 14:02 four gate trainings and two cutoff
+evals sat unsubmitted while the thing meant to resubmit them was gone. It is now
+`reconcile_daemon.sh`, a 1-CPU Slurm job -- stateless between cycles, `--requeue`,
+exits as soon as everything exists.
+
+Its first submission then sat PENDING itself, on a **12h walltime for a job backfill
+could not place**, with 486 cores idle and the account at 48 of 288. Cut to 4h and it
+started immediately. That is the same lesson as s80's item 2, applied to a script I
+wrote an hour after documenting it.
+
+### The row name, derived rather than waited for
+
+`PANEL_ROWS` must match the eval's row exactly or the by-name loader stops the render.
+`_CKPT_RE` takes `fitness_(.*)_(\d{8}_\d{6})\.pt`, and `config_label` rewrites the
+prefix only for `esm2_fitness_predictor`, so the row is
+**`gated_static_xfmr_pssm_lr0.0001`** -- the published name plus this pipeline's lr
+suffix. Checked against the regex rather than guessed, and to be confirmed against the
+first real CSV before it is committed.
+
+### The ordering trap
+
+Staging the gate checkpoint and NAMING it in `PANEL_ROWS` are deliberately separate.
+The redo check asks whether a CSV carries each listed row; a cutoff whose gate has not
+trained cannot produce it, so naming the row early makes the reconciler resubmit every
+cycle and never converge. Stage always, name only when all sixteen checkpoints exist --
+at which point it correctly marks all sixteen `[redo]`, which is what putting a new line
+on that panel costs.
+
+### Code
+
+* `antiGen/train.py` -- `--pssm-path`.
+* `experiments/multitree/counts_to_pssm_csv.py`, `examples/slurm/train_cutoff_gate.sh`,
+  `experiments/multitree/submit_cutoff_gates.sh` -- new.
+* `experiments/multitree/reconcile_panelM.sh`, `reconcile_daemon.sh` -- new.
+* `experiments/multitree/submit_cutoff_evals.sh` -- gate staged when present; `TIME`,
+  `REQUEUE`, `CPUS`, `MEM`, `GRES`, `NICE`.
+* `CLAUDE.md` -- the CPU partition rule.

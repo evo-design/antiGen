@@ -28,6 +28,23 @@ scontrol update jobid=<id> partition=gpu_batch   # PENDING only
 scancel <id> && <resubmit>                       # RUNNING: no in-place move
 ```
 
+## Cluster: CPU partitions are not interchangeable
+
+> **Batch work on CPU goes to `cpu_batch`, never `cpu`.**
+
+`cpu` is the DEFAULT partition and carries `QoS=cpu_interact`, which caps a user at
+**2 concurrent jobs** (`sacctmgr show qos` -> `cpu_interact MaxJobsPU=2`,
+`MaxTRESPU=cpu=64`). A sweep submitted there runs two at a time however many cores are
+idle and whatever its priority, and `squeue` explains it only as
+`(QOSMaxJobsPerUserLimit)` -- which reads like a cluster-wide quota rather than a
+property of the partition that was picked by default.
+
+`cpu_batch` has `MaxJobsPU=20`, `MaxSubmitPU=200`. Same nodes.
+
+```bash
+scontrol update jobid=<id> partition=cpu_batch   # PENDING only
+```
+
 **Measured runtimes, as a guide to what "short" means:**
 
 | job | time | partition |

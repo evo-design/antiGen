@@ -70,12 +70,20 @@ def load_rules(path):
         specs = [specs]
     out, seen = [], {}
     for spec in specs:
-        spec = dict(spec)
-        spec.pop("family", None)
-        flab = spec.pop("figure_label", None)
-        r = er.Rule(family="frozen",
-                    **{k: (tuple(v) if isinstance(v, list) else v)
-                       for k, v in spec.items()})
+        # NAMED FIELDS, not **spec. This used to splat the whole object into Rule()
+        # after popping the two keys it knew about, so every key the rule FILE later
+        # gained became a TypeError here -- which is how `figure_group` broke this
+        # script without anything touching it. `Rule`'s fields are the rule's identity
+        # and the file carries presentation beside them; reading only the former is
+        # what `ensemble_test_rows.load_rules` already does.
+        flab = spec.get("figure_label")
+        r = er.Rule(norm=spec["norm"], pool=spec["pool"], nan=spec["nan"],
+                    members=tuple(spec["members"]),
+                    weights=tuple(spec.get("weights", ())) or (),
+                    beta=spec.get("beta"), k=spec.get("k"),
+                    qprime=spec.get("qprime"), trim=spec.get("trim"),
+                    gate=tuple(spec["gate"]) if spec.get("gate") else None,
+                    family=spec.get("family", "frozen"))
         if r.rule_id in seen:
             raise SystemExit(f"two specs collapse to the same rule {r.rule_id}: {r.label}")
         seen[r.rule_id] = True

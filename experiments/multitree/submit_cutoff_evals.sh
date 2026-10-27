@@ -43,6 +43,10 @@ FORCE=${FORCE:-0}
 # partition is for VERY SHORT jobs only (user directive, NOTES s74); a cutoff eval
 # runs 4 minutes to 1h14m and does not qualify. Overridden here rather than in
 # eval_all_sc2.sh, which other arms share.
+# gpu_batch for a full eval. For a CPU resume use PARTITION=cpu_batch, NOT cpu:
+# `cpu` is the default partition and carries QoS=cpu_interact, which caps a user at
+# TWO concurrent jobs, so a fourteen-job sweep crawls two at a time with hundreds of
+# cores idle. cpu_batch is the same nodes with MaxJobsPU=20 (CLAUDE.md).
 PARTITION=${PARTITION:-gpu_batch}
 # eval_all_sc2.sh asks for a GPU in its own header. A full cutoff eval wants one; a
 # resume that scores only the factored baselines does not, and `eval.py` picks its
@@ -60,6 +64,25 @@ MEM=${MEM:-256G}
 # critical path and wrong for a handful of short resumes, where it simply pins the
 # priority at 1 (NOTES s80).
 NICE=${NICE:-1000}
+# PREEMPTIBLE is the way to get a short resume onto the cluster NOW. `cpu_batch` is
+# capped account-wide (QOS cpu_batch, GrpTRES=cpu=288 for all of hielab), so a sweep
+# queues behind the whole lab; `cpu_preemptible` carries QOS `preempt`, which has NO
+# GrpTRES and MaxJobsPU=100, and that partition runs with PreemptMode=REQUEUE.
+#
+# WHAT MAKES THAT SAFE HERE, and it is not general: `eval.py` resumes from its own
+# output CSVs at per-MODEL granularity, so a job killed and requeued re-reads what it
+# already wrote and carries on. The worst a preemption costs is the model in flight.
+# --open-mode=append keeps the log across requeues instead of truncating it, which is
+# the only way to tell a preemption from a crash afterwards.
+# TIME, because the header's 12h is both unbackfillable for a 16-minute job and
+# ILLEGAL on the short partitions: quick_preemptible has MaxTime=02:00:00 and rejects
+# the submission outright with "Requested time limit is invalid". Measured runtime of
+# a cutoff resume is ~16 min (jobs 3460361/3460362).
+TIME=${TIME:-}
+TIME_ARGS=()
+[ -n "$TIME" ] && TIME_ARGS=(--time "$TIME")
+REQUEUE_ARGS=()
+[ "${REQUEUE:-0}" = "1" ] && REQUEUE_ARGS=(--requeue --open-mode=append)
 
 # The decision of s67: beyond 2024-01-01 the test window falls under ~7,000 records
 # (2,232 by 2025-01, 170 by 2026-01), so later points would plot as equals while
@@ -76,6 +99,7 @@ NICE=${NICE:-1000}
 # it skips the models already there AND the baseline sweep (eval.py:1002 guards the
 # sweep on the baseline rows already being loaded), leaving one analytic model to score.
 PANEL_ROWS="simple_d128_n2_lr0.0001 esm2_esm2_t12_35M_UR50D_lr0.0001_partial4
+            gated_static_xfmr_pssm_lr0.0001
             where_times_which wxw_dirichlet pssm_root blosum62 EVEscape"
 
 CUTOFFS="2020-04-01 2020-07-01 2020-10-01 2021-01-01 2021-04-01 2021-07-01
@@ -133,6 +157,23 @@ for D in $CUTOFFS; do
     ln -s "$base" "$stage/$(basename "$base")"
     ln -s "$esm"  "$stage/$(basename "$esm")"
     ln -s "$BLOSUM" "$stage/$(basename "$BLOSUM")"
+    # The antiGen/PSSM gate, if this cutoff has one trained yet. Staged WITHOUT being
+    # named in PANEL_ROWS on purpose: an eval that runs picks the gate up and writes
+    # its row, but a cutoff is not marked [redo] for lacking it.
+    #
+    # NAMING IT IN PANEL_ROWS BEFORE EVERY GATE IS TRAINED WOULD LOOP FOREVER. The
+    # redo check asks whether the CSV carries each listed row; a cutoff whose gate
+    # checkpoint does not exist can never produce that row, so the reconciler would
+    # resubmit it every cycle and never converge. Add the row to PANEL_ROWS only once
+    # all sixteen checkpoints are on disk -- that is a one-line change and it then
+    # correctly marks all sixteen [redo], which is what putting a new line on the
+    # panel costs.
+    gate=$(ls "$SERIES/$D/gate_xfmr_pssm"/fitness_*.pt 2>/dev/null | head -1 || true)
+    if [ -n "$gate" ]; then
+        ln -s "$gate" "$stage/$(basename "$gate")"
+    else
+        echo "        (no gate checkpoint yet for $D; staged without it)"
+    fi
 
     # The corpus is per cutoff; the TEST corpus is the one shared file, cut at the same
     # date by --split-date. Reading it any other way would give each point a different
@@ -140,6 +181,7 @@ for D in $CUTOFFS; do
     CKPT_DIR=$stage OUTDIR=$out DATA_DIR="" \
     sbatch --job-name="cut_$D" --nice="$NICE" --partition="$PARTITION" --gres="$GRES" \
         --cpus-per-task="$CPUS" --mem="$MEM" \
+        "${TIME_ARGS[@]}" "${REQUEUE_ARGS[@]}" \
         examples/slurm/eval_all_sc2.sh \
         --alphabet $ALPHABET \
         --train-examples "$REVISED/sc2-$D/train/examples_${D}_cur.txt" \
