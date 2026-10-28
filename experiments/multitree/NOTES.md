@@ -10458,9 +10458,9 @@ always wrong.
 
 ## 88. Panel D: the BA.2.86 -> KP.3 case study (2026-10-28)
 
-> **Superseded in part by s89.** The ranks below stand; the DRAWING described
-> here (four repeated glyphs, log rank axis, three of seven steps) was
-> replaced after review.
+> **Superseded in part by s89 and s90.** The ranks below stand. The log rank
+> axis and the three-of-seven roster went in s89; the four-glyph chain layout
+> this section describes came BACK in s90, now carrying all seven steps.
 
 The placeholder in `sc2_results_revised` is filled. Panel D asks a narrower question
 than any other panel in the figure: not how often antiGen's top decile contains the
@@ -10613,3 +10613,56 @@ objective over a set of objects optimises for the biggest object in it.
 
 * `experiments/multitree/render_rbd_surface.py` -- new.
 * `experiments/multitree/draw_path_panel.py` -- rewritten.
+
+## 90. Panel D: the chain comes back, carrying all seven steps (2026-10-28)
+
+s89 replaced the four-glyph chain with a single large surface and a rank chart,
+on the argument that eight nodes cannot fit a 5.5in row. Review rejected the
+layout and kept the rendering: **the chain reads better; put more than one
+mutation on an arrow.**
+
+The premise in s89 was wrong, and it is worth naming the error. It assumed one
+glyph per STEP, which does need eight nodes. The path has seven RBD steps but
+only THREE transitions between named states, because JN.1, JN.1.11.1 and KP.3
+are defined by L455S, F456L and Q493E -- steps 1, 7 and 12. An arrow is a
+transition, not a step, and a transition can carry a list. Four glyphs, three
+arrows, seven substitutions.
+
+`group_by_state` cuts the step list at the defining mutations, each bucket
+running up to and including its own, which is what puts F456L on the arrow INTO
+JN.1.11.1 alongside the excursions the path took on the way:
+
+| transition | substitutions (rank) |
+|---|---|
+| BA.2.86 -> JN.1 | L455S 258 |
+| JN.1 -> JN.1.11.1 | V483D 1,107*, R346T 233*, F456L 82 |
+| JN.1.11.1 -> KP.3 | D483V 261*, T346R 19*, Q493E 191 |
+
+(* the site reverts later on the path.)
+
+**The intermediate states carry more than their name.** The tree nodes between
+the named lineages hold excursions at 483 and 346 that revert before KP.3, so
+the middle glyph is JN.1.11.1 plus two changes on their way back out. The
+colouring states this instead of hiding it: a site is marked only while it
+differs from BA.2.86, so 483 and 346 light up at JN.1.11.1 and are gone at KP.3.
+Reading the four glyphs left to right, the salmon marks appearing and
+disappearing IS the reversion, with no annotation needed.
+
+The rank now rides beside its mutation, so the axis question from s89 is moot --
+there is no axis, linear or otherwise, and the exact rank is printed.
+
+### A bug the resize exposed
+
+`render`'s `smooth` was a blur sigma in PIXELS, tuned once at 760px wide. Four
+glyphs at 540px put relatively more blur on each and they came back soft and
+flat next to the single large render. It is now a fraction of image width, so
+the same surface comes out the same at any size. Worth keeping as a shape: a
+visual parameter in absolute pixels is a parameter that silently depends on how
+big you happened to render the first time.
+
+### Code
+
+* `experiments/multitree/draw_path_panel.py` -- rewritten again, chain layout.
+* `experiments/multitree/render_rbd_surface.py` -- `smooth` relative to width.
+* `antiGen-figures/figures/fig_sc2_revised.R` -- shorter panel D title; at the
+  canvas edge it collided with the first state name.

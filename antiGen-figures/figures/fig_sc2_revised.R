@@ -68,7 +68,7 @@ for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",
 ## ones do. Untitled it is the only panel in the figure without a heading, and the row
 ## label "D" ends up sitting against the first state's name.
 case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
-                           "Case study: RBD steps from BA.2.86 to KP.3",
+                           "Case study: BA.2.86 to KP.3",
                            base_theme = theme_paper())
 
 ## rel_widths follow the source figures: the leftmost bar panel of a pair carries

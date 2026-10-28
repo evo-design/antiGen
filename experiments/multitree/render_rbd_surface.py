@@ -115,7 +115,7 @@ def orient(xyz, resi):
 
 
 def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
-           pad=3.0, outline="#5b7794", outline_px=2.4, ss=2, smooth=9.0):
+           pad=3.0, outline="#5b7794", outline_px=2.4, ss=2, smooth=0.0118):
     """Raycast the surface. Returns (RGBA float array, {resi: (px, py)})."""
     W, H = size[0] * ss, size[1] * ss
     r = rad + probe
@@ -169,7 +169,9 @@ def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
 
     # --- screen-space smoothing (see module docstring) -------------------------
     m = mask.astype(np.float32)
-    sig = smooth * ss
+    # Relative to image WIDTH, not in pixels: a fixed pixel blur turns a small glyph
+    # to mush and leaves a large one beady, and these are rendered at several sizes.
+    sig = smooth * size[0] * ss
     zf = np.where(mask, depth, 0).astype(np.float32)
     wm = gaussian_filter(m, sig, mode="nearest")
     zs = gaussian_filter(zf, sig, mode="nearest") / np.maximum(wm, 1e-6)
