@@ -10304,3 +10304,58 @@ both inventory changes.
   `panels_sc2_export.R` -- new.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `wxw_dirichlet` in the inventory;
   `RUN_TAG_TO_MODEL` applied to `dms_long`.
+
+## 85. Pruning `sc2_results_revised`, and three options that were silently overridden
+(2026-10-27)
+
+On request: drop the orange (the three plain mean rules) and brown (the fine-tune
+group) models, drop the base antiGen rung from every panel but H, drop the
+`where x which + PSSM` hybrid, and draw the surviving `antiGen, 10x val-selected` rule
+in antiGen's dark blue.
+
+### A wrapper's own `options()` beats the caller's
+
+Three separate attempts to steer a drawer from the exporter did nothing, all for one
+reason: `fig_coguk_list_aa20.R` and `fig_sc2_aa20.R` each call `options()` THEMSELVES,
+and the exporter sources them AFTER setting its own. Last write wins, and the wrapper
+is last.
+
+* `coguk.ensemble_colors` -> the val-selected rule stayed cyan.
+* `sc2.ensemble_colors` -> the same rule stayed cyan on the DMS panel.
+* `coguk.title_suffix` -> the suffix stayed (harmless; the fix for the clipped title
+  turned out to be the figure's width).
+
+What works is reaching past the option: `GROUP_COLORS` and `GROUP_PALETTE` are read at
+CALL time by the panel builders, so reassigning them after the source and then calling
+the builder takes effect. The DMS panel is REBUILT rather than reused for that reason.
+
+**`legend_grob` is not a builder.** It is constructed during the source, so a recolour
+after the fact leaves the legend key disagreeing with the bars under it. It has to be
+rebuilt from the same expression.
+
+### A subset selection silently loses its labels and its group
+
+`coguk.ensemble = "ens_8a91fbbf88"` alone drew the rule as **"Ensemble 8a91fb" in the
+orange Ensembles group** -- the very group being pruned. Both the label and the group
+default are guarded on `nrow(ensemble_figure_rows.tsv) == length(ENSEMBLE)`, so naming
+one of five rules fails both guards and falls back. `coguk.ensemble_labels` and
+`coguk.ensemble_groups` have to be set alongside it.
+
+### Legend keys for groups that are no longer drawn
+
+The drawer builds its legend with `drop = FALSE` so its full roster always shows every
+group. With antiGen and antiGen Finetunes pruned from every panel that left two keys
+with nothing beneath them; the rebuilt legend uses `drop = TRUE` over the groups the
+pruned panels actually carry.
+
+### `sc2.dms_drop`
+
+`EXCLUDED_MODELS` could not serve: it is applied to `performance_by_x` only and names
+raw ids, while the DMS frame carries display labels by then. New option, empty by
+default.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `sc2.dms_drop`.
+* `antiGen-figures/figures/panels_coguk_export.R`, `panels_sc2_export.R` -- the
+  pruning, the recolour-after-source, the rebuilt legend.

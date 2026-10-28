@@ -806,6 +806,12 @@ dms_long$model <- longform_names[match(dms_long$model, all_models)]
 make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALSE) {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
+  ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
+  ## roster. `EXCLUDED_MODELS` cannot serve: it is applied to `performance_by_x`
+  ## only and names raw ids, while by this point the frame carries display labels.
+  ## Empty by default, so the published panel is untouched.
+  dms_drop <- getOption("sc2.dms_drop", character(0))
+  if (length(dms_drop)) df <- df[!(df$model %in% dms_drop), ]
   if (!SUPP) {
     df <- df[!(df$model %in%
                  longform_names[all_models %in% c(subsets$trained_models,
