@@ -803,7 +803,11 @@ for (i in seq_along(subsets)) {
 dms_long$group[is.na(dms_long$group)] <- "antiGen"
 dms_long$model <- longform_names[match(dms_long$model, all_models)]
 
-make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALSE) {
+## `legend_nrow` wraps the "Model type" guide onto more rows. Passed in rather than
+## read from an option inside, because this builder also draws the MAIN panel's
+## legend and only the supplement's needs wrapping.
+make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALSE,
+                               legend_nrow = NULL) {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
   ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
@@ -859,7 +863,7 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
     labs(x = NULL, y = paste0("Corr. (", metric_name, ")"),
          fill = "Model type", alpha = "Transformation") +
     guides(
-      fill  = guide_legend(override.aes = list(alpha = 1)),
+      fill  = guide_legend(override.aes = list(alpha = 1), nrow = legend_nrow),
       alpha = guide_legend(override.aes = list(fill = "grey30"))
     )
 
@@ -872,19 +876,31 @@ p_expr      <- make_dms_corr_plot(dms_long, "Expression", SUPP = FALSE)
 p_bind_supp <- make_dms_corr_plot(dms_long, "Binding",    SUPP = TRUE)
 p_expr_supp <- make_dms_corr_plot(dms_long, "Expression", SUPP = TRUE)
 
+## The x tick labels are rotated, so the FIRST one reaches further left than the axis
+## does and is cut off at the canvas edge. Only applied when asked for: passing a NULL
+## margin through `theme()` would reset the inherited one rather than leave it alone.
+dms_supp_margin <- function(p) {
+  m <- getOption("sc2.supp_dms_margin", NULL)
+  if (is.null(m)) p else p + theme(plot.margin = margin(m[1], m[2], m[3], m[4], "pt"))
+}
+
 save_figure(
   plot_grid(
-    make_dms_corr_plot(dms_long, "Binding", SUPP = TRUE, legend_only = TRUE),
+    make_dms_corr_plot(dms_long, "Binding", SUPP = TRUE, legend_only = TRUE,
+                       legend_nrow = getOption("sc2.supp_dms_legend_nrow", NULL)),
     plot_grid(
-      p_expr_supp + theme(legend.position = "none"),
-      p_bind_supp + theme(legend.position = "none"),
+      dms_supp_margin(p_expr_supp + theme(legend.position = "none")),
+      dms_supp_margin(p_bind_supp + theme(legend.position = "none")),
       labels = "AUTO",
       ncol = 1
     ),
     ncol = 1,
-    rel_heights = c(0.075, 1)
+    ## The legend strip gets its own share of the canvas. Wrapped onto more rows it
+    ## is taller, and at the published 0.075 the two guides are drawn over each other.
+    rel_heights = c(getOption("sc2.supp_dms_legend_rel", 0.075), 1)
   ),
-  fig_name("supp_dms"), width = 10, height = 8
+  fig_name("supp_dms"), width = 10,
+  height = getOption("sc2.supp_dms_height", 8)
 )
 
 
@@ -1401,9 +1417,22 @@ save_figure(
 
 #' Grid of curves: one row per metric, one column per baseline group, with
 #' antiGen repeated in each column for reference.
+## Returns list(plot, height): the canvas has to grow with the legends, and only this
+## function knows how many entries the longest one has.
+##
+## EACH LEGEND LIVES IN ONE COLUMN OF THE GRID, so its width is the figure's width
+## divided by the number of groups -- about 2.5in here. A two-column legend of model
+## names ("antiGen as ESM 2 (650M) LM head FT") is far wider than that, and a legend
+## wider than its cell is not clipped: it is drawn centred, straight over its
+## neighbours. One column per legend is what makes the width fit; the height it costs
+## is bought back by growing the canvas, which is cheap in a supplement.
 plot_by_x_supp <- function(df, metrics, longform_metrics, xlab, ylab, cutoff = 0) {
   groups <- setdiff(unique(df$group), "antiGen")
   n_cols <- length(groups)
+  LEG_NCOL <- getOption("sc2.supp_legend_ncol", 2)
+  LEG_SIZE <- getOption("sc2.supp_legend_size", NULL)
+  WRAP     <- getOption("sc2.supp_header_wrap", 0)
+  ROW_IN   <- getOption("sc2.supp_row_in", 13 / (length(metrics) + 0.3))
 
   make_plot <- function(metric, group, show_legend = FALSE) {
     sub <- df[df$group %in% c(group, "antiGen") & df$metric == metric, ]
@@ -1424,7 +1453,7 @@ plot_by_x_supp <- function(df, metrics, longform_metrics, xlab, ylab, cutoff = 0
     if (!show_legend) return(p + theme(legend.position = "none"))
 
     p +
-      guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
+      guides(color = guide_legend(ncol = LEG_NCOL, byrow = TRUE)) +
       theme(
         legend.position      = "top",
         legend.direction     = "vertical",
@@ -1432,15 +1461,19 @@ plot_by_x_supp <- function(df, metrics, longform_metrics, xlab, ylab, cutoff = 0
         legend.key.width     = unit(1, "lines"),
         legend.key.height    = unit(0.6, "lines"),
         legend.spacing.y     = unit(0, "pt"),
-        legend.margin        = margin(0, 0, 0, 0)
+        legend.margin        = margin(0, 0, 0, 0),
+        legend.text          = element_text(size = LEG_SIZE)
       )
   }
 
   ## Column headers: bold group name over that column's legend. The model set
   ## is constant down a column, so the first metric supplies the legend.
+  ## The group name is as wide as the column too -- "Pandemic Data in Training
+  ## Window" set on one line runs over the header beside it.
   col_headers <- lapply(groups, function(g) {
+    lab <- if (WRAP > 0) paste(strwrap(g, WRAP), collapse = "\n") else g
     plot_grid(
-      ggdraw() + draw_label(g, fontface = "bold", size = 13),
+      ggdraw() + draw_label(lab, fontface = "bold", size = 13),
       extract_legend(make_plot(metrics[1], g, show_legend = TRUE)),
       ncol = 1,
       rel_heights = c(0.5, 1)
@@ -1462,28 +1495,35 @@ plot_by_x_supp <- function(df, metrics, longform_metrics, xlab, ylab, cutoff = 0
     )
   })
 
-  plot_grid(
-    plot_grid(NULL, plot_grid(plotlist = col_headers, nrow = 1),
-              nrow = 1, rel_widths = c(0.04, 1)),
-    plot_grid(plotlist = rows, ncol = 1),
-    ncol = 1,
-    rel_heights = c(0.3, length(metrics))
+  ## Header band: one line per entry of the LONGEST legend, plus the group name.
+  ## The published two-column layout keeps its fixed 0.3 and its 13in canvas.
+  entries <- max(vapply(groups, function(g)
+    length(unique(df$model[df$group %in% c(g, "antiGen")])), integer(1)))
+  header_in <- if (LEG_NCOL == 1) 0.75 + 0.19 * entries else 0.3 * ROW_IN
+
+  list(
+    plot = plot_grid(
+      plot_grid(NULL, plot_grid(plotlist = col_headers, nrow = 1),
+                nrow = 1, rel_widths = c(0.04, 1)),
+      plot_grid(plotlist = rows, ncol = 1),
+      ncol = 1,
+      rel_heights = c(header_in / ROW_IN, length(metrics))
+    ),
+    height = length(metrics) * ROW_IN + header_in
   )
 }
 
-save_figure(
-  plot_by_x_supp(performance_by_x, HIT_RATE_METRICS, longform_hit_rate_metrics,
-                 "Quantile (q)", "P(obs. mut. in top q-quantile)"),
-  fig_name("supp_recall"), width = 15, height = 13
-)
+supp_recall_fig <- plot_by_x_supp(
+  performance_by_x, HIT_RATE_METRICS, longform_hit_rate_metrics,
+  "Quantile (q)", "P(obs. mut. in top q-quantile)")
+save_figure(supp_recall_fig$plot, fig_name("supp_recall"),
+            width = 15, height = supp_recall_fig$height)
 
-save_figure(
-  plot_by_x_supp(performance_by_x, VARIANT_EMERGENCE_METRICS,
-                 longform_variant_emergence_metrics,
-                 "Date (t, years into pandemic)",
-                 "P(mut. in top decile obs. by t)", cutoff = 2),
-  fig_name("supp_precision"), width = 15, height = 13
-)
+supp_precision_fig <- plot_by_x_supp(
+  performance_by_x, VARIANT_EMERGENCE_METRICS, longform_variant_emergence_metrics,
+  "Date (t, years into pandemic)", "P(mut. in top decile obs. by t)", cutoff = 2)
+save_figure(supp_precision_fig$plot, fig_name("supp_precision"),
+            width = 15, height = supp_precision_fig$height)
 
 ## Summary bars for all four variants of both metrics, including the
 ## fine-tuned models that the main figure leaves out.
@@ -1506,5 +1546,7 @@ save_figure(
     ncol = 1,
     rel_heights = c(1, 1, 1, 1, 0.1)
   ),
-  fig_name("supp_summaries"), width = 11, height = 14
+  fig_name("supp_summaries"), width = 11,
+  ## One tick label per model down every panel; too short a canvas and they overlap.
+  height = getOption("sc2.supp_summaries_height", 14)
 )

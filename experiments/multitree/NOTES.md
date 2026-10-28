@@ -10741,3 +10741,70 @@ the roster is fixed, and `sc2.gate_drop_main` exists precisely to change the ros
 ### Code
 
 * `antiGen-figures/figures/panels_sc2_export.R` -- named gate palette, drop the rung.
+
+## 94. aa20 supplement legends (2026-10-28)
+
+The four `aa20_supp_*` figures all had text drawn over text, for three different
+reasons. Fixed with options in `fig_sc2_aa20.R`; the drawer keeps the published
+defaults, and `supp_recall/precision/summaries/dms` re-render byte-identical.
+
+**This arm's ROSTER is why these broke.** The published supplement draws a smaller
+model set, so its legends fit the layout they were written for. Here the finetune and
+ensemble rungs push several groups past ten models, and every one of these layouts
+sizes a text block by assuming how many entries it holds.
+
+**supp_recall / supp_precision.** Six per-group legends sit in a six-column grid, so
+each gets about 2.5in. They were `ncol = 2`, and two columns of names like "antiGen as
+ESM 2 (650M) LM head FT" are far wider than that. **A legend wider than its grid cell
+is not clipped -- cowplot centres it and it is drawn straight over its neighbours**,
+which is why six legends looked like one smear. One column per legend fixes the width;
+the height is bought back by growing the canvas, and `plot_by_x_supp` now returns
+`list(plot, height)` so it can size the canvas from the longest legend rather than
+having a number guessed at the call site. The group titles needed wrapping for the same
+reason -- "Pandemic Data in Training Window" on one line is wider than its column.
+
+**supp_summaries.** Not a legend at all: one y tick label per model down every panel,
+31 of them on this arm, in a 14in canvas. Height 22.
+
+**supp_dms.** Two failures at once. The legend strip was 0.075 of an 8in canvas, 0.6in,
+with "Model type" and "Transformation" stacked inside it -- drawn on top of each other.
+And the five model types on one row are wider than the 10in canvas, so the "Model type"
+title was cut off the left edge and "Val-selected, averaged over 10 holdouts" off the
+right. Wrapped to two rows, strip at 0.16, canvas 9in. Separately, the rotated x tick
+labels reach further left than the axis does, so the first one ran off the canvas; a
+70pt left margin holds it.
+
+`legend_nrow` is a PARAMETER of `make_dms_corr_plot`, not an option read inside it,
+because that builder also draws the main figure's legend and only the supplement's
+needs wrapping.
+
+### Not fixed: aa20_supp_gating_recall is empty
+
+All nine panels draw nothing, and have since this arm existed. Two independent causes,
+neither a legend problem:
+
+* **A-C** pass `xlim_hi = 5` as a literal at the call site. That is the published hard
+  stop in "years into pandemic"; this arm's `sc2.gate_x` returns a decimal CALENDAR
+  year, so `xlim(c(NA, 5))` discards every point. The x axis showing a lone "5" is the
+  tell. `sc2.gate_xlim_hi` exists and is set to NA for panel M, but `gate_supp_row`
+  does not read it.
+* **D-I** plot against `n_muts` and `n_seqs`. `gate_recall_by_name` returns only
+  model, the three recalls and cutoff -- the by-position loader is what supplies those
+  two columns, so on this arm they do not exist at all.
+
+Left alone deliberately: A-C is a one-line fix, but D-I needs a decision about what
+those rows should show on an arm whose loader has no training-set-size columns, and
+that is not a layout question.
+
+### Also
+
+`figs/sc2_results_aa20.png` is re-rendered here. It had drifted: the panel M
+`RUN_TAG_TO_MODEL` fix from s84 was committed but the PNG was never regenerated, so the
+stored copy still showed twelve models collapsed into one NA bar. The diff is confined
+to that panel.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- options, all defaulting to the
+  published behaviour.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- the values this arm needs.

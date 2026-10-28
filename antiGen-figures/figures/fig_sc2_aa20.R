@@ -70,6 +70,34 @@ options(
     ens_8a91fbbf88 = "antiGen, val-selected (10x)",
     ens_69de905310 = "Where x which + PSSM, val-selected (10x)"),
 
+  ## --- supplements ---
+  ## THIS ARM'S ROSTER IS THE REASON THESE EXIST. The published supplement draws a
+  ## smaller model set, so its legends fit the layout they were written for; here the
+  ## finetune and ensemble rungs push several groups past ten models and every legend
+  ## is wider than the grid column it sits in -- and a legend wider than its cell is
+  ## drawn over its neighbours rather than clipped. The defaults in the drawer are the
+  ## published ones; these options are what this arm needs on top.
+  ##
+  ## One column per legend makes the width fit. The height that costs is bought back
+  ## by growing the canvas, which `plot_by_x_supp` now sizes from the longest legend.
+  sc2.supp_legend_ncol = 1,
+  sc2.supp_legend_size = 8,
+  ## "Pandemic Data in Training Window" on one line is wider than its column.
+  sc2.supp_header_wrap = 22,
+  ## supp_summaries puts one tick label per model down every panel -- 31 of them on
+  ## this arm against the published roster's shorter list -- so the canvas has to be
+  ## tall enough that consecutive names clear each other.
+  sc2.supp_summaries_height = 22,
+  ## supp_dms stacks "Model type" over "Transformation" in a strip 0.6in tall, which
+  ## draws them on top of one another; and the five model types on one row are wider
+  ## than the 10in canvas, so both ends are cut off.
+  sc2.supp_dms_legend_nrow = 2,
+  sc2.supp_dms_legend_rel = 0.16,
+  sc2.supp_dms_height = 9,
+  ## t, r, b, l in points. The rotated tick labels reach left of the axis, and this
+  ## arm's longest ("antiGen as ESM 2 (35M) full FT") runs off the canvas.
+  sc2.supp_dms_margin = c(5, 5, 5, 70),
+
   ## --- panel M ---
   sc2.gate_loader = "by_name",
   sc2.gate_rows = c(
