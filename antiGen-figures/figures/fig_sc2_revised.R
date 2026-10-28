@@ -67,7 +67,11 @@ blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size 
 ## the bar panels, and A fills the width it is given and then pads above and below.
 ## Widening the column lets it fill the row instead. Both rows carry the same widths
 ## so the columns stay aligned.
-COL_W <- c(2.3, 1.9, 1)
+## The third column carries no y-axis text, so it was given the least width -- but
+## its TITLES are the longest ("... de novo escape mutations" against "... all escape
+## mutations"), and a title is clipped at the panel edge rather than wrapped. Width
+## follows the widest thing in the column, which here is the title and not the bars.
+COL_W <- c(2.2, 1.65, 1.35)
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
                   rel_widths = COL_W, labels = c("A", "B", "C"))
 ## The blank goes under the cartoon so that B/C and the two background panels -- the

@@ -93,6 +93,6 @@ saveRDS(list(
                       levels = intersect(MODEL_TYPE_LEVELS, unique(as.character(d$group))))
     make_dms_corr_plot(d, "Expression", SUPP = FALSE)
   })),
-  gate    = as_grob(gate_plot)
+  gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations"))
 ), out)
 cat("exported sc2 panels ->", out, "\n")

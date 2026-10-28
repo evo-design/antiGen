@@ -100,10 +100,20 @@ legend_grob <- extract_legend(
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
 
 saveRDS(list(
-  decile_all   = as_grob(decile_bar(RECALL_MAIN[1], TRUE,  RECALL_MAIN)),
-  decile_dn    = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN)),
-  bg_all       = as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN)),
-  bg_dn        = as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN)),
+  ## TITLES SET HERE, not in the drawer. `ggtitle()` on the built plot replaces the
+  ## label and leaves `title_theme` alone, so the figure can name its panels in its
+  ## own terms without the two source figures having to agree with it.
+  decile_all   = as_grob(decile_bar(RECALL_MAIN[1], TRUE,  RECALL_MAIN) +
+                           ggtitle("Top decile recall, all escape mutations")),
+  decile_dn    = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN) +
+                           ggtitle("Top decile recall, de novo escape mutations")),
+  bg_all       = as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
+                           ggtitle("Query adaptability, all escape mutations")),
+  ## "de novo", not "all". The title given for this panel duplicated E's, and this
+  ## one IS the de novo panel -- `BG_MAIN[2]` is the de novo cell set -- so calling
+  ## it "all" would be wrong about what is plotted rather than merely repetitive.
+  bg_dn        = as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN) +
+                           ggtitle("Query adaptability, de novo escape mutations")),
   legend       = legend_grob,
   decile_names = RECALL_MAIN,
   bg_names     = BG_MAIN
