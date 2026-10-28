@@ -46,7 +46,11 @@ saveRDS(list(
     ## palette entry, so renaming the frame alone turns those rows into NA.
     SHORT <- "Val-selected (10x)"
     LONG  <- "Val-selected, averaged over 10 holdouts"
-    MODEL_TYPE_LEVELS[MODEL_TYPE_LEVELS == LONG] <<- SHORT
+    ## ...and MOVED TO THE FRONT, because the DMS panel orders its x axis by GROUP:
+    ## `fct_reorder(model, as.integer(factor(group)))` (fig2:835). Releveling `model`
+    ## cannot move it -- the group's position is what decides, and an appended group
+    ## sorts last. This is also why the relevel below is not enough on its own.
+    MODEL_TYPE_LEVELS <<- c(SHORT, setdiff(MODEL_TYPE_LEVELS, c(LONG, SHORT)))
     names(GROUP_PALETTE)[names(GROUP_PALETTE) == LONG] <<- SHORT
     GROUP_PALETTE[[SHORT]] <<- ANTIGEN_BLUE
     ## The label is baked into `dms_long$model` during the source (via
@@ -57,14 +61,36 @@ saveRDS(list(
     ## wrapper already shortens it once (NOTES s79), so the string present in the
     ## frame is the shortened one and renaming the long one matched nothing.
     long <- "antiGen, val-selected (10x)"
+    SHORTLAB <- "antiGen (val x10)"
     d <- dms_long
     lv <- levels(d$model)
-    if (!is.null(lv)) levels(d$model)[lv == long] <- "antiGen (val x10)"
-    else d$model[d$model == long] <- "antiGen (val x10)"
+    if (!is.null(lv)) levels(d$model)[lv == long] <- SHORTLAB
+    else d$model[d$model == long] <- SHORTLAB
     ## ...and the group, which is the legend key that was being cut mid-word.
     glv <- levels(d$group)
     if (!is.null(glv)) levels(d$group)[glv == LONG] <- SHORT
     else d$group[d$group == LONG] <- SHORT
+    ## ...and FIRST on the x axis, which is level order here. `make_dms_corr_plot`
+    ## has no equivalent of the bar panels' top-model hook, so the frame is
+    ## releveled directly.
+    ## Works whether `model` is a factor or a character vector. The earlier rename
+    ## has a branch for both, and guarding this on `levels()` alone meant that on
+    ## the character path the relevel silently did nothing and the panel kept its
+    ## old order.
+    ord <- if (is.factor(d$model)) levels(d$model) else unique(as.character(d$model))
+    if (SHORTLAB %in% ord) {
+      d$model <- factor(as.character(d$model),
+                        levels = c(SHORTLAB, setdiff(ord, SHORTLAB)))
+    }
+    ## THE GROUP MUST BE A FACTOR IN THE SAME ORDER AS `MODEL_TYPE_LEVELS`.
+    ## `dms_long$group` is left a character vector by the drawer, and the x order
+    ## comes from `fct_reorder(model, as.integer(factor(group)))` -- `factor()` on a
+    ## character sorts ALPHABETICALLY, so "Val-selected (10x)" landed last whatever
+    ## MODEL_TYPE_LEVELS said, while `group_colors()` read the colours off
+    ## MODEL_TYPE_LEVELS. The two orders disagreed and the panel came back with the
+    ## right bars in the wrong colours. Setting the factor fixes both at once.
+    d$group <- factor(as.character(d$group),
+                      levels = intersect(MODEL_TYPE_LEVELS, unique(as.character(d$group))))
     make_dms_corr_plot(d, "Expression", SUPP = FALSE)
   })),
   gate    = as_grob(gate_plot)

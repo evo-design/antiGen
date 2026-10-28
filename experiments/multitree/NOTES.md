@@ -10416,3 +10416,42 @@ wrapper loses to the wrapper's own `options()`.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- decimal-year `sc2.gate_x`, trimmed axis.
 * `antiGen-figures/figures/fig_sc2_revised.R` -- row order, canvas size.
 * `antiGen-figures/figures/panels_{coguk,sc2}_export.R` -- the renames.
+
+## 87. antiGen on top, and two orderings that are not the one you set (2026-10-27)
+
+On request: the val-selected rung goes to the top of the bar panels (B/C/E/F) and
+first on the DMS panel (G).
+
+### The bar panels already had the hook, under a hard-coded name
+
+`bar_panel` did `levels = rev(c("antiGen", setdiff(lev, "antiGen")))` -- a named rung
+pulled to the top. On a pruned roster where the base antiGen bar is gone, that name
+matches nothing and the intended rung sinks to wherever the inventory puts it, which
+for an appended ensemble rule is the bottom. `coguk.top_model` makes the name an
+option; the published default is unchanged and `coguk_list_results` re-renders
+byte-identical (`776aa91c`, `49cc10be`).
+
+### The DMS panel orders by GROUP, and its group is not a factor
+
+Two attempts failed before the cause was clear.
+
+* **Releveling `model` did nothing.** The x order is
+  `fct_reorder(model, as.integer(factor(group)))` (fig2:835) -- the GROUP's position
+  decides, and an appended group sorts last whatever the model levels say.
+* **Moving the group to the front of `MODEL_TYPE_LEVELS` moved the COLOURS and not
+  the bars.** `dms_long$group` is left a CHARACTER vector by the drawer, so
+  `factor(group)` inside `fct_reorder` sorts alphabetically, while `group_colors()`
+  reads its palette off `MODEL_TYPE_LEVELS`. The two orders disagreed and the panel
+  came back with the right bars in the wrong colours -- "Pandemic Data in Training
+  Window" drawn in antiGen's blue.
+
+The fix is to set the group as a FACTOR in `MODEL_TYPE_LEVELS` order, which fixes the
+sort and the palette together. Worth keeping as a shape: when a panel's order and its
+colours come from two different expressions of "the group", changing one of them is
+always wrong.
+
+### Code
+
+* `antiGen-figures/figures/fig_coguk_list.R` -- `coguk.top_model`.
+* `antiGen-figures/figures/panels_{coguk,sc2}_export.R` -- the top rung, the group
+  factor, the A/D column width.

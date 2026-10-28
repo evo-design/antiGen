@@ -1063,8 +1063,16 @@ bar_panel <- function(df, metric, xlab, title, labels_on_y = TRUE,
                       xrange = NULL) {
   sub <- df[df$metric == metric, ]
   sub <- droplevels(sub[!is.na(sub$value), ])
+  ## The rung pulled to the TOP of the bar panel. It is a NAME rather than a
+  ## position because these panels exist to read everything else against one rung,
+  ## and which rung that is differs by figure: on a pruned roster where the base
+  ## antiGen bar has been dropped, "antiGen" matches nothing and the intended rung
+  ## sinks to wherever the inventory happens to put it -- for an appended ensemble
+  ## rule, the bottom.
+  top_model <- getOption("coguk.top_model", "antiGen")
   lev <- levels(sub$model)
-  sub$model <- factor(sub$model, levels = rev(c("antiGen", setdiff(lev, "antiGen"))))
+  sub$model <- factor(sub$model, levels = rev(c(intersect(top_model, lev),
+                                                setdiff(lev, top_model))))
   sub$medal <- c("1st", "2nd", "3rd")[rank(-sub$value, ties.method = "first")]
 
   p <- ggplot(sub, aes(y = model, x = value, fill = group)) +

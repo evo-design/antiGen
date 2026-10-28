@@ -33,6 +33,8 @@ options(coguk.fig_main = "scratch_revised_coguk",
         ## naming one of five rules silently falls back to "Ensemble 8a91fb" in the
         ## orange Ensembles group -- the very group this figure is pruning.
         coguk.ensemble_labels = "antiGen (val x10)",
+        ## ...and it is the rung the others are read against, so it goes on top.
+        coguk.top_model = "antiGen (val x10)",
         coguk.ensemble_groups = "Val-selected (10x)",
         ## ...and it is drawn in antiGen's DARK BLUE rather than the val-selected
         ## cyan, because with the base antiGen rung dropped it is now the only
