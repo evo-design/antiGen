@@ -31,6 +31,32 @@ source("figures/fig_sc2_aa20.R")
 ## evaluates everything here, where the drawer's globals are still in scope.
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
 
+## Panel H drops the ESM-2 rung. REBUILT, not configured ahead of the source, for the
+## reason the DMS panel is: `fig_sc2_aa20.R` sets `sc2.gate_drop_main` (to
+## `character(0)`) and `sc2.gate_colors_main` in its OWN options() call, which runs
+## after ours and wins. `make_gate_plot` reads both at CALL time, so setting them here
+## and re-calling it is what takes effect.
+##
+## NAMED colours, not the drawer's positional vector. `scale_color_manual` matches an
+## UNNAMED vector to the scale's limits in order, and dropping a line drops a limit --
+## so with the drawer's eight-colour vector every rung after ESM-2 would quietly take
+## its neighbour's colour, handing the gate's blue to `Where x which`. Naming them
+## makes the mapping independent of who is on the panel.
+options(
+  sc2.gate_colors_main = c(
+    "antiGen"                = ANTIGEN_BLUE,
+    "ESM-2 35M, partial FT"  = FINETUNE_COLORS[5],
+    "antiGen / PSSM gate"    = GATE_BLUE,
+    "Where x which"          = FINETUNE_COLORS[1],
+    "Where x which + events" = FINETUNE_COLORS[2],
+    "PSSM"                   = MODEL_TYPE_COLORS[4],
+    "BLOSUM62"               = MODEL_TYPE_COLORS[2],
+    "EVEscape"               = MODEL_TYPE_COLORS[3]),
+  sc2.gate_drop_main = "ESM-2 35M, partial FT")
+gate_plot <- make_gate_plot(gate_recall, "recall", "Recall, top decile",
+                            "P(obs. mut. in top decile)",
+                            SUPP = FALSE, show_legend = TRUE)
+
 saveRDS(list(
   cartoon = as_grob(plot_cartoon(file.path(CARTOON_DIR, "recall_definition.png"),
                                  "Definition of next-mutation recall",

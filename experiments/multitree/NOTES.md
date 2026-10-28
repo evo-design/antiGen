@@ -10716,3 +10716,28 @@ the final tick already reads 3,819 and the shaded band is labelled.
 ### Code
 
 * `experiments/multitree/draw_path_panel.py` -- spacing and axis label.
+
+## 93. Panel H drops the ESM-2 rung (2026-10-28)
+
+Panel H now draws seven lines, not eight. Done in `panels_sc2_export.R`, NOT in
+`fig_sc2_aa20.R`: panel H exists only in `sc2_results_revised`, and the same rung is
+panel M of the published `sc2_results_aa20`, which is not what was asked to change.
+
+**Rebuilt after the source, not configured before it.** `fig_sc2_aa20.R` sets
+`sc2.gate_drop_main` (to `character(0)`) and `sc2.gate_colors_main` in its own
+`options()` call, which runs after the exporter's and wins -- the same precedence that
+caught the DMS panel in s85. `make_gate_plot` reads both at CALL time, so setting them
+after the source and re-calling it is what takes effect.
+
+**The colours had to become NAMED, and this is the real trap.** `scale_color_manual`
+matches an UNNAMED vector to the scale's limits positionally, and dropping a line drops
+a limit. The drawer's eight-colour vector against seven remaining levels would have
+shifted every rung after ESM-2 onto its neighbour's colour -- handing GATE_BLUE to
+`Where x which` and leaving the gate drawn in `Where x which`'s green, with a legend
+that agreed with itself and was wrong. Naming them makes the mapping independent of who
+is on the panel. Worth propagating: the drawer's positional vector is fine only while
+the roster is fixed, and `sc2.gate_drop_main` exists precisely to change the roster.
+
+### Code
+
+* `antiGen-figures/figures/panels_sc2_export.R` -- named gate palette, drop the rung.
