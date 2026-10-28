@@ -8,7 +8,7 @@
 ##   row 1   A  the next-mutation recall cartoon          (sc2_results_aa20 A)
 ##           B  top decile, all list cells, cell-weighted (coguk_list_aa20 C)
 ##           C  top decile, de novo, cell-weighted        (coguk_list_aa20 D)
-##   row 2   D  (blank -- a zoomed case study goes here)
+##   row 2   D  BA.2.86 -> KP.3 case study          (cartoons/ba286_to_kp3.png)
 ##           E  background lift, all list cells           (coguk_list_aa20 K)
 ##           F  background lift, de novo                  (coguk_list_aa20 L)
 ##   row 3   G  DMS correlation                           (sc2_results_aa20 M)
@@ -58,7 +58,18 @@ for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",
            file.path("figs_vector", paste0(f, ".pdf"))))
 }
 
-blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size = 11)
+## Panel D is the one thing in this figure that IS drawn elsewhere on purpose: it is a
+## static image, built by `experiments/multitree/draw_path_panel.py` from the ranks in
+## `data/ba286_to_kp3_ranks.csv`. Rebuild it there, not here -- it needs a checkpoint
+## and the PDB, neither of which belongs in a layout script. It carries no ggtitle
+## because its own caption names the axis; a title above it would be a second one.
+## Titled through `plot_cartoon`, the same path panel A takes, so the two image panels
+## in this figure carry their titles at the same size and inset as the five plotted
+## ones do. Untitled it is the only panel in the figure without a heading, and the row
+## label "D" ends up sitting against the first state's name.
+case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
+                           "Case study: RBD steps from BA.2.86 to KP.3",
+                           base_theme = theme_paper())
 
 ## rel_widths follow the source figures: the leftmost bar panel of a pair carries
 ## the y-axis model names and needs roughly twice the width of its partner.
@@ -74,14 +85,14 @@ blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size 
 COL_W <- c(2.2, 1.65, 1.35)
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
                   rel_widths = COL_W, labels = c("A", "B", "C"))
-## The blank goes under the cartoon so that B/C and the two background panels -- the
+## The case study goes under the cartoon so that B/C and the two background panels -- the
 ## same kind of bar panel over the same roster -- line up in two columns, and the eye
 ## can read down a column as well as across a row.
 ##
-## LETTERS IN READING ORDER, so D is the blank and the background panels are E and F.
+## LETTERS IN READING ORDER, so D is the case study and the background panels are E and F.
 ## They are assigned by POSITION rather than carried with the panel: a figure whose
 ## letters run A B C / F D E reads as a mistake however sensible the history behind it.
-row2 <- plot_grid(blank, cg$bg_all, cg$bg_dn, nrow = 1,
+row2 <- plot_grid(case_study, cg$bg_all, cg$bg_dn, nrow = 1,
                   rel_widths = COL_W, labels = c("D", "E", "F"))
 row3 <- plot_grid(sc$dms, sc$gate, nrow = 1,
                   rel_widths = c(2, 1.4), labels = c("G", "H"))

@@ -10455,3 +10455,86 @@ always wrong.
 * `antiGen-figures/figures/fig_coguk_list.R` -- `coguk.top_model`.
 * `antiGen-figures/figures/panels_{coguk,sc2}_export.R` -- the top rung, the group
   factor, the A/D column width.
+
+## 88. Panel D: the BA.2.86 -> KP.3 case study (2026-10-28)
+
+The placeholder in `sc2_results_revised` is filled. Panel D asks a narrower question
+than any other panel in the figure: not how often antiGen's top decile contains the
+next mutation across a corpus, but where it put the specific substitutions that
+carried BA.2.86 to KP.3.
+
+### The ranks
+
+`experiments/multitree/rank_path_cells.py` walks `ba286_to_kp3_path.csv` and, for each
+step, ranks that substitution among all RBD substitutions available **from the parent
+genotype** -- the query is the state BEFORE the step, which is the only query for which
+the step is a prediction rather than a fact. Model: the 2022-01-01 base checkpoint
+(`cutoff_series/2022-01-01/base/fitness_simple_d128_n2_lr0.0001_20261024_143133.pt`),
+so nothing downstream of the cutoff is in training. Pool is 201 sites x 20 AAs minus
+the 201 wild-type cells = **3,819**. Every parent was checked to carry the expected
+from-residue before its rank was taken.
+
+Of 13 steps on the path, **7 are in the RBD** (331-531):
+
+| step | rank | top % | in top decile |
+|---|---|---|---|
+| L455S | 258 | 6.76 | yes |
+| V483D | 1107 | 28.99 | no |
+| R346T | 233 | 6.10 | yes |
+| F456L | 82 | 2.15 | yes |
+| D483V | 261 | 6.83 | yes |
+| T346R | 19 | 0.50 | yes |
+| Q493E | 191 | 5.00 | yes |
+
+6 of 7 in the top decile. Note that **V483D/D483V and R346T/T346R are reversion
+pairs**, so the NET RBD change BA.2.86 -> KP.3 is just L455S, F456L, Q493E -- which is
+exactly the three arrows the inspiration sketch drew, and what the panel shows. The
+four reversion steps are computed and kept in `data/ba286_to_kp3_ranks.csv`; they are
+not drawn, because drawing a site that changes and then changes back needs a story the
+panel does not have room to tell. **The one miss is among them** (V483D, rank 1107),
+so anyone reading only the panel is reading the better three of seven. Worth deciding
+deliberately rather than inheriting: the reversions can go on the rank axis as
+unlabelled marks if the figure should carry all seven.
+
+### The drawing
+
+`experiments/multitree/draw_path_panel.py` -> `antiGen-figures/cartoons/ba286_to_kp3.png`.
+Two registers: the lineage along the top, the rank axis below.
+
+* **The glyph is 6M0J chain E** (RBD bound to ACE2, residues 333-526; all five mutated
+  positions present), CA coordinates projected onto their first two principal
+  components and drawn as overlapping translucent discs. The projection is computed
+  once and reused, so a site that differs between glyphs is the colour changing and
+  not the view.
+* **PC1 goes on y.** Laid flat the four glyphs are short wide bars with a band of
+  nothing beneath them; stood upright they fill a 5.5 x 3.5in box. This one change
+  took the image's aspect from 2.07 to 1.55 against a panel box of 1.57.
+* **Sites are coloured by WHEN they changed** -- this step filled, earlier steps
+  outlined -- which is the only reason to draw four glyphs rather than one.
+* **The rank axis is logarithmic.** Linear, the whole top decile is the leftmost tenth
+  and all three marks pile up; in log space the decile boundary lands at 0.72 of the
+  width. Decade ticks are drawn so the compression is visible rather than smuggled in.
+* **Two passes of label collision, both worth remembering.** Staggering stem heights
+  separates marks that are a decade apart but only millimetres apart on the page.
+  That is not sufficient: a label runs horizontally, so a taller neighbouring stem
+  draws straight through the text. Labels are placed on the side whose neighbours are
+  all shorter.
+
+Rebuild the PNG with `draw_path_panel.py`, not from the layout script -- it needs a
+checkpoint and a PDB, neither of which belongs in a layout script. `fig_sc2_revised.R`
+only places it, titled through `plot_cartoon` so it matches panel A.
+
+### Titles
+
+Reviewed against the request. B "Top decile recall, all escape mutations", C "Top
+decile recall, de novo escape mutations", E "Query adaptability, all escape
+mutations", F "Query adaptability, de novo escape mutations", H "Top decile recall,
+all mutations". The ask said "all" for both E and F; F plots `BG_MAIN[2]`, the de novo
+panel, so F carries "de novo" -- confirmed as the intended correction.
+
+### Code
+
+* `experiments/multitree/rank_path_cells.py`, `draw_path_panel.py` -- new.
+* `antiGen-figures/data/ba286_to_kp3_ranks.csv`, `ref/6M0J.pdb`,
+  `cartoons/ba286_to_kp3.png` -- new.
+* `antiGen-figures/figures/fig_sc2_revised.R` -- panel D in place of the placeholder.
