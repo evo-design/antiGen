@@ -62,8 +62,14 @@ blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size 
 
 ## rel_widths follow the source figures: the leftmost bar panel of a pair carries
 ## the y-axis model names and needs roughly twice the width of its partner.
+## THE FIRST COLUMN IS WIDER THAN THE PANEL BESIDE IT NEEDS. The cartoon is a fixed
+## aspect-ratio image, so a narrow column letterboxes it -- the row's height is set by
+## the bar panels, and A fills the width it is given and then pads above and below.
+## Widening the column lets it fill the row instead. Both rows carry the same widths
+## so the columns stay aligned.
+COL_W <- c(2.3, 1.9, 1)
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
-                  rel_widths = c(1.5, 1.9, 1), labels = c("A", "B", "C"))
+                  rel_widths = COL_W, labels = c("A", "B", "C"))
 ## The blank goes under the cartoon so that B/C and the two background panels -- the
 ## same kind of bar panel over the same roster -- line up in two columns, and the eye
 ## can read down a column as well as across a row.
@@ -72,7 +78,7 @@ row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
 ## They are assigned by POSITION rather than carried with the panel: a figure whose
 ## letters run A B C / F D E reads as a mistake however sensible the history behind it.
 row2 <- plot_grid(blank, cg$bg_all, cg$bg_dn, nrow = 1,
-                  rel_widths = c(1.5, 1.9, 1), labels = c("D", "E", "F"))
+                  rel_widths = COL_W, labels = c("D", "E", "F"))
 row3 <- plot_grid(sc$dms, sc$gate, nrow = 1,
                   rel_widths = c(2, 1.4), labels = c("G", "H"))
 
