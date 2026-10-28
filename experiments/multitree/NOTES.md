@@ -10697,3 +10697,22 @@ Glyphs went from 1.02 x 1.70in to 0.66 x 1.10in to make room.
 ### Code
 
 * `experiments/multitree/draw_path_panel.py` -- two registers, brackets, inline key.
+
+## 92. Panel D spacing (2026-10-28)
+
+Two review notes: the registers sit too close, and the axis label should be larger and
+just read "antiGen rank".
+
+**The glyph TOP is pinned, so separation has to come out of the glyph.** The state
+names sit above the glyphs and the canvas edge is at 3.5in, so the chain cannot move
+up -- raising it clips the names. The gap therefore came from shortening the glyph
+(1.10 -> 0.95in) and dropping the chart (first row 1.97 -> 1.88in, axis 0.56 -> 0.58
+with a tighter last-row-to-axis gap). Gap between the "top decile" caption and the
+glyph bottoms: 0.13in -> 0.37in.
+
+The axis label is 9.6pt, up from 8.0, and loses the pool size. Nothing is lost by it:
+the final tick already reads 3,819 and the shaded band is labelled.
+
+### Code
+
+* `experiments/multitree/draw_path_panel.py` -- spacing and axis label.

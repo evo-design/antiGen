@@ -132,7 +132,7 @@ def main():
 
     # --- the lineage -----------------------------------------------------------
     n = len(states)
-    gw, gh, gy = 0.66, 1.10, 2.20             # glyph box and its bottom, inches
+    gw, gh, gy = 0.64, 0.95, 2.35             # glyph box and its bottom, inches
     gap = 0.80
     x0 = (W_IN - (n * gw + (n - 1) * gap)) / 2
     lefts = [x0 + i * (gw + gap) for i in range(n)]
@@ -140,7 +140,7 @@ def main():
     for i, (lf, st) in enumerate(zip(lefts, states)):
         img, _ = rs.render(xyz, rad, resi,
                            {p: (REVERT if p in revert_sites else NET) for p in marks[i]},
-                           BODY, size=(400, 670))
+                           BODY, size=(380, 640))
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off")
         bg.text(lf + gw / 2, gy + gh + 0.06, st, ha="center", va="bottom",
@@ -148,17 +148,17 @@ def main():
 
     for i, b in enumerate(buckets):
         a0, a1 = lefts[i] + gw + 0.05, lefts[i + 1] - 0.05
-        cx, ay = (a0 + a1) / 2, gy + 0.19
+        cx, ay = (a0 + a1) / 2, gy + 0.17
         bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle="-|>",
                                      mutation_scale=10, linewidth=1.1, color=ARROW))
         # Names sit directly over their own arrow; the ranks live in the chart below.
         for j, r in enumerate(reversed(b)):
-            bg.text(cx, ay + 0.11 + j * 0.175, r["mutation_1based"],
+            bg.text(cx, ay + 0.10 + j * 0.170, r["mutation_1based"],
                     ha="center", va="bottom", fontsize=7.8, fontweight="bold",
                     color=REVERT if r["reverts"] else NET)
 
     # --- the ranks -------------------------------------------------------------
-    ax_l, ax_r, ax_t, ax_b = 1.46, 5.34, 1.97, 0.86
+    ax_l, ax_r, ax_t, ax_b = 1.46, 5.34, 1.88, 0.84
     ax = fig.add_axes([ax_l / W_IN, 0.0, (ax_r - ax_l) / W_IN, 1.0])
     ax.set_xlim(0, npool * 1.02); ax.set_ylim(0, H_IN)
     ax.patch.set_alpha(0)
@@ -173,15 +173,15 @@ def main():
     ax.text(cut * 1.3, ax_t + 0.10, "top decile", ha="left", va="center",
             fontsize=7.4, color="#4a6b8a")
 
-    axis_y = ax_b - 0.30
+    axis_y = ax_b - 0.26
     ax.plot([0, npool], [axis_y, axis_y], color="#555555", linewidth=0.9, zorder=2)
     for t in (0, 1000, 2000, 3000, npool):
         ax.plot([t, t], [axis_y - 0.045, axis_y], color="#555555", linewidth=0.9,
                 zorder=2)
         ax.text(t, axis_y - 0.095, "1" if t == 0 else f"{t:,}", ha="center", va="top",
                 fontsize=7.2, color=MUTED)
-    ax.text(npool / 2, axis_y - 0.30, f"antiGen rank among all {npool:,} "
-            "RBD substitutions", ha="center", va="top", fontsize=8.0, color=TEXT)
+    ax.text(npool / 2, axis_y - 0.30, "antiGen rank", ha="center", va="top",
+            fontsize=9.6, color=TEXT)
 
     for r, y in zip(flat, ys):
         col = REVERT if r["reverts"] else NET
@@ -199,9 +199,9 @@ def main():
     for i, (face, lab) in enumerate(((NET, "still changed in KP.3"),
                                      ("white", "reverts along the way"))):
         col = NET if i == 0 else REVERT
-        ax.scatter([npool * 0.47], [ys[2] - i * 0.21], s=34, zorder=3, linewidths=1.3,
+        ax.scatter([npool * 0.47], [ys[2] - i * 0.19], s=34, zorder=3, linewidths=1.3,
                    facecolors=face, edgecolors=col)
-        ax.text(npool * 0.50, ys[2] - i * 0.21, lab, ha="left", va="center",
+        ax.text(npool * 0.50, ys[2] - i * 0.19, lab, ha="left", va="center",
                 fontsize=7.4, color=TEXT)
 
     # The binding: one bracket per transition, named for the state it produces.
