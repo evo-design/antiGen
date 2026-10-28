@@ -10359,3 +10359,56 @@ default.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `sc2.dms_drop`.
 * `antiGen-figures/figures/panels_coguk_export.R`, `panels_sc2_export.R` -- the
   pruning, the recolour-after-source, the rebuilt legend.
+
+## 86. Cleaning up `sc2_results_revised` (2026-10-27)
+
+Four changes on request: abbreviate the val-selected label, make the text larger
+relative to the canvas, reorder row 2 so the bar panels align vertically, and put
+panel H's x axis on dates trimmed to the data.
+
+### The row order, and why the letters did not move with it
+
+Row 2 is now **F, D, E**. B/C and D/E are the same kind of bar panel over the same
+roster, so the blank goes under the cartoon and the four bar panels line up in two
+columns -- the eye can read down a column as well as across a row. The LETTERS stay
+with their panels rather than being renumbered, so "panel D" still means the bars it
+meant before the move.
+
+### Text size is a canvas problem, not a theme problem
+
+Text is in POINTS and does not shrink with the canvas, so the whole figure going from
+17x13.5in to 13x10.5in makes every label larger relative to everything else without
+touching a single theme. Nothing about the panels changed.
+
+### Panel H on dates
+
+`sc2.gate_x` returns a decimal calendar year rather than years-into-pandemic, so the
+axis says what the cutoffs ARE instead of an offset the reader converts. `sc2.gate_xlab`
+and `sc2.gate_xlim_hi` are new; the latter at NA trims the axis to the last cutoff,
+where the published hard stop at 5 left a year of empty panel past 2024-01-01.
+
+### Four more strings, four more places they live
+
+The rename to "antiGen (val x10)" and the group to "Val-selected (10x)" each took
+several attempts, and the pattern is the one from s85: an option set before sourcing a
+wrapper loses to the wrapper's own `options()`.
+
+* `coguk.title_suffix` -> `TITLE_SUFFIX` is read by `titled()` at CALL time, so
+  assigning the variable after the source works where the option did not.
+* The sc2 DMS label is BAKED into `dms_long$model` during the source via
+  `longform_names`, so no option reaches it afterwards; renamed in the frame.
+* **And it had to be renamed to the right thing.** I first renamed the sidecar's full
+  name, which is not what is in the frame -- `fig_sc2_aa20.R` already shortens it once
+  (s79), so the match found nothing and the panel silently kept the old label.
+* The GROUP name lives in **three** places at once: the frame, `GROUP_PALETTE` and
+  `MODEL_TYPE_LEVELS`. `group_colors()` factors on the levels and then asserts every
+  surviving level has a palette entry, so renaming the frame alone turned those rows
+  into NA and the render died in guide training. All three or none.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `sc2.gate_xlab`,
+  `sc2.gate_xlim_hi`.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- decimal-year `sc2.gate_x`, trimmed axis.
+* `antiGen-figures/figures/fig_sc2_revised.R` -- row order, canvas size.
+* `antiGen-figures/figures/panels_{coguk,sc2}_export.R` -- the renames.

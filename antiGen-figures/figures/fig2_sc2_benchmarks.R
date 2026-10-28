@@ -1051,8 +1051,13 @@ GATE_BASELINES <- getOption("sc2.gate_baselines", c("PSSM", "BLOSUM62", "EVEscap
 
 make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
                            show_legend = FALSE, xvar = "cutoff",
-                           xlab_text = "Train / test cutoff (years into pandemic)",
-                           geom = "line", xlim_hi = 5) {
+                           xlab_text = getOption(
+                             "sc2.gate_xlab",
+                             "Train / test cutoff (years into pandemic)"),
+                           ## NA trims the axis to the data. The published 5 is a
+                           ## hard stop that leaves empty panel to the right of an
+                           ## arm whose last cutoff is earlier than that.
+                           geom = "line", xlim_hi = getOption("sc2.gate_xlim_hi", 5)) {
   ## ggplot matches these to the levels of `model` in order, so the vector's LENGTH
   ## is part of the published roster. A corpus with a different set of lines has to
   ## supply both the colours and which of them the main figure drops.

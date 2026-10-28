@@ -64,8 +64,13 @@ blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size 
 ## the y-axis model names and needs roughly twice the width of its partner.
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
                   rel_widths = c(1.5, 1.9, 1), labels = c("A", "B", "C"))
-row2 <- plot_grid(cg$bg_all, cg$bg_dn, blank, nrow = 1,
-                  rel_widths = c(1.9, 1, 1.5), labels = c("D", "E", "F"))
+## F FIRST, then D and E. B/C above and D/E here are the same kind of bar panel over
+## the same roster, so putting the blank under the cartoon lines the four of them up
+## in two columns and the eye can read down a column as well as across a row. The
+## letters stay with their panels rather than being renumbered, so a reference to
+## "panel D" still means the same bars it did before the move.
+row2 <- plot_grid(blank, cg$bg_all, cg$bg_dn, nrow = 1,
+                  rel_widths = c(1.5, 1.9, 1), labels = c("F", "D", "E"))
 row3 <- plot_grid(sc$dms, sc$gate, nrow = 1,
                   rel_widths = c(2, 1.4), labels = c("G", "H"))
 
@@ -75,6 +80,8 @@ save_figure(
   getOption("revised.fig_main", "sc2_results_revised"),
   ## Wider than either source figure: it carries their bar panels side by side, and
   ## the DMS panel's legend runs off the left at 15in.
-  width = 17, height = 13.5
+  ## Smaller than the panels were drawn for, which makes every label larger
+  ## RELATIVE to the figure: text is in points and does not shrink with the canvas.
+  width = 13, height = 10.5
 )
 cat("wrote figs/sc2_results_revised.png (+ .pdf)\n")

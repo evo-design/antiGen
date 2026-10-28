@@ -32,8 +32,8 @@ options(coguk.fig_main = "scratch_revised_coguk",
         ## is guarded on `nrow(ensemble_figure_rows.tsv) == length(ENSEMBLE)`, so
         ## naming one of five rules silently falls back to "Ensemble 8a91fb" in the
         ## orange Ensembles group -- the very group this figure is pruning.
-        coguk.ensemble_labels = "antiGen, 10x val-selected epoch (mean of log-probs)",
-        coguk.ensemble_groups = "Val-selected, averaged over 10 holdouts",
+        coguk.ensemble_labels = "antiGen (val x10)",
+        coguk.ensemble_groups = "Val-selected (10x)",
         ## ...and it is drawn in antiGen's DARK BLUE rather than the val-selected
         ## cyan, because with the base antiGen rung dropped it is now the only
         ## antiGen line on these panels and should read as one.
@@ -65,7 +65,15 @@ source("figures/fig_coguk_list_aa20.R")
 ## `legend_grob` is NOT a function -- it was built during the source, with the old
 ## palette -- so it has to be rebuilt from the same expression or the key in the
 ## legend disagrees with the bars beneath it.
-GROUP_COLORS[["Val-selected, averaged over 10 holdouts"]] <- ANTIGEN_BLUE
+## Shorter group name as well as a shorter model label: the full
+## "Val-selected, averaged over 10 holdouts" is wider than the
+## legend strip and was being cut mid-word.
+GROUP_COLORS[["Val-selected (10x)"]] <- ANTIGEN_BLUE
+## `titled()` reads TITLE_SUFFIX at call time, so clearing it here works where the
+## `coguk.title_suffix` option did not -- the wrapper sets that option after us.
+## Every panel of this figure comes from the same arm, so " [20 AA, revised corpus]"
+## on each title is redundant, and it is what pushes panels C and E off their edge.
+TITLE_SUFFIX <- ""
 ## drop = TRUE, over the groups the PRUNED panels actually draw. The drawer builds
 ## this legend with drop = FALSE so that its full roster always shows every group;
 ## here antiGen and antiGen Finetunes have been removed from every panel, and keeping

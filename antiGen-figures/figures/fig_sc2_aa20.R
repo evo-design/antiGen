@@ -99,9 +99,18 @@ options(
   ## from panels G/H/L, whose emergence headers are now dated against the same
   ## constant in `antiGen/eval.py`. Three axes labelled "years into pandemic" have to
   ## mean one thing.
+  ## DECIMAL CALENDAR YEAR, not years-into-pandemic. The cutoff directories are
+  ## dates on this arm, so the axis can say what they are rather than an offset the
+  ## reader has to convert. `sc2.gate_xlim_hi = NA` then trims the axis to the last
+  ## cutoff instead of the published hard stop at 5, which would leave a year of
+  ## empty panel to the right of 2024-01-01.
   sc2.gate_x = function(d) {
-    as.numeric(difftime(as.Date(d), PANDEMIC_START, units = "days")) / 365.25
+    dd <- as.Date(d)
+    as.numeric(format(dd, "%Y")) +
+      (as.numeric(format(dd, "%j")) - 1) / 365.25
   },
+  sc2.gate_xlab = "Train / test cutoff",
+  sc2.gate_xlim_hi = NA,
   ## Drawn dashed: the rungs that are not antiGen-derived.
   sc2.gate_baselines = c("PSSM", "BLOSUM62", "EVEscape", "Where x which"),
   ## In `sc2.gate_rows` order, which is the factor order the loader pins.
