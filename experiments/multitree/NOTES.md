@@ -10666,3 +10666,34 @@ big you happened to render the first time.
 * `experiments/multitree/render_rbd_surface.py` -- `smooth` relative to width.
 * `antiGen-figures/figures/fig_sc2_revised.R` -- shorter panel D title; at the
   canvas edge it collided with the first state name.
+
+## 91. Panel D: both registers, bound explicitly (2026-10-28)
+
+Review kept the s90 chain and asked for the s89 rank chart back, the arrow-to-mutation
+mapping made less abstract, and smaller glyphs. All three, plus the thing that makes
+having two registers safe.
+
+**The chart returns in its s89 form** -- linear over the whole pool, top decile shaded,
+one row per substitution, exact rank printed. s89's case for linear stands: the honest
+picture of "82nd of 3,819" is a mark against the left edge.
+
+**Names on arrows, ranks in the chart.** s90 put `MUTATION rank` under each arrow, which
+made the arrow labels wide and still left the ranks uncompared. Splitting them lets the
+arrow carry only names (narrow enough to sit directly over its own arrow, in the gap
+between the two glyphs it joins) and the chart carry the ranks with a shared axis.
+
+**The registers are bound by a bracket per transition** down the side of the chart,
+labelled with the state that transition produces. Without it the reader matches seven
+names against three arrows from memory, which is the work the figure is supposed to be
+doing. This was the "a bit abstract" complaint, and name-matching alone does not fix it.
+
+**The key lives in the chart's dead space.** A linear axis with every mark under 1,200
+leaves two thirds of its width empty. That emptiness is the message and should not be
+compressed away -- but it is also the only place a filled-vs-hollow key fits without
+crowding anything.
+
+Glyphs went from 1.02 x 1.70in to 0.66 x 1.10in to make room.
+
+### Code
+
+* `experiments/multitree/draw_path_panel.py` -- two registers, brackets, inline key.
