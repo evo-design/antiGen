@@ -10458,6 +10458,10 @@ always wrong.
 
 ## 88. Panel D: the BA.2.86 -> KP.3 case study (2026-10-28)
 
+> **Superseded in part by s89.** The ranks below stand; the DRAWING described
+> here (four repeated glyphs, log rank axis, three of seven steps) was
+> replaced after review.
+
 The placeholder in `sc2_results_revised` is filled. Panel D asks a narrower question
 than any other panel in the figure: not how often antiGen's top decile contains the
 next mutation across a corpus, but where it put the specific substitutions that
@@ -10538,3 +10542,74 @@ panel, so F carries "de novo" -- confirmed as the intended correction.
 * `antiGen-figures/data/ba286_to_kp3_ranks.csv`, `ref/6M0J.pdb`,
   `cartoons/ba286_to_kp3.png` -- new.
 * `antiGen-figures/figures/fig_sc2_revised.R` -- panel D in place of the placeholder.
+
+## 89. Panel D redrawn: all seven steps, a linear axis, a real surface (2026-10-28)
+
+Three things were wrong with s88's panel, and all three came back from review rather
+than from the code.
+
+### Showing three of seven steps was the flattering choice
+
+s88 drew the net change BA.2.86 -> KP.3 (L455S, F456L, Q493E) because that is what the
+reference sketch drew and what the lineage names mean. s88 flagged that **the one miss
+is among the four steps this drops** -- and that is exactly the reason not to drop
+them. The panel now carries all seven RBD steps in path order, V483D's rank of 1,107
+included. The four steps at sites that revert (346 and 483 each go out and back) are
+drawn hollow, so the net path is still readable without the excursions being hidden.
+Reach for this: when an omission needs a paragraph of justification, the omission is
+usually the problem.
+
+### A log rank axis reads as mediocrity
+
+On the log axis the top decile filled 72% of the width and ranks 82-258 sat in the
+middle of it. That is a faithful rendering of the numbers and a bad rendering of the
+claim: the honest picture of "82nd of 3,819" is a mark hard against the left edge,
+which is what a LINEAR axis gives. The replacement is linear over the whole pool with
+one row per substitution, so nothing collides, the exact rank can simply be printed,
+and the two label-placement tricks s88 needed (staggered stems, side selection) are
+gone -- they existed only to survive the log axis's crowding.
+
+### Discs are not a protein
+
+`render_rbd_surface.py` is new and does the one thing matplotlib cannot: per-pixel
+geometry. Orthographic sphere impostors over all 1,542 heavy atoms of 6M0J chain E,
+nearest hit kept, Blinn-Phong off the true normal. Three details carry it:
+
+* **Radii are inflated ~1.3A past vdW.** A probe radius fuses neighbouring atoms into
+  one body; at true vdW every side chain reads as its own ball.
+* **The depth buffer is blurred before normals are taken.** This is the step that turns
+  a pile of balls into a surface: normals from the screen-space gradient of smoothed
+  depth, the cheap stand-in for a solvent-excluded surface. Without it each atom keeps
+  its own specular highlight and the domain reads as gravel.
+* **An explicit silhouette.** Shading alone leaves a small render dissolving into white
+  paper.
+
+**The view is aimed, and the first two objectives were both wrong.** Aiming so the
+highlighted centroid faces the camera fails because the centroid of five surface
+residues lies INSIDE the domain -- its depth is maximised by orientations that leave
+the residues occluded (14 of 52 highlighted atoms visible). Aiming to maximise visible
+highlighted ATOMS also fails: 455 and 456 are adjacent, so the atom count is maximised
+by a view showing that pair and nothing else (17 of 52, but only one of five sites).
+Scoring SITES that clear a visibility floor, with the atom count as tie-break, finds a
+view showing all five at once -- which exists. Worth keeping as a shape: an aggregate
+objective over a set of objects optimises for the biggest object in it.
+
+### Also
+
+* The PNG is saved on the FULL canvas, not `bbox_inches="tight"`. The panel box has a
+  fixed aspect; cropping to the ink gives whatever aspect the content happens to have
+  (1.76 here) and the layout then letterboxes. Full canvas holds the designed 1.57.
+* **One surface, not one per state.** Eight nodes across a 5.5in box leave each too
+  small to read with no room for arrow labels; the reference strip is about 6.5:1.
+  The structure is drawn once and large, and the chain is carried by the rank rows.
+* Not done, and cheap if wanted: a blow-up of the top decile. With one row per
+  substitution there are no collisions and the exact rank is printed, so it adds
+  resolution rather than information.
+* Still RBD-only, per the original instruction. Five of the twelve steps on the path
+  (I70V, N211I, I211N, V1104L, V70I) are outside the RBD and have no rank, since the
+  candidate pool is the RBD.
+
+### Code
+
+* `experiments/multitree/render_rbd_surface.py` -- new.
+* `experiments/multitree/draw_path_panel.py` -- rewritten.
