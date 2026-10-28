@@ -10366,13 +10366,17 @@ Four changes on request: abbreviate the val-selected label, make the text larger
 relative to the canvas, reorder row 2 so the bar panels align vertically, and put
 panel H's x axis on dates trimmed to the data.
 
-### The row order, and why the letters did not move with it
+### The row order
 
-Row 2 is now **F, D, E**. B/C and D/E are the same kind of bar panel over the same
-roster, so the blank goes under the cartoon and the four bar panels line up in two
-columns -- the eye can read down a column as well as across a row. The LETTERS stay
-with their panels rather than being renumbered, so "panel D" still means the bars it
-meant before the move.
+The blank goes under the cartoon, so B/C and the two background panels -- the same kind
+of bar panel over the same roster -- line up in two columns and the eye can read down a
+column as well as across a row.
+
+**The letters are assigned by POSITION**, so row 2 reads D, E, F with D the blank and
+the background panels E and F. Carrying them with their panels instead would have left
+the figure running A B C / F D E, which reads as a mistake however sensible the history
+behind it; the cost is that a reference to "panel D" made before this change now points
+at the blank.
 
 ### Text size is a canvas problem, not a theme problem
 

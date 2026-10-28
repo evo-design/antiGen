@@ -8,9 +8,9 @@
 ##   row 1   A  the next-mutation recall cartoon          (sc2_results_aa20 A)
 ##           B  top decile, all list cells, cell-weighted (coguk_list_aa20 C)
 ##           C  top decile, de novo, cell-weighted        (coguk_list_aa20 D)
-##   row 2   D  background lift, all list cells           (coguk_list_aa20 K)
-##           E  background lift, de novo                  (coguk_list_aa20 L)
-##           F  (blank -- a zoomed case study goes here)
+##   row 2   D  (blank -- a zoomed case study goes here)
+##           E  background lift, all list cells           (coguk_list_aa20 K)
+##           F  background lift, de novo                  (coguk_list_aa20 L)
 ##   row 3   G  DMS correlation                           (sc2_results_aa20 M)
 ##           H  antiGen / PSSM gate by train/test cutoff  (sc2_results_aa20 O)
 ##
@@ -64,13 +64,15 @@ blank <- ggdraw() + draw_label("case study\n(to come)", colour = "grey70", size 
 ## the y-axis model names and needs roughly twice the width of its partner.
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
                   rel_widths = c(1.5, 1.9, 1), labels = c("A", "B", "C"))
-## F FIRST, then D and E. B/C above and D/E here are the same kind of bar panel over
-## the same roster, so putting the blank under the cartoon lines the four of them up
-## in two columns and the eye can read down a column as well as across a row. The
-## letters stay with their panels rather than being renumbered, so a reference to
-## "panel D" still means the same bars it did before the move.
+## The blank goes under the cartoon so that B/C and the two background panels -- the
+## same kind of bar panel over the same roster -- line up in two columns, and the eye
+## can read down a column as well as across a row.
+##
+## LETTERS IN READING ORDER, so D is the blank and the background panels are E and F.
+## They are assigned by POSITION rather than carried with the panel: a figure whose
+## letters run A B C / F D E reads as a mistake however sensible the history behind it.
 row2 <- plot_grid(blank, cg$bg_all, cg$bg_dn, nrow = 1,
-                  rel_widths = c(1.5, 1.9, 1), labels = c("F", "D", "E"))
+                  rel_widths = c(1.5, 1.9, 1), labels = c("D", "E", "F"))
 row3 <- plot_grid(sc$dms, sc$gate, nrow = 1,
                   rel_widths = c(2, 1.4), labels = c("G", "H"))
 
