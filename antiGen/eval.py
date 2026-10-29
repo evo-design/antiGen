@@ -617,14 +617,27 @@ def main():
 
     # PSSMs + baselines
     if args.root_counts or args.variant_counts_dir:
-        if not (args.root_counts and args.variant_counts_dir):
-            raise SystemExit("--root-counts and --variant-counts-dir go together: one "
-                             "fixes the de novo cut, the other the emergence grid.")
+        # THE TWO ARE NOT SYMMETRIC. --root-counts fixes the de novo cut, which every
+        # recall metric needs; --variant-counts-dir fixes the emergence grid, which only
+        # the variant-emergence CSVs need. So the grid requires the cut and not the
+        # other way round: a corpus with no variant roots -- the revised endemic trees
+        # have none -- can still be scored for recall, and `do_emergence` below is
+        # already gated on `pssm_variant` being non-empty, so those CSVs are simply not
+        # written. Requiring both was what made such a corpus unscoreable at all.
+        if args.variant_counts_dir and not args.root_counts:
+            raise SystemExit("--variant-counts-dir needs --root-counts: the emergence "
+                             "grid is read against the de novo cut, so the cut cannot "
+                             "be left to come from somewhere else.")
         pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
-        steps, pssm_variant = load_counts_series(args.variant_counts_dir, allowed_aas,
-                                                 since=args.counts_since)
-        emergence_dates = steps
-        print(f"Emergence grid: {len(steps)} step(s), {steps[0]} .. {steps[-1]}")
+        if args.variant_counts_dir:
+            steps, pssm_variant = load_counts_series(args.variant_counts_dir, allowed_aas,
+                                                     since=args.counts_since)
+            emergence_dates = steps
+            print(f"Emergence grid: {len(steps)} step(s), {steps[0]} .. {steps[-1]}")
+        else:
+            pssm_variant, emergence_dates = [], None
+            print("--root-counts without --variant-counts-dir: de novo cut only, "
+                  "no variant-emergence grid.")
     else:
         pssm_dir = os.path.join(data_dir, "pssms")
         pssm_root, pssm_variant = load_pssms(pssm_dir, variant, E)

@@ -122,6 +122,15 @@ for row in "${ROWS[@]}"; do
     # glob makes ls exit non-zero, the pipeline inherits it and the whole sweep stops
     # on the first virus that has no valsel runs yet -- which is every virus, the
     # first time it is run.
+    if ls "$ROOT/blosum62"/fitness_*.pt >/dev/null 2>&1; then
+        echo "  end_bl_$V: already trained; skipping"
+    else
+        export STAGE=blosum N EPOCHS
+        submit "end_bl_$V" "00:30:00" --export=ALL \
+            examples/slurm/train_endemic_series.sh "$V" "$D"
+        unset STAGE
+    fi
+
     done_vs=0
     for d in "$ROOT/valsel"/antigen_vs_s*/; do
         [ -d "$d" ] || continue

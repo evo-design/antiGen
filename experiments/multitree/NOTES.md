@@ -10907,3 +10907,58 @@ corpus and its dataset flag.
 
 * `examples/slurm/train_endemic_series.sh` -- new.
 * `experiments/multitree/submit_endemic_revised.sh` -- new.
+
+## 96. Endemic: the eval path, and the coupling that blocked it (2026-10-29)
+
+Training from s95 is in flight. Two things came out of building the eval beside it.
+
+### `--root-counts` could not be used without `--variant-counts-dir`
+
+`eval.py` required the two flags together: "one fixes the de novo cut, the other the
+emergence grid". **They are not symmetric.** The de novo cut is read by every recall
+metric; the emergence grid is read only by the variant-emergence CSVs. So the grid
+needs the cut and not the reverse -- and a corpus with no variant roots, which is
+exactly what the revised endemic trees are, was unscoreable for recall at all.
+
+The fix is the asymmetry, not a bypass: `--variant-counts-dir` still requires
+`--root-counts`, while `--root-counts` alone sets `pssm_variant = []`. Nothing else
+had to change, because `do_emergence = bool(pssm_variant)` (eval.py:802) already gated
+the whole emergence block -- the coupling was an argument check guarding a branch that
+could already turn itself off. SC2 passes both and takes the identical path.
+
+`test_eval_counts_args.py` pins the DIRECTION of the guard rather than its message,
+since that is the part a later edit gets backwards. Suite 240 -> 244.
+
+### BLOSUM62 is a checkpoint, and it is per dataset
+
+The matrix does not depend on the corpus, but `antiGen-eval` keeps only checkpoints
+whose stored `train_args` match its `--dataset`, so the SC2 blosum62 checkpoint is
+invisible to a flu eval. Without one per virus the rung does not error -- the bar is
+just absent. Added as a `blosum` stage; three more jobs, 30 minutes each.
+
+### What each bar comes from
+
+| rung | mechanism |
+|---|---|
+| antiGen, EVE, BLOSUM62 | checkpoints under `<virus>-<date>/`, globbed one level deep |
+| PSSM, PSSM Conservation | `--root-counts`, the training tree's counts matrix |
+| DMS | `antiGen/data/baselines_<virus>/` -- flu and rsv-a only; denv2 has no assay |
+| codon, substitution, where x which, + events | `--multitree-baselines`, fitted at eval time on the TRAINING examples |
+
+The ten val-selected runs sit two levels deep and so are NOT found by the eval, which
+is deliberate: they are one bar, scored by the ensemble step afterwards.
+
+### The valsel budget binds on small corpora (s95 follow-up)
+
+rsv-a's first valsel run FAILED its own budget check -- two of ten seeds selected the
+last epoch, so their validation curve had not turned. An epoch is one pass over the
+corpus, and these differ by twenty-fold: at batch 64 it is ~186 steps for flu, ~13 for
+denv2, ~9 for rsv-a, so 96 epochs buys flu ~17,900 updates and rsv-a ~860. The budget
+is now per virus -- 384 for the two small corpora, 96 for flu. The 96-epoch rsv-a runs
+are kept as `valsel_ep96`, as the SC2 arm keeps `valsel_ep32`.
+
+### Code
+
+* `antiGen/eval.py`, `antiGen/tests/test_eval_counts_args.py`
+* `examples/slurm/eval_endemic.sh`, `examples/slurm/train_endemic_series.sh` (blosum)
+* `experiments/multitree/submit_endemic_evals.sh`, `submit_endemic_revised.sh`

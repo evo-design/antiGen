@@ -29,9 +29,15 @@
 # 'denv2']`. Train without the flag and the checkpoint is invisible to the eval that
 # is supposed to score it -- it does not error, it finds nothing.
 #
-# STAGE=base|valsel|all. Submitted as two jobs rather than one, because base is minutes
-# and valsel is hours: a single job makes the short half wait for a long job's slot,
-# and flu's valsel is the only part that needs a long walltime at all.
+# STAGE=base|valsel|blosum|all. Submitted as separate jobs rather than one, because
+# base is minutes and valsel is hours: a single job makes the short half wait for a
+# long job's slot, and flu's valsel is the only part that needs a long walltime at all.
+#
+# BLOSUM62 IS A CHECKPOINT, NOT A FIXED MAP READ FROM data/. The matrix does not depend
+# on the corpus, but `antiGen-eval` keeps only checkpoints whose stored `train_args`
+# match its `--dataset`, so the SC2 blosum62 checkpoint is invisible to a flu eval. One
+# per virus, trained through the same `--examples` as everything else, is what puts the
+# rung on the panel -- the alternative is a bar that silently goes missing.
 #
 # RESUME, DO NOT REDO. Both halves skip what is already on disk, so a job that hits its
 # walltime costs nothing to resubmit.
@@ -72,7 +78,7 @@ echo "root     = $ROOT"
 echo "stage    = $STAGE"
 [ -d "$REV" ]      || { echo "ABORT: no train dir $REV"; exit 1; }
 [ -f "$EXAMPLES" ] || { echo "ABORT: no examples at $EXAMPLES"; exit 1; }
-mkdir -p "$ROOT/base" "$ROOT/valsel"
+mkdir -p "$ROOT/base" "$ROOT/valsel" "$ROOT/blosum62"
 rc=0
 
 # A per-virus manifest, so the directory says what it is without the job log. Written
@@ -114,11 +120,29 @@ if [ "$STAGE" = "valsel" ] || [ "$STAGE" = "all" ]; then
         || { echo "VALSEL FAILED"; rc=1; }
 fi
 
+if [ "$STAGE" = "blosum" ] || [ "$STAGE" = "all" ]; then
+    echo ""; echo "=== 3. BLOSUM62 ==="
+    if ls "$ROOT/blosum62"/fitness_*.pt >/dev/null 2>&1; then
+        echo "  already trained; skipping (delete $ROOT/blosum62 to redo it)"
+    else
+        antiGen-train \
+            --model-type blosum62 \
+            --cutoff 1.0 --ignore-dead-ends \
+            --batch-size 64 \
+            --examples "$EXAMPLES" "$FLAG" \
+            --data-dir "$REV" \
+            --output-dir "$ROOT/blosum62" \
+            || { echo "BLOSUM62 FAILED"; rc=1; }
+    fi
+fi
+
 echo ""; echo "=== what $V now holds ==="
 b=$(ls "$ROOT/base"/fitness_*.pt 2>/dev/null | wc -l)
 v=$(ls -d "$ROOT/valsel"/antigen_vs_s*/ 2>/dev/null | while read -r d; do
         ls "$d"/fitness_*_best.pt >/dev/null 2>&1 && echo x; done | wc -l)
+bl=$(ls "$ROOT/blosum62"/fitness_*.pt 2>/dev/null | wc -l)
 echo "  base   : $b checkpoint(s)"
+echo "  blosum : $bl checkpoint(s)"
 echo "  valsel : $v/$N run(s) with a _best.pt"
 echo "Job finished at: $(date)"
 [ $rc -eq 0 ] && echo "ENDEMIC SERIES OK" || { echo "ENDEMIC SERIES FAILED"; exit 1; }
