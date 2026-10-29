@@ -36,7 +36,7 @@ REPO=${REPO:-/home/ivan.specht/antiGen}
 DATA=${DATA:-/home/ivan.specht/antiGen-data-revised/output}
 STORE=${STORE:-/large_storage/hielab/ispecht/fitness-inference}
 SERIES=${SERIES:-$STORE/endemic_series}
-PARTITION=${PARTITION:-gpu_batch}
+PARTITION=${PARTITION:-gpu_batch,gpu}
 NICE=${NICE:-50}
 N=${N:-10}
 # A floor, not the budget: each virus names its own in ROWS (see there for why).
