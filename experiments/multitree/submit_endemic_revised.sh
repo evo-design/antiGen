@@ -39,18 +39,31 @@ SERIES=${SERIES:-$STORE/endemic_series}
 PARTITION=${PARTITION:-gpu_batch}
 NICE=${NICE:-50}
 N=${N:-10}
-EPOCHS=${EPOCHS:-96}
+# A floor, not the budget: each virus names its own in ROWS (see there for why).
+EPOCHS_DEFAULT=${EPOCHS:-96}
+EPOCHS=$EPOCHS_DEFAULT
 DRY=${DRY:-0}
 
-# virus:date:base-walltime:valsel-walltime:eve-walltime
-# flu is four times the other two put together (11,934 training examples against 549
-# and 827), which is the only reason its valsel gets a long wall. An honest walltime
-# matters here: too long and the job stops being backfillable, too short and ten runs
-# are cut off part way (they resume, but a cycle is wasted).
+# virus:date:base-wall:valsel-wall:eve-wall:valsel-epochs
+#
+# WALLTIMES. flu is four times the other two put together (11,934 training examples
+# against 549 and 827), which is the only reason its valsel gets a long wall. An honest
+# walltime matters in both directions: too long and the job stops being backfillable,
+# too short and ten runs are cut off part way (they resume, but a cycle is wasted).
+#
+# THE EPOCH BUDGET IS PER VIRUS, and it has to be, because an epoch is not a fixed
+# amount of training -- it is one pass over the corpus, and these corpora differ by a
+# factor of twenty. At batch 64 an epoch is ~186 steps for flu, ~13 for denv2 and ~9
+# for rsv-a, so the SC2 arm's 96 epochs buys flu ~17,900 updates and rsv-a ~860. It
+# showed: rsv-a's first run at 96 had two of ten seeds select the LAST epoch, which is
+# `train_antigen_valsel10.sh` reporting that the budget binds -- the validation curve
+# had not turned yet, so those two runs are not val-selected at all, just truncated.
+# The two small corpora get 384; flu keeps 96, where it already has twenty times the
+# updates per epoch and the check has its own say.
 ROWS=(
-    "h3n2:2022-10-01:02:00:00:16:00:00:08:00:00"
-    "rsv-a:2023-10-01:01:00:00:04:00:00:06:00:00"
-    "denv2:2019-10-01:01:00:00:04:00:00:06:00:00"
+    "h3n2:2022-10-01:02:00:00:16:00:00:08:00:00:96"
+    "rsv-a:2023-10-01:01:00:00:04:00:00:06:00:00:384"
+    "denv2:2019-10-01:01:00:00:04:00:00:06:00:00:384"
 )
 
 queued() { squeue -u "$USER" -h -o "%j" | grep -qx "$1"; }
@@ -69,7 +82,7 @@ mkdir -p "$SERIES" "$REPO/logs"
 cd "$REPO"
 
 for row in "${ROWS[@]}"; do
-    IFS=: read -r V D bh bm bs vh vm vs eh em es <<< "$row"
+    IFS=: read -r V D bh bm bs vh vm vs eh em es VEPOCHS <<< "$row"
     BASE_WALL="$bh:$bm:$bs"; VALSEL_WALL="$vh:$vm:$vs"; EVE_WALL="$eh:$em:$es"
     REV="$DATA/$V-$D/train"
     EXAMPLES="$REV/examples_${D}_cur.txt"
@@ -91,13 +104,40 @@ for row in "${ROWS[@]}"; do
     # STAGE is read by train_endemic_series.sh from the environment, so it has to be
     # EXPORTED: --export=ALL forwards the exported environment, and a `VAR=v sbatch`
     # prefix assigns without exporting, which silently gives the job the default.
-    export STAGE=base N EPOCHS
-    submit "end_base_$V" "$BASE_WALL" --export=ALL \
-        examples/slurm/train_endemic_series.sh "$V" "$D"
-    export STAGE=valsel
-    submit "end_vs_$V" "$VALSEL_WALL" --export=ALL \
-        examples/slurm/train_endemic_series.sh "$V" "$D"
-    unset STAGE
+    #
+    # SKIPPED ON DISK AS WELL AS IN THE QUEUE. The training scripts skip what is
+    # already there, so a resubmission is harmless -- but it still takes a slot and
+    # a line in the log, and after a partial sweep most of what this loop wants to
+    # send is already done.
+    if ls "$ROOT/base"/fitness_*.pt >/dev/null 2>&1; then
+        echo "  end_base_$V: already trained; skipping"
+    else
+        export STAGE=base N EPOCHS
+        submit "end_base_$V" "$BASE_WALL" --export=ALL \
+            examples/slurm/train_endemic_series.sh "$V" "$D"
+        unset STAGE
+    fi
+
+    # Counted with a loop, not `ls | wc -l`: under `set -e -o pipefail` an unmatched
+    # glob makes ls exit non-zero, the pipeline inherits it and the whole sweep stops
+    # on the first virus that has no valsel runs yet -- which is every virus, the
+    # first time it is run.
+    done_vs=0
+    for d in "$ROOT/valsel"/antigen_vs_s*/; do
+        [ -d "$d" ] || continue
+        if ls "$d"/fitness_*_best.pt >/dev/null 2>&1; then
+            done_vs=$((done_vs + 1))
+        fi
+    done
+    if [ "$done_vs" -ge "$N" ]; then
+        echo "  end_vs_$V: $done_vs/$N runs already have a _best.pt; skipping"
+    else
+        export STAGE=valsel N EPOCHS="$VEPOCHS"
+        submit "end_vs_$V" "$VALSEL_WALL" --export=ALL \
+            examples/slurm/train_endemic_series.sh "$V" "$D"
+        unset STAGE
+    fi
+    EPOCHS=${EPOCHS_DEFAULT}
 
     # --- EVE -----------------------------------------------------------------
     # train_eve.sh is called with ITS OWN recipe, parameterised by environment; the
