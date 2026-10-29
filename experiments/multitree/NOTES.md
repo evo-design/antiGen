@@ -10808,3 +10808,102 @@ to that panel.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- options, all defaulting to the
   published behaviour.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- the values this arm needs.
+
+## 95. The revised endemic figure: scope, and the training jobs (2026-10-29)
+
+A new `endemic_results` on the antiGen-data-revised trees: recall at the top decile
+instead of recall AUC, the four factored baselines added, and no variants anywhere.
+This section is the scope and the substrate; the figure itself comes later.
+
+### What the figure becomes
+
+Six panels, 3 viruses x {all mutations, de novo}, bars of **recall at q = 0.1**:
+
+|        | H3N2 | RSV A | DENV2 |
+|---|---|---|---|
+| all mutations | A | B | C |
+| de novo       | D | E | F |
+
+The published figure's G-L -- PSSM precision against date, by variant emergence -- are
+**gone**. The revised endemic trees carry no variant roots, so the metric has nothing
+to be computed against. That is also why this is 6 panels and not 12: the gap/stop-mask
+variants stay in the supplement.
+
+Recall@10% needs no new evaluation. It is a different summary of the same hit-rate
+curves, and `summarise_curves_at` (added for panels B/C of `sc2_results_revised`)
+already does it.
+
+### The corpus
+
+One dated directory per virus, `train/` plus a separate `<virus>-test/` tree, exactly
+the shape the SC2 arm uses:
+
+| virus | cutoff | train examples | test examples |
+|---|---|---|---|
+| h3n2  | 2022-10-01 | 11,934 | 19,953 |
+| rsv-a | 2023-10-01 |    549 |    913 |
+| denv2 | 2019-10-01 |    827 |  1,305 |
+
+**The cutoffs moved, and that is what makes this more than a re-run.** The published
+endemic runs were trained on `antiGen-data/output_<virus>_full_cutoff<N>`, where
+`--cutoff` named years since MRCA (12 for flu, 74 for rsv-a). Here `--examples` names
+the training file and the train/test boundary is the POST_CUTOFF field the corpus
+already carries, so `--cutoff` is metadata.
+
+### The baselines
+
+The four factored rungs -- codon table, substitution matrix, where x which, where x
+which + events -- are what `sc2_results_revised` gained and the endemic figure never
+had. **They cost no training**: `--multitree-baselines` builds all four at eval time,
+fitted on the training examples only.
+
+### EVE is refitted, and this was the one real decision
+
+The published `eve_frozen` checkpoints were fitted to an MSA cut at the OLD cutoff
+dates. Reusing them under the new cutoffs would put a baseline fitted past its own
+train/test boundary beside models that respect it, and **nothing downstream could
+detect it** -- a FASTA carries no dates. antiGen-data-revised now writes
+`msa_<date>_cur.fasta` into each `train/`, built from the same sequences the examples
+came from and so window-restricted by construction. That is the file, and only that
+file, about which `METADATA=` empty may be asserted to `train_eve.sh`.
+
+### THE DATASET FLAG IS NOT OPTIONAL
+
+`antiGen-eval` keeps only checkpoints whose stored `train_args` match its `--dataset`,
+via `train_args['flu'|'rsv_a'|'denv2']` (eval.py:66). Train with `--examples` and no
+dataset flag and the checkpoint is **invisible to the eval meant to score it** -- not
+an error, just nothing found. `train_args` is `vars(args)`, so passing `--flu` is what
+puts the key there.
+
+### The jobs
+
+Nine, all `gpu_batch` (valsel is hours; `evo_gpu_priority` is for jobs of order
+minutes, CLAUDE.md). Submitted 2026-10-29 as 3488027-3488035.
+
+* `end_base_<v>`  base antiGen, 32 epochs -- the rung the published figure draws.
+* `end_vs_<v>`    ten val-selected runs, 96 epochs, split seed i / init seed 100+i --
+                  the `antiGen (val x10)` rung of `sc2_results_revised`.
+* `end_eve_<v>`   EVE on the regenerated MSA, `--freeze-backbone`.
+
+**base and valsel are separate jobs on purpose.** base is minutes and valsel is hours;
+one job per virus would make the short half queue for a long job's slot, and base
+landing first is what lets the figure be drawn before valsel finishes. Walltimes are
+per virus -- flu's valsel gets 16h because flu is four times the other two put
+together; an honest walltime matters in both directions, since too long stops a job
+being backfillable and too short cuts ten runs off part way.
+
+`train_endemic_series.sh` CALLS `train_transformer.sh` and `train_antigen_valsel10.sh`
+rather than copying them, so the endemic rung differs from the SC2 one only by its
+corpus and its dataset flag.
+
+### Still to do
+
+* Eval once training lands: `antiGen-eval --dataset {flu,rsv_a,denv2}
+  --train-examples <train> --test-examples <virus>-test/examples_all_cur.txt
+  --multitree-baselines`, no `--variant-counts-dir`.
+* The drawer: a `fig4_endemic_viruses` variant at recall@10%, six panels.
+
+### Code
+
+* `examples/slurm/train_endemic_series.sh` -- new.
+* `experiments/multitree/submit_endemic_revised.sh` -- new.
