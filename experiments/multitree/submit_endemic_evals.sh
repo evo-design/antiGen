@@ -28,6 +28,21 @@
 # predictor. `--save-best` writes `..._<ts>_best.pt`, so each is linked under a plain
 # `fitness_*.pt` name that the eval's own regex accepts.
 #
+# TWO TEST SETS, ONE SCRIPT. `TESTSET` names the test tree's directory suffix and `ARM`
+# names where its results go, so the same recipe serves both arms and neither can drift
+# from the other:
+#
+#   (default)                              the full test tree
+#   TESTSET=test-backbone ARM=backbone     testing-side mutations on the nextstrain
+#                                          backbones only -- 873/362/609 examples
+#                                          against 19,953/913/1,305
+#
+# THE MODELS AND THE TRAINING CORPUS DO NOT MOVE. Only --test-examples and the output
+# directory change: the checkpoints, --train-examples and --root-counts are identical,
+# so the factored baselines are still fitted on the same training examples and the de
+# novo cut is still the same cut. The arms differ in what is being predicted, nothing
+# else.
+#
 # PARTITION AND WALLTIME GO TOGETHER. An endemic eval is MINUTES of compute -- the
 # published arm measured ~9 min for flu and ~1 min for rsv-a and denv2 -- so what
 # decides when the figure exists is queue time, not run time. gpu_batch is down to two
@@ -44,8 +59,11 @@ REPO=${REPO:-/home/ivan.specht/antiGen}
 DATA=${DATA:-/home/ivan.specht/antiGen-data-revised/output}
 STORE=${STORE:-/large_storage/hielab/ispecht/fitness-inference}
 SERIES=${SERIES:-$STORE/endemic_series}
-OUT_ROOT=${OUT_ROOT:-$STORE/evals_endemic_revised}
-STAGE_ROOT=${STAGE_ROOT:-$STORE/endemic_stage}
+TESTSET=${TESTSET:-test}
+ARM=${ARM:-revised}
+OUT_ROOT=${OUT_ROOT:-$STORE/evals_endemic_$ARM}
+# Suffixed by arm so two arms can be in flight without clobbering each other's links.
+STAGE_ROOT=${STAGE_ROOT:-$STORE/endemic_stage_$ARM}
 PARTITION=${PARTITION:-gpu_batch,gpu,quick_preemptible}
 WALL=${WALL:-01:30:00}
 NICE=${NICE:-50}
@@ -81,10 +99,10 @@ for row in "${ROWS[@]}"; do
     REV="$DATA/$V-$D/train"
     CKPT="$SERIES/$V-$D"
     OUT="$OUT_ROOT/$V"
-    NAME="endeval_$V"
+    NAME="endeval_${ARM}_$V"
 
     echo ""
-    echo "=== $V @ $D (--dataset $DS) ==="
+    echo "=== $V @ $D (--dataset $DS, test set $V-$TESTSET) ==="
 
     # A rung that is not on disk yet would come back as a MISSING BAR, not an error,
     # so the preflight names what is there before anything is submitted.
@@ -97,7 +115,7 @@ for row in "${ROWS[@]}"; do
         fi
     done
     for f in "$REV/examples_${D}_cur.txt" "$REV/counts_${D}_cur.tsv" \
-             "$DATA/$V-test/examples_all_cur.txt"; do
+             "$DATA/$V-$TESTSET/examples_all_cur.txt"; do
         [ -f "$f" ] || { echo "  ABORT: missing $f"; exit 1; }
     done
     if [ "$missing" = "1" ] && [ "$FORCE" != "1" ]; then
@@ -142,7 +160,7 @@ for row in "${ROWS[@]}"; do
     # to read has to be named or `load_examples` refuses outright. The SC2 arm reads
     # its shared test corpus the same way.
     args=(--train-examples "$REV/examples_${D}_cur.txt"
-          --test-examples  "$DATA/$V-test/examples_all_cur.txt"
+          --test-examples  "$DATA/$V-$TESTSET/examples_all_cur.txt"
           --root-counts    "$REV/counts_${D}_cur.tsv"
           --split-date     "$D")
     [ -z "$BLDIR" ] || args+=(--baseline-dir "$REPO/data/$BLDIR")
@@ -164,4 +182,4 @@ for row in "${ROWS[@]}"; do
 done
 
 echo ""
-squeue -u "$USER" -o "%.10i %.16j %.12P %.2t %.9M %R" | grep -E "JOBID|endeval_" || true
+squeue -u "$USER" -o "%.10i %.20j %.12P %.2t %.9M %R" | grep -E "JOBID|endeval_" || true

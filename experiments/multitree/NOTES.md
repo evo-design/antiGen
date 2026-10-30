@@ -11148,3 +11148,55 @@ novo panels and DENV2 on all mutations: four of six. rsv-a's all-mutations panel
 * `antiGen/tests/test_mean_logprob_ensemble.py` -- new.
 * `experiments/multitree/submit_endemic_evals.sh` -- stages the members.
 * `antiGen-figures/figures/fig_endemic_revised.R` -- the bar.
+
+## 100. endemic_results_backbone: the same models, a much smaller test set (2026-10-30)
+
+A second arm of the endemic figure, scored on testing-side mutations on the nextstrain
+backbones only. `figs/endemic_results_backbone.png`. The full-test-tree figure is
+untouched and re-renders byte-identical.
+
+### Nothing about training moved
+
+Same checkpoints, same `--train-examples`, same `--root-counts`. **Only
+`--test-examples` and the output directory change**, so the factored baselines are
+still fitted on the same training examples and the de novo cut is still the same cut.
+The two arms differ in what is being predicted and in nothing else.
+
+`submit_endemic_evals.sh` takes `TESTSET` and `ARM` rather than being forked; the
+default is the existing arm, unchanged.
+
+### THE DENOMINATORS, which decide what this figure can say
+
+| virus | queries | all-mutation targets | de novo targets |
+|---|---|---|---|
+| h3n2 | 311 (was 7,974) | 574 (was 19,434) | **5** (was 621) |
+| rsv-a | 48 (was 316) | 55 (was 444) | **15** (was 136) |
+| denv2 | 119 (was 419) | 222 (was 784) | **58** (was 240) |
+
+**Panel D rests on five mutations.** One of them is twenty points of recall, which is
+why its bars come out as 1.0 / 0.8 / 0.8 / 0.8 / 0.6 -- an ordering of a five-element
+set, not a result. Panel E has fifteen. Those two panels must not be read as
+orderings, and the all-mutations row is only comfortable for h3n2.
+
+So every panel is titled with its own n. A recall is a fraction and this figure cannot
+be looked at honestly without the denominator on the page. `count_targets.py` computes
+it with the eval's own de novo cut rather than a re-derivation.
+
+### Two traps while keeping the first figure identical
+
+* **An empty title is still a title.** `labs(title = panel_n(...))` returning `""`
+  reserves the title strip and shifted every panel -- 1.96M pixels differed. The title
+  is now ADDED with `ggtitle` only when there is one.
+* **A theme element set unconditionally does the same.** Styling `plot.title` for the
+  annotation changed the default figure's layout even with no title, so the styling is
+  chosen on whether a counts file was given.
+
+Both are the same shape: an option that is supposed to be off cannot leave a trace in
+the layout, and "the figure still renders" is not the test -- byte-identity is.
+
+### Code
+
+* `experiments/multitree/count_targets.py` -- new.
+* `experiments/multitree/submit_endemic_evals.sh` -- `TESTSET` / `ARM`.
+* `antiGen-figures/figures/fig_endemic_backbone.R` -- new, sources the revised drawer.
+* `antiGen-figures/figures/fig_endemic_revised.R` -- parameterised; defaults unchanged.

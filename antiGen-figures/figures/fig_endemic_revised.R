@@ -28,7 +28,18 @@ apply_paper_defaults()
 ## recreate it: run `experiments/multitree/submit_endemic_evals.sh`, then copy each
 ## virus's `quantile_hit_rates_*.csv` from
 ## $STORE/evals_endemic_revised/<virus>/ to data/evals_endemic_revised/<virus>/.
-EVAL_ROOT <- "data/evals_endemic_revised"
+## PARAMETERISED SO ONE DRAWER SERVES BOTH TEST SETS. A second copy of this script
+## would drift from this one the first time either is edited; `fig_endemic_backbone.R`
+## sets these two options and sources this file. The defaults are the full-test-tree
+## figure, unchanged.
+EVAL_ROOT <- getOption("endemic.eval_root", "data/evals_endemic_revised")
+OUT_NAME  <- getOption("endemic.out_name",  "endemic_results_revised")
+SUBTITLE  <- getOption("endemic.subtitle",  "")
+## Optional, and OFF by default so the full-test-tree figure is unchanged. When set,
+## every panel is titled with the number of target mutations it rests on -- a recall is
+## a fraction and the backbone sets are small enough that the denominator decides
+## whether the bars mean anything (h3n2's de novo panel: five mutations).
+COUNTS_FILE <- getOption("endemic.counts_file", "")
 
 ## MODEL_TYPE_COLORS is FOUR colours and MODEL_TYPE_LEVELS is five: the main-text
 ## palette drops "antiGen Finetunes" (R/common.R:68). Pairing the two directly makes
@@ -135,11 +146,22 @@ dat$group <- factor(dat$group, levels = GROUP_LEVELS)
 ## range would squash the de novo row against its axis.
 ROW_MAX <- sapply(names(METRICS), function(m) max(dat$recall[dat$metric == m]))
 
+COUNTS <- if (nzchar(COUNTS_FILE) && file.exists(COUNTS_FILE))
+  read.csv(COUNTS_FILE, stringsAsFactors = FALSE) else NULL
+
+panel_n <- function(v, m) {
+  if (is.null(COUNTS)) return("")
+  r <- COUNTS[COUNTS$virus == v & COUNTS$metric == m, ]
+  if (!nrow(r)) return("")
+  sprintf("n = %s mutation%s", format(r$n_targets[1], big.mark = ","),
+          if (r$n_targets[1] == 1) "" else "s")
+}
+
 panel <- function(v, m) {
   d <- dat[dat$virus == v & dat$metric == m, ]
   best <- d$model[which.max(d$recall)]
   d$tag <- ifelse(d$model == best, "1st", "")
-  ggplot(d, aes(x = recall, y = model, fill = group)) +
+  p <- ggplot(d, aes(x = recall, y = model, fill = group)) +
     geom_col(width = 0.72) +
     geom_text(aes(label = tag), hjust = 1.15, colour = "white",
               fontface = "bold", size = 2.6) +
@@ -150,7 +172,20 @@ panel <- function(v, m) {
     theme_paper() +
     theme(legend.position = "none",
           axis.text.y = element_text(size = 8),
-          plot.title  = element_text(size = 10, hjust = 0))
+          ## Styled for the n annotation only when there IS one. A theme element set
+          ## unconditionally changes the default figure's layout even with an empty
+          ## title, and that figure must re-render byte-identical.
+          plot.title  = if (is.null(COUNTS))
+            element_text(size = 10, hjust = 0)
+          else
+            element_text(size = 8.5, hjust = 1, colour = "grey30",
+                         face = "plain", margin = margin(b = 2)))
+  ## ADDED, not passed as labs(title = ""). An empty title is still a title: it
+  ## reserves its strip and shifts every panel, so the default figure would stop
+  ## re-rendering byte-identical.
+  lab <- panel_n(v, m)
+  if (nzchar(lab)) p <- p + ggtitle(lab)
+  p
 }
 
 legend <- get_legend(
@@ -185,6 +220,13 @@ body <- plot_grid(
   plot_grid(row_label(METRICS[["unseen"]]), rows[[2]], nrow = 1, rel_widths = c(0.035, 1)),
   ncol = 1, rel_heights = c(0.10, 1, 1))
 
-save_figure(plot_grid(legend, body, ncol = 1, rel_heights = c(0.06, 1)),
-            "endemic_results_revised", width = 11, height = 7.5)
-cat("wrote figs/endemic_results_revised.png (+ .pdf)\n")
+parts   <- list(legend, body)
+heights <- c(0.06, 1)
+if (nzchar(SUBTITLE)) {
+  parts   <- c(parts[1], list(ggdraw() + draw_label(SUBTITLE, size = 9.5,
+                                                    colour = "grey25")), parts[-1])
+  heights <- c(0.06, 0.035, 1)
+}
+save_figure(plot_grid(plotlist = parts, ncol = 1, rel_heights = heights),
+            OUT_NAME, width = 11, height = 7.5)
+cat(sprintf("wrote figs/%s.png (+ .pdf)\n", OUT_NAME))
