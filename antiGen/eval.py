@@ -40,6 +40,7 @@ from antiGen.eval_utils import (fit_substitution_baseline,
                                 positional_marginal_counts,
                                 where_times_which_dirichlet,
                                 WhereTimesWhichPredictor,
+                                MeanLogProbEnsemble,
     RBD_RANGE,
     evaluate_full,
     variant_hit_rates,
@@ -379,6 +380,18 @@ def parse_args():
     parser.add_argument('--priority-models', type=str, default=None,
                         help='Comma-separated label substrings to evaluate FIRST (before the '
                              'other models). Baselines are always computed first regardless.')
+    parser.add_argument('--ensemble-dir', type=str, default=None, metavar='DIR',
+                        help="Score the checkpoints in DIR as ONE rung: the mean of "
+                             "their per-query log-probabilities, which is the "
+                             "published 'Mean of log-probs' rule (ensemble_rules' "
+                             "logsoftmax/arith). Intended for the val-selected runs, "
+                             "whose claim is about their mean -- scoring them as N "
+                             "separate rungs would put N readings of one predictor on "
+                             "the panel. Valid where the eval range is the whole "
+                             "protein and no member abstains; see "
+                             "MeanLogProbEnsemble.")
+    parser.add_argument('--ensemble-name', type=str, default='antigen_valsel',
+                        help='Row name for --ensemble-dir.')
     parser.add_argument('--baseline-dir', type=str, default=None,
                         help='Override the per-dataset baseline CSV directory. The '
                              'default is data/baselines_<dataset>/, whose CSVs carry '
@@ -1114,6 +1127,41 @@ def main():
                           "substitution": _substitution,
                           "where_times_which": _where_times_which,
                           "wxw_dirichlet": _wxw_dirichlet}
+    # The val-selected runs as ONE rung. Registered beside the factored baselines
+    # because `builtin_models` is the hook for "a model the eval builds rather than
+    # loads", and that is exactly what an ensemble is -- it then goes through the same
+    # masks, candidate pool and quantile machinery as every other rung.
+    if args.ensemble_dir:
+        ens_paths = sorted(glob.glob(os.path.join(args.ensemble_dir, "fitness_*.pt")))
+        if not ens_paths:
+            raise SystemExit(f"--ensemble-dir {args.ensemble_dir} has no fitness_*.pt")
+        # The composition argument in MeanLogProbEnsemble holds only when the eval
+        # range is the whole protein. Refuse rather than quietly rank on a different
+        # normalisation than the one the rule names.
+        if len(eval_range) != seq_len:
+            raise SystemExit(
+                f"--ensemble-dir needs the full eval range (have {len(eval_range)} of "
+                f"{seq_len} positions): the mean-of-log-probs rule normalises over the "
+                "scored cells, and this module normalises over the sequence.")
+
+        def _ensemble():
+            mems = []
+            for ep in ens_paths:
+                eck, ecfg = load_checkpoint(ep, map_location=device)
+                if ecfg.seq_len != seq_len:
+                    raise SystemExit(f"{os.path.basename(ep)}: seq_len {ecfg.seq_len} "
+                                     f"!= data seq_len {seq_len}")
+                em = create_model(ecfg, device)
+                em.load_state_dict(eck['model_state_dict'], strict=False)
+                em.eval()
+                mems.append(em)
+            return MeanLogProbEnsemble(mems).to(device)
+
+        builtin_models[args.ensemble_name] = _ensemble
+        candidates.append((args.ensemble_name, None, None))
+        print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
+              f"from {args.ensemble_dir}")
+
         for name in builtin_models:
             candidates.append((name, None, None))
         print(f"  added {len(builtin_models)} factored baselines: "

@@ -53,6 +53,9 @@ METRICS <- c(all = "All mutations", unseen = "De novo")
 ## virus is kept, the one the published endemic figure drew.
 MODEL_LABELS <- c(
   "simple_d128_n2_lr0.0001" = "antiGen",
+  ## The ten val-selected runs as ONE rung, scored as the mean of their per-query
+  ## log-probs -- the same rule `sc2_results_revised` draws as antiGen (val x10).
+  "antigen_valsel10"        = "antiGen (val \u00d710)",
   "pssm_root"               = "PSSM",
   "pssm_root_position"      = "PSSM Conservation",
   "eve_frozen"              = "EVE",
@@ -71,6 +74,7 @@ MODEL_LABELS <- c(
 ## for exactly that reason (NOTES s95).
 MODEL_GROUP <- c(
   "antiGen"                  = "antiGen",
+  "antiGen (val \u00d710)"   = "antiGen",
   "PSSM"                     = "Pandemic Data in Training Window",
   "PSSM Conservation"        = "Pandemic Data in Training Window",
   "EVE"                      = "Pandemic Data in Training Window",

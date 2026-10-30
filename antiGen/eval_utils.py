@@ -958,6 +958,49 @@ def build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx):
 
 # ── Baseline loading ────────────────────────────────────────────────────────────
 
+class MeanLogProbEnsemble(torch.nn.Module):
+    """N checkpoints combined as the mean of their per-query log-probabilities.
+
+    This is the published "Mean of log-probs" rule -- `ensemble_rules`'
+    ``logsoftmax`` / ``arith`` -- expressed as a MODEL rather than as an operation on
+    cached score maps, so the eval scores it through exactly the same masks, candidate
+    pool and quantile machinery as every other rung. The alternative, dumping each
+    member's map and recombining it, has to reproduce those three things by hand.
+
+    **The two normalisations compose, and that is what makes this faithful.**
+    `compute_probs` turns whatever a model returns into
+    ``softmax(logits.flatten(1), dim=1)`` -- per QUERY, over the flattened
+    (positions x residues) cells. This module returns the mean of each member's
+    ``log_softmax`` over that same flattened axis. Softmax of that mean is a strictly
+    increasing function of it, and the hit-rate metrics depend on within-query RANKS
+    alone, so the ranking the eval sees is the mean-of-log-probs ranking exactly.
+
+    **Two preconditions, true for the endemic arm and checked by the caller.** The
+    cached-map rule normalises over the EVAL RANGE; this normalises over the full
+    sequence, so the two agree only where the eval range is the whole protein -- which
+    it is for flu, rsv_a and denv2 (`eval.py`: ``eval_range = list(range(seq_len))``).
+    And ``union_min`` NaN handling is a no-op for members that never abstain, which
+    these -- one architecture, no coverage gaps -- do not.
+
+    A ONE-member ensemble is therefore a no-op on ranks, which is the gate:
+    ``test_one_member_is_a_no_op`` pins it.
+    """
+
+    def __init__(self, members):
+        super().__init__()
+        if not members:
+            raise ValueError("MeanLogProbEnsemble needs at least one member")
+        self.members = torch.nn.ModuleList(members)
+
+    def forward(self, aa_batch):
+        acc = None
+        for m in self.members:
+            lg = m(aa_batch).float()
+            ls = torch.log_softmax(lg.flatten(1), dim=1).reshape(lg.shape)
+            acc = ls if acc is None else acc + ls
+        return acc / len(self.members)
+
+
 def load_baselines(baseline_dir, allowed_aas, seed, pssm_root, global_wt_aa_idx):
     """Assemble the baseline score maps: pssm_root, pssm_root_position, and CSV baselines.
 

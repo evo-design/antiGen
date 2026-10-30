@@ -20,9 +20,13 @@
 # gets a flat directory of symlinks, which is the same device submit_cutoff_evals.sh
 # uses for the SC2 cutoffs.
 #
-# THE VAL-SELECTED BAR IS DELIBERATELY NOT STAGED. Those ten runs are one bar, not ten
-# rungs; they are scored by the ensemble step afterwards. A staging directory is what
-# makes that choice explicit rather than an accident of directory depth.
+# THE VAL-SELECTED RUNS ARE STAGED SEPARATELY, as ONE rung. They go into their own
+# directory and are passed as --ensemble-dir, which scores them as the mean of their
+# per-query log-probs -- the published "Mean of log-probs" rule. Staged apart from the
+# others for the reason they are an ensemble at all: the arm's claim is about their
+# mean, and ten near-identical antiGen rungs on the panel would be ten readings of one
+# predictor. `--save-best` writes `..._<ts>_best.pt`, so each is linked under a plain
+# `fitness_*.pt` name that the eval's own regex accepts.
 #
 # PARTITION AND WALLTIME GO TOGETHER. An endemic eval is MINUTES of compute -- the
 # published arm measured ~9 min for flu and ~1 min for rsv-a and denv2 -- so what
@@ -120,6 +124,19 @@ for row in "${ROWS[@]}"; do
     echo "  staged $staged checkpoint(s) -> $STAGE"
     [ "$staged" -gt 0 ] || { echo "  ABORT: nothing staged"; exit 1; }
 
+    VSTAGE="$STAGE_ROOT/$V-valsel"
+    rm -rf "$VSTAGE"; mkdir -p "$VSTAGE"
+    vstaged=0
+    for r in "$CKPT/valsel"/antigen_vs_s*/; do
+        [ -d "$r" ] || continue
+        b=$(ls "$r"/fitness_*_best.pt 2>/dev/null | head -1)
+        [ -n "$b" ] || continue
+        ln -s "$b" "$VSTAGE/fitness_vs_$(basename "$r")_$(basename "$b" | \
+            sed -E 's/.*_([0-9]{8}_[0-9]{6})_best\.pt$/\1/').pt"
+        vstaged=$((vstaged + 1))
+    done
+    echo "  staged $vstaged val-selected member(s) -> $VSTAGE"
+
     # --split-date IS REQUIRED, not a nicety. The test corpus carries POST_CUTOFF as a
     # SET of cutoff dates -- one file serving every cutoff -- so which train/test split
     # to read has to be named or `load_examples` refuses outright. The SC2 arm reads
@@ -129,6 +146,11 @@ for row in "${ROWS[@]}"; do
           --root-counts    "$REV/counts_${D}_cur.tsv"
           --split-date     "$D")
     [ -z "$BLDIR" ] || args+=(--baseline-dir "$REPO/data/$BLDIR")
+    if [ "$vstaged" -gt 0 ]; then
+        args+=(--ensemble-dir "$VSTAGE" --ensemble-name antigen_valsel10)
+    else
+        echo "  no val-selected members; the antiGen (val x10) bar will be absent"
+    fi
     if [ "$DRY" = "1" ]; then
         echo "  DRY $NAME: DATASET=$DS CKPT_DIR=$STAGE OUTDIR=$OUT ${args[*]}"
         continue

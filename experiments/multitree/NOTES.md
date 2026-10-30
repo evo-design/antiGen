@@ -11091,3 +11091,60 @@ C and F carry no DMS bar.
 
 * `antiGen-figures/figures/fig_endemic_revised.R` -- new.
 * `antiGen-figures/data/evals_endemic_revised/` -- the three evals' hit-rate CSVs.
+
+## 99. The val-selected bar, and what it does not rescue (2026-10-30)
+
+s98's antiGen bar was the flat 32-epoch base. The ten val-selected runs existed for all
+three viruses but were not on the figure. They are now.
+
+### Scored as a MODEL, not by recombining cached maps
+
+The SC2 `antiGen (val x10)` bar is produced by `ensemble_report.py`, whose substrates
+are `backbone` and `list` -- it lives on the coguk mutation-list panels. **This figure
+reads eval's test-set hit-rate CSVs, which neither substrate covers**, so the SC2
+recipe does not transfer and "just a scoring pass" was wrong.
+
+`MeanLogProbEnsemble` is the cheaper answer: an `nn.Module` holding the N members that
+returns the mean of their per-query log-softmax, registered in `builtin_models` and so
+scored through the same masks, candidate pool and quantile machinery as every other
+rung. No map dump, and nothing about the metric reimplemented.
+
+**Why it is the same rule.** `compute_probs` turns a model's output into
+`softmax(logits.flatten(1), dim=1)` -- per query, over the flattened (positions x
+residues) cells, which is the axis `ensemble_rules` log-softmaxes over. Softmax of the
+mean-of-log-softmax is strictly increasing in it, and the hit-rate metrics read
+within-query RANKS only, so the ranking is the mean-of-log-probs ranking exactly. Two
+preconditions, both checked in `eval.py` rather than assumed: the eval range must be
+the whole protein (it is, for flu/rsv_a/denv2), and `union_min` must be a no-op, which
+it is for members that never abstain.
+
+Gated by `test_one_member_is_a_no_op`, the repo's standard ensemble gate, plus a test
+that the mean really is taken in LOG space -- the discriminating case had to be chosen
+deliberately, since on agreeing members the two means rank alike. Suite 246 -> 250.
+
+### It helps on all mutations and does not help on de novo
+
+**Recall at q = 0.1:**
+
+| | h3n2 all | rsv-a all | denv2 all | h3n2 novo | rsv-a novo | denv2 novo |
+|---|---|---|---|---|---|---|
+| antiGen (val x10) | **0.898** | **0.806** | 0.751 | 0.655 | 0.537 | 0.446 |
+| antiGen (base) | 0.891 | 0.687 | 0.698 | **0.676** | 0.493 | 0.488 |
+| Where x which + events | 0.875 | 0.804 | **0.760** | **0.596** | **0.574** | **0.596** |
+
+On ALL MUTATIONS val-selection is worth a great deal on the two small corpora -- rsv-a
+0.687 -> 0.806, denv2 0.698 -> 0.751 -- which is what the s95 budget work was for. On
+DE NOVO it is **worse than base** on two of three (h3n2 0.676 -> 0.655, denv2 0.488 ->
+0.446). Selecting an epoch on held-out mutations does not select for the harder task.
+
+**The headline survives the better rung.** `wxw_dirichlet` still takes all three de
+novo panels and DENV2 on all mutations: four of six. rsv-a's all-mutations panel is
+0.806 vs 0.804, which is a tie and should not be reported as a win either way.
+
+### Code
+
+* `antiGen/eval_utils.py` -- `MeanLogProbEnsemble`.
+* `antiGen/eval.py` -- `--ensemble-dir` / `--ensemble-name`.
+* `antiGen/tests/test_mean_logprob_ensemble.py` -- new.
+* `experiments/multitree/submit_endemic_evals.sh` -- stages the members.
+* `antiGen-figures/figures/fig_endemic_revised.R` -- the bar.
