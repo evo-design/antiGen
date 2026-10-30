@@ -11036,3 +11036,58 @@ ten seeds at 90-94 of 95 -- so 96 may be marginal there; flagged, not acted on.
 * `antiGen/eval.py` -- `explicit`, `--baseline-dir`, the length check.
 * `experiments/multitree/rekey_dms_to_mature.py` -- new.
 * `experiments/multitree/submit_endemic_evals.sh` -- staging, `--split-date`, baseline dir.
+
+## 98. endemic_results_revised is drawn, and antiGen does not win four of six (2026-10-30)
+
+Six panels, three viruses across, {all mutations, de novo} down, bars of recall at the
+top decile. `figures/fig_endemic_revised.R`, from
+`data/evals_endemic_revised/<virus>/`.
+
+### The headline is not the one the published figure had
+
+**Recall at q = 0.1:**
+
+| | h3n2 all | rsv-a all | denv2 all | h3n2 novo | rsv-a novo | denv2 novo |
+|---|---|---|---|---|---|---|
+| **antiGen** | **0.891** | 0.687 | 0.698 | **0.676** | 0.493 | 0.488 |
+| **Where x which + events** | 0.875 | **0.804** | **0.760** | 0.596 | **0.574** | **0.596** |
+| Where x which | 0.777 | 0.725 | 0.728 | 0.523 | 0.493 | 0.504 |
+| PSSM | 0.858 | 0.709 | 0.703 | 0.100 | 0.100 | 0.100 |
+| EVE | 0.745 | 0.579 | 0.651 | 0.420 | 0.294 | 0.383 |
+
+antiGen takes H3N2 on both metrics and `wxw_dirichlet` takes RSV-A and DENV2 on both --
+**the new baseline wins four of the six panels.** On the published figure antiGen was
+1st in all six. The difference is not the metric: it is that the baseline the figure
+was asked to add is a strong one on small trees, and that these are different trees.
+Worth saying plainly rather than discovering at review.
+
+### PSSM scores exactly 0.100 on de novo, in all three viruses
+
+Not a bug, and a useful check that the pipeline is right. De novo cells are by
+definition never observed at the root, so the root PSSM gives every one of them the
+same zero and the whole candidate pool ties. The fractional top-q convention then
+returns exactly q. A PSSM has no signal on de novo mutations by construction; a number
+that was not exactly 0.100 would mean the tie-breaking had drifted.
+
+### Two drawing decisions
+
+* **Four colours, five levels.** `MODEL_TYPE_COLORS` drops "antiGen Finetunes"
+  (common.R:68) so it is one shorter than `MODEL_TYPE_LEVELS`. `setNames` on the pair
+  errors, which is the good case -- an UNNAMED vector would have been matched
+  positionally and handed every group its neighbour's colour.
+* **One x range per row.** Per-panel ranges put three different figures side by side
+  under one heading: a bar at the right edge of DENV2 was a smaller number than one at
+  the right edge of H3N2 and nothing said so. Shared per row, not across all six, or
+  the de novo row squashes against its axis.
+
+### Roster
+
+The eval writes every per-assay DMS map (eight for flu, nine for RSV-A) and, for flu,
+two MSA-Transformer rows. The figure names its roster instead of taking the file's, and
+keeps the one DMS rung the published endemic figure drew. DENV2 has no assay, so panels
+C and F carry no DMS bar.
+
+### Code
+
+* `antiGen-figures/figures/fig_endemic_revised.R` -- new.
+* `antiGen-figures/data/evals_endemic_revised/` -- the three evals' hit-rate CSVs.
