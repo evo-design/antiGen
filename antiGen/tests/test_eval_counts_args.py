@@ -85,3 +85,42 @@ def test_steps_is_not_referenced_outside_the_grid_branch():
         for sub in ast.walk(node):
             if isinstance(sub, ast.Name) and sub.id == "steps":
                 pytest.fail("`steps` read outside the branch that binds it")
+
+
+def test_explicit_inputs_do_not_require_the_grid():
+    """`explicit` gates data_dir resolution; the grid is not one of the inputs.
+
+    This is the same asymmetry as the PSSM branch, at a second site. With
+    --variant-counts-dir in the conjunction, naming train/test/root-counts was not
+    enough to count as "explicit", so the run fell through to default_data_dir and
+    died asking for FITNESS_DATA_ROOT -- having already loaded its checkpoints.
+    """
+    tree = ast.parse(EVAL.read_text())
+    assigns = [n for n in ast.walk(tree)
+               if isinstance(n, ast.Assign)
+               and any(getattr(t, "id", "") == "explicit" for t in n.targets)]
+    assert assigns, "no `explicit = ...` assignment in eval.py"
+    src = ast.dump(assigns[0].value)
+    for need in ("train_examples", "test_examples", "root_counts"):
+        assert need in src, f"`explicit` no longer requires {need}"
+    assert "variant_counts_dir" not in src, (
+        "`explicit` requires --variant-counts-dir again: a corpus with no variant "
+        "roots will fall through to default_data_dir and demand FITNESS_DATA_ROOT")
+
+
+def test_baselines_are_length_checked_against_the_corpus():
+    """A baseline from another build of the protein must stop the run, not be indexed.
+
+    data/baselines_<virus>/ carries one row per position of the build it was made for.
+    The published flu HA is 566 residues; antiGen-data-revised builds HA1+HA2 with no
+    signal peptide, 550. Scoring one against the other raised an IndexError deep in the
+    sweep -- the good case. Silently reshaped it would have drawn a believable bar from
+    a map read off by sixteen residues, so this is checked up front and by name.
+    """
+    src = EVAL.read_text()
+    i = src.index("baselines = load_baselines(")
+    window = src[i:i + 1800]
+    assert "t.shape[0] != seq_len" in window, (
+        "load_baselines' output is no longer length-checked against seq_len")
+    assert "SystemExit" in window, "a length mismatch must stop the run, not warn"
+    assert "--baseline-dir" in src, "the documented remedy is no longer offered"

@@ -10962,3 +10962,77 @@ are kept as `valsel_ep96`, as the SC2 arm keeps `valsel_ep32`.
 * `antiGen/eval.py`, `antiGen/tests/test_eval_counts_args.py`
 * `examples/slurm/eval_endemic.sh`, `examples/slurm/train_endemic_series.sh` (blosum)
 * `experiments/multitree/submit_endemic_evals.sh`, `submit_endemic_revised.sh`
+
+## 97. The endemic evals run; four things were in the way (2026-10-30)
+
+All three viruses now have the four hit-rate CSVs with the full roster. Every failure
+was fast and loud -- seconds each -- which is the only reason this was a morning and
+not a week.
+
+### 1. `discover_checkpoints` globs FLAT
+
+`glob(join(checkpoint_dir, "fitness_*.pt"))`, no recursion. Pointing it at
+`<virus>-<date>/` found nothing, because the checkpoints live one level down in
+`base/`, `blosum62/`, `eve/`. **`submit_cutoff_evals.sh` says exactly this** -- "pointing
+the eval at the cutoff directory finds nothing" -- and I read it backwards when writing
+the endemic twin. Each virus now gets a flat symlink directory, rebuilt every run.
+
+### 2. `explicit` required `--variant-counts-dir` too
+
+s96 decoupled the flags in the PSSM branch and missed the SAME coupling at eval.py:495,
+where `explicit` decides whether a `data_dir` is needed at all. Without the grid flag a
+fully-specified run fell through to `datasets.default_data_dir` and died on "set
+FITNESS_DATA_ROOT" -- after loading its checkpoints. The lesson is the obvious one: a
+coupling fixed in one place is not fixed.
+
+### 3. The test corpus needs `--split-date`
+
+One test file serves every cutoff, so `POST_CUTOFF` is a SET and `load_examples`
+refuses to guess which split to read. The SC2 arm reads its shared corpus the same way;
+its manifest even records "`--split-date $D`".
+
+### 4. The flu DMS maps were keyed to a different protein
+
+**antiGen-data-revised builds HA as HA1+HA2 with no signal peptide** -- 550 residues
+where the published build had 566 -- and the CSVs in `data/baselines_flu/` carry one
+row per position of the OLD build. The sweep died with a shape mismatch, which is the
+GOOD outcome: a map read off by sixteen residues would have produced a believable bar.
+
+The fix is to re-key, not to drop, and **the offset is derived rather than declared**.
+Sixteen is the H3N2 signal peptide (`MKTIIALSYILCLVFA`) and was almost certainly right,
+but `rekey_dms_to_mature.py` aligns the two corpora's ROOT sequences at every plausible
+prefix trim and refuses to write unless the best is unambiguous:
+
+| trim | mismatch vs the new root |
+|---|---|
+| **16** | **2.36%** (13 of 550 -- N8D, N122D, A138S, N158K, Q173K, G186V: drift between roots a decade apart) |
+| 9 | 91.45% |
+| 15 | 95.5% |
+
+Output goes to `data/baselines_flu_ha12/`; the published arm still reads the 566-row
+originals. `--baseline-dir` selects it, and eval.py now REFUSES any baseline whose
+length is not `seq_len`, naming it -- a missing bar someone can see beats a wrong one
+they cannot.
+
+### The rosters
+
+| | antiGen | EVE | BLOSUM62 | PSSM / Cons. | codon / subst / wxw / +events | DMS |
+|---|---|---|---|---|---|---|
+| h3n2 | yes | yes | yes | yes | yes | 8 maps + 2 MSA-Transformer |
+| rsv-a | yes | yes | yes | yes | yes | 9 escape/entry maps |
+| denv2 | yes | yes | yes | yes | yes | none (no assay) |
+
+No `variant_emergence_*` CSVs anywhere, as intended.
+
+### Valsel budgets, resolved
+
+All three pass. denv2 best epochs 67-134 of 383, rsv-a 106-316 of 383, h3n2 83-94 of
+95. **rsv-a is the proof the raise was needed**: at 96 its optima clustered at 91-95,
+but given room they run to 316. h3n2 passes but sits against its ceiling -- eight of
+ten seeds at 90-94 of 95 -- so 96 may be marginal there; flagged, not acted on.
+
+### Code
+
+* `antiGen/eval.py` -- `explicit`, `--baseline-dir`, the length check.
+* `experiments/multitree/rekey_dms_to_mature.py` -- new.
+* `experiments/multitree/submit_endemic_evals.sh` -- staging, `--split-date`, baseline dir.

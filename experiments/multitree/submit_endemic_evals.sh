@@ -50,10 +50,19 @@ DRY=${DRY:-0}
 ONLY=${ONLY:-}
 
 # virus:date:dataset-flag-as-antiGen-eval-spells-it
+# virus:date:dataset:baseline-subdir
+#
+# H3N2 TAKES A RE-KEYED BASELINE DIRECTORY. antiGen-data-revised builds HA as HA1+HA2
+# with NO signal peptide -- 550 residues against the published build's 566 -- so the
+# DMS CSVs in data/baselines_flu/ are keyed sixteen residues off this corpus. They are
+# re-keyed by rekey_dms_to_mature.py, which DERIVES the offset by aligning the two
+# corpora's root sequences rather than taking 16 on faith: it scores 2.36% mismatch
+# against 91% for its nearest rival, and the script refuses to write without that
+# separation. rsv-a and denv2 were already built to match their own CSVs.
 ROWS=(
-    "h3n2:2022-10-01:flu"
-    "rsv-a:2023-10-01:rsv_a"
-    "denv2:2019-10-01:denv2"
+    "h3n2:2022-10-01:flu:baselines_flu_ha12"
+    "rsv-a:2023-10-01:rsv_a:"
+    "denv2:2019-10-01:denv2:"
 )
 
 queued() { squeue -u "$USER" -h -o "%j" | grep -qx "$1"; }
@@ -62,7 +71,7 @@ cd "$REPO"
 mkdir -p "$OUT_ROOT" logs
 
 for row in "${ROWS[@]}"; do
-    IFS=: read -r V D DS <<< "$row"
+    IFS=: read -r V D DS BLDIR <<< "$row"
     [ -z "$ONLY" ] || [ "$ONLY" = "$V" ] || continue
 
     REV="$DATA/$V-$D/train"
@@ -111,9 +120,15 @@ for row in "${ROWS[@]}"; do
     echo "  staged $staged checkpoint(s) -> $STAGE"
     [ "$staged" -gt 0 ] || { echo "  ABORT: nothing staged"; exit 1; }
 
+    # --split-date IS REQUIRED, not a nicety. The test corpus carries POST_CUTOFF as a
+    # SET of cutoff dates -- one file serving every cutoff -- so which train/test split
+    # to read has to be named or `load_examples` refuses outright. The SC2 arm reads
+    # its shared test corpus the same way.
     args=(--train-examples "$REV/examples_${D}_cur.txt"
           --test-examples  "$DATA/$V-test/examples_all_cur.txt"
-          --root-counts    "$REV/counts_${D}_cur.tsv")
+          --root-counts    "$REV/counts_${D}_cur.tsv"
+          --split-date     "$D")
+    [ -z "$BLDIR" ] || args+=(--baseline-dir "$REPO/data/$BLDIR")
     if [ "$DRY" = "1" ]; then
         echo "  DRY $NAME: DATASET=$DS CKPT_DIR=$STAGE OUTDIR=$OUT ${args[*]}"
         continue

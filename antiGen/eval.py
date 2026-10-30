@@ -379,6 +379,15 @@ def parse_args():
     parser.add_argument('--priority-models', type=str, default=None,
                         help='Comma-separated label substrings to evaluate FIRST (before the '
                              'other models). Baselines are always computed first regardless.')
+    parser.add_argument('--baseline-dir', type=str, default=None,
+                        help='Override the per-dataset baseline CSV directory. The '
+                             'default is data/baselines_<dataset>/, whose CSVs carry '
+                             'one row per position OF THE BUILD THEY WERE MADE FOR. A '
+                             'corpus built to a different convention -- the revised '
+                             'H3N2 is HA1+HA2 with no signal peptide, 550 residues '
+                             'against the published 566 -- needs maps re-keyed to it '
+                             '(experiments/multitree/rekey_dms_to_mature.py), not the '
+                             'originals indexed at an offset.')
     parser.add_argument('--skip-baselines', action='store_true', default=False,
                         help="Skip the test-set baseline sweep. It is one pass over "
                              "the test set scoring 13 fixed maps against every "
@@ -492,8 +501,13 @@ def main():
     # derives a directory from a checkpoint's recorded cutoff and needs
     # $FITNESS_DATA_ROOT -- must not run at all. Left in, it would either fail on a
     # missing env var or resolve to the PUBLISHED corpus and read it for nothing.
-    explicit = bool(args.train_examples and args.test_examples
-                    and args.root_counts and args.variant_counts_dir)
+    # "Every input is named on the command line", which is what makes `data_dir`
+    # unnecessary. --variant-counts-dir is NOT part of that test: it adds the emergence
+    # grid and nothing else, so a corpus with no variant roots still names everything
+    # the eval reads. Requiring it here sent such a run down the
+    # `datasets.default_data_dir` path and out through "set FITNESS_DATA_ROOT" -- the
+    # same coupling the PSSM branch below used to have, in a second place.
+    explicit = bool(args.train_examples and args.test_examples and args.root_counts)
     if explicit:
         data_dir = None
     elif args.data_dir:
@@ -653,8 +667,24 @@ def main():
         baseline_subdir = "baselines_denv2"
     else:
         baseline_subdir = "baselines"
-    baseline_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", baseline_subdir)
+    baseline_dir = args.baseline_dir or os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "data", baseline_subdir)
     baselines = load_baselines(baseline_dir, allowed_aas, args.seed, pssm_root, global_wt_aa_idx)
+
+    # A BASELINE KEYED TO A DIFFERENT BUILD IS NOT COMPARABLE. The CSVs carry one row
+    # per position of the build they were made for, so a corpus of another length must
+    # fail here rather than be indexed: an IndexError deep in the sweep is the GOOD
+    # outcome, and a map silently read off by sixteen residues would have drawn a
+    # believable bar. Checked by name and up front, where the fix is obvious.
+    wrong = [(n, int(t.shape[0])) for n, t in baselines if t.shape[0] != seq_len]
+    if wrong:
+        raise SystemExit(
+            f"Baseline(s) of the wrong length for this corpus (seq_len={seq_len}): "
+            + ", ".join(f"{n}={ln}" for n, ln in wrong)
+            + f"\n  baseline_dir = {baseline_dir}"
+            + "\n  Re-key them to this build (experiments/multitree/"
+              "rekey_dms_to_mature.py) and pass --baseline-dir, or leave the rung off."
+              " Do not assume the offset.")
 
     # Loaders
     test_loader = DataLoader(
