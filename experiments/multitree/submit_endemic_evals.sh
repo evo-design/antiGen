@@ -12,9 +12,17 @@
 # The last group is what sc2_results_revised gained and this figure never had, and it
 # is the reason no extra training was needed for it.
 #
-# THE VAL-SELECTED BAR IS NOT HERE. Those ten runs are two levels deep, so this eval
-# does not see them, which is deliberate -- they are one bar, not ten rungs, and are
-# scored by the ensemble step afterwards.
+# WHY A STAGING DIRECTORY. `discover_checkpoints` globs `fitness_*.pt` FLAT --
+# `glob(join(checkpoint_dir, "fitness_*.pt"))`, with no recursion at all. Pointing it
+# at <virus>-<date>/ therefore finds NOTHING, because every checkpoint lives one level
+# down in base/, blosum62/ or eve/; the first run of this script did exactly that and
+# came back "No checkpoints matched ... Nothing to do" in three seconds. So each virus
+# gets a flat directory of symlinks, which is the same device submit_cutoff_evals.sh
+# uses for the SC2 cutoffs.
+#
+# THE VAL-SELECTED BAR IS DELIBERATELY NOT STAGED. Those ten runs are one bar, not ten
+# rungs; they are scored by the ensemble step afterwards. A staging directory is what
+# makes that choice explicit rather than an accident of directory depth.
 #
 # PARTITION gpu_batch: an endemic eval is longer than "order minutes" (CLAUDE.md).
 set -euo pipefail
@@ -24,6 +32,7 @@ DATA=${DATA:-/home/ivan.specht/antiGen-data-revised/output}
 STORE=${STORE:-/large_storage/hielab/ispecht/fitness-inference}
 SERIES=${SERIES:-$STORE/endemic_series}
 OUT_ROOT=${OUT_ROOT:-$STORE/evals_endemic_revised}
+STAGE_ROOT=${STAGE_ROOT:-$STORE/endemic_stage}
 PARTITION=${PARTITION:-gpu_batch,gpu}
 NICE=${NICE:-50}
 FORCE=${FORCE:-0}
@@ -77,14 +86,29 @@ for row in "${ROWS[@]}"; do
         echo "  already evaluated; skipping (FORCE=1 to redo)"; continue
     fi
 
+    # Stage the three rungs flat. Rebuilt every run: a symlink to a checkpoint that
+    # was retrained since is worse than no symlink at all.
+    STAGE="$STAGE_ROOT/$V"
+    rm -rf "$STAGE"; mkdir -p "$STAGE"
+    staged=0
+    for stage in base blosum62 eve; do
+        for f in "$CKPT/$stage"/fitness_*.pt; do
+            [ -f "$f" ] || continue
+            ln -s "$f" "$STAGE/$(basename "$f")"
+            staged=$((staged + 1))
+        done
+    done
+    echo "  staged $staged checkpoint(s) -> $STAGE"
+    [ "$staged" -gt 0 ] || { echo "  ABORT: nothing staged"; exit 1; }
+
     args=(--train-examples "$REV/examples_${D}_cur.txt"
           --test-examples  "$DATA/$V-test/examples_all_cur.txt"
           --root-counts    "$REV/counts_${D}_cur.tsv")
     if [ "$DRY" = "1" ]; then
-        echo "  DRY $NAME: DATASET=$DS CKPT_DIR=$CKPT OUTDIR=$OUT ${args[*]}"
+        echo "  DRY $NAME: DATASET=$DS CKPT_DIR=$STAGE OUTDIR=$OUT ${args[*]}"
         continue
     fi
-    export DATASET="$DS" CKPT_DIR="$CKPT" OUTDIR="$OUT"
+    export DATASET="$DS" CKPT_DIR="$STAGE" OUTDIR="$OUT"
     id=$(sbatch --parsable --job-name="$NAME" --partition="$PARTITION" --nice="$NICE" \
                 --export=ALL examples/slurm/eval_endemic.sh "${args[@]}")
     echo "  $NAME -> job $id"
