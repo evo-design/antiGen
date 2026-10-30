@@ -24,7 +24,16 @@
 # rungs; they are scored by the ensemble step afterwards. A staging directory is what
 # makes that choice explicit rather than an accident of directory depth.
 #
-# PARTITION gpu_batch: an endemic eval is longer than "order minutes" (CLAUDE.md).
+# PARTITION AND WALLTIME GO TOGETHER. An endemic eval is MINUTES of compute -- the
+# published arm measured ~9 min for flu and ~1 min for rsv-a and denv2 -- so what
+# decides when the figure exists is queue time, not run time. gpu_batch is down to two
+# usable nodes against 140 pending; quick_preemptible has twelve against nine. Adding
+# it is worth far more than the preemption risk, since `eval.py` resumes from its own
+# output CSVs and a requeued eval costs a retry rather than the work.
+#
+# The walltime must be inside quick_preemptible's MaxTime=02:00:00 or the partition
+# silently cannot run the job -- `eval_endemic.sh`'s own 8h header would have barred
+# it. 1h30 is still an order of magnitude over the measured runtimes.
 set -euo pipefail
 
 REPO=${REPO:-/home/ivan.specht/antiGen}
@@ -33,7 +42,8 @@ STORE=${STORE:-/large_storage/hielab/ispecht/fitness-inference}
 SERIES=${SERIES:-$STORE/endemic_series}
 OUT_ROOT=${OUT_ROOT:-$STORE/evals_endemic_revised}
 STAGE_ROOT=${STAGE_ROOT:-$STORE/endemic_stage}
-PARTITION=${PARTITION:-gpu_batch,gpu}
+PARTITION=${PARTITION:-gpu_batch,gpu,quick_preemptible}
+WALL=${WALL:-01:30:00}
 NICE=${NICE:-50}
 FORCE=${FORCE:-0}
 DRY=${DRY:-0}
@@ -110,6 +120,7 @@ for row in "${ROWS[@]}"; do
     fi
     export DATASET="$DS" CKPT_DIR="$STAGE" OUTDIR="$OUT"
     id=$(sbatch --parsable --job-name="$NAME" --partition="$PARTITION" --nice="$NICE" \
+                --time="$WALL" \
                 --export=ALL examples/slurm/eval_endemic.sh "${args[@]}")
     echo "  $NAME -> job $id"
     unset DATASET CKPT_DIR OUTDIR
