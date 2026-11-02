@@ -141,7 +141,8 @@ saveRDS(list(
                        title = "DMS correlation (Spearman)",
                        ## "Spearman (Expression)" is longer than the panel is tall and
                        ## ran into the top tick; the title already names the metric.
-                       ylab_prefix = "\u03c1", alpha_lab = "Score")
+                       ylab = quote(rho ~ "(Expression)"), alpha_lab = "Score",
+                       shade_fill = TRUE)
   })),
   gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations"))
 ), out)

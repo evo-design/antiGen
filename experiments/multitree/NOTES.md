@@ -11428,3 +11428,38 @@ estimate, the whole unseen pool ties, and fractional top-q returns exactly q.
 * `examples/slurm/score_fixed_split.sh` -- new (was score_bloomneher_2023.sh); `D`
   picks the cutoff.
 * `antiGen-figures/figures/figS_fixed_split.R`, registered in `run_all.R`.
+
+## 104. Panel G: shades, not opacity (2026-11-01)
+
+The second series is now a lighter SHADE of each group's colour rather than the same
+colour at lower alpha. Opacity blends with whatever sits behind the bar -- the panel
+grid shows through it -- and transparency is the part of a PDF that renderers disagree
+about. `shade_fill` is off by default, so the four-bar Pearson panels this same builder
+draws keep the alpha mechanism.
+
+**Two fill scales are not possible in one ggplot**, which dictates the construction:
+`fill` carries one level per (group, series) with a manual palette, and `alpha` stays in
+the aes purely to carry the SECOND legend -- its values are both 1, so it has no visual
+effect, and that legend's keys are overridden to a dark/light grey pair.
+
+### Two bugs on the way, both worth remembering
+
+* **`group_colors()` returns an UNNAMED vector.** It is matched to the factor's levels
+  by POSITION, which is how `scale_fill_manual(values = colors_here)` consumes it.
+  Reading names off it gives NULL, so every fill key missed and **every bar came back
+  grey** -- a total loss of the group colouring that is obvious on sight, which is the
+  only reason it was caught immediately. The levels are now rebuilt the way
+  `group_colors` builds them, with a length assertion beside them.
+* **A literal Unicode rho fails on the pdf device**: "conversion failure on
+  'rho (Expression)' in 'mbcsToSbcs'". The PNG showed the character and the PDF would
+  have lost it, which is a defect only the vector output has and only a reader of the
+  vector output would see. The label is a plotmath expression now
+  (`quote(rho ~ "(Expression)")`), which both devices render, and `make_dms_corr_plot`
+  takes a full `ylab` override so an expression can be passed at all.
+
+Checking the PNG is not checking the figure when `save_figure` writes both.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `shade_fill`, `ylab`.
+* `antiGen-figures/figures/panels_sc2_export.R` -- passes both.

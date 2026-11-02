@@ -895,11 +895,22 @@ if (exists("dms_spearman")) {
 ## which draws the PUBLISHED `sc2_results_aa20` panel M from this same builder -- so a
 ## label set for the revised figure's Spearman panel relabelled a Pearson panel
 ## "Spearman" in a figure nobody asked to change.
+## `shade_fill` draws the second series as a LIGHTER SHADE of each group's colour
+## rather than as the same colour at lower opacity. Opacity blends with whatever is
+## behind the bar -- the panel grid shows through -- and transparency is the part of a
+## PDF that renderers disagree about. Off by default, so the four-bar Pearson panels
+## this builder also draws are untouched.
 make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALSE,
                                legend_nrow = NULL,
                                title = "DMS correlation",
                                ylab_prefix = "Corr.",
-                               alpha_lab = "Transformation") {
+                               ## A full override, which may be a plotmath expression.
+                               ## A literal Unicode rho fails on the pdf device
+                               ## ("conversion failure ... mbcsToSbcs"), so the vector
+                               ## output silently loses the character the PNG shows.
+                               ylab = NULL,
+                               alpha_lab = "Transformation",
+                               shade_fill = FALSE) {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
   ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
@@ -940,6 +951,37 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
     )
   }
 
+  if (shade_fill) {
+    ## One fill level per (group, series). `alpha` is kept in the aes only to carry the
+    ## second LEGEND -- its values are both 1, so it has no visual effect -- and that
+    ## legend's keys are overridden to a dark/light grey pair below. Two fill scales
+    ## are not possible in one ggplot, which is why the legend is built this way.
+    lighten <- function(hex, f = 0.55) {
+      v <- grDevices::col2rgb(hex)
+      grDevices::rgb(t(v + (255 - v) * f), maxColorValue = 255)
+    }
+    lv <- levels(droplevels(df_filtered$transformation))
+    ## `group_colors` returns an UNNAMED vector, matched to the factor's levels by
+    ## POSITION -- which is how `scale_fill_manual(values = colors_here)` consumes it.
+    ## Reading names off it gives NULL, every fill key misses, and every bar comes back
+    ## grey. The levels are rebuilt here exactly as group_colors builds them.
+    gl <- levels(droplevels(factor(df$group, levels = MODEL_TYPE_LEVELS)))
+    stopifnot(length(gl) == length(colors_here))
+    pal <- setNames(
+      c(unname(colors_here), lighten(unname(colors_here))),
+      c(paste(gl, lv[1], sep = "|"), paste(gl, lv[2], sep = "|")))
+    df_filtered$fillkey <- paste(df_filtered$group, df_filtered$transformation,
+                                 sep = "|")
+    p <- ggplot(df_filtered,
+                aes(x = model, y = correlation,
+                    fill = fillkey, alpha = transformation,
+                    group = interaction(group, transformation))) +
+      geom_col(position = position_dodge(width = 0.8, preserve = "single"),
+               width = 0.6) +
+      scale_fill_manual(values = pal, name = "Model type",
+                        breaks = paste(gl, lv[1], sep = "|"), labels = gl) +
+      scale_alpha_manual(values = c(1, 1), name = alpha_lab)
+  } else {
   p <- ggplot(df_filtered,
               aes(x = model, y = correlation,
                   fill = group, alpha = transformation,
@@ -947,7 +989,9 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
     geom_col(position = position_dodge(width = 0.8, preserve = "single"),
              width = 0.6) +
     scale_fill_manual(values = colors_here) +
-    scale_alpha_discrete(range = c(1, 0.4)) +
+    scale_alpha_discrete(range = c(1, 0.4))
+  }
+  p <- p +
     theme_paper(base_size = 12) +
     ggtitle(title) +
     theme(
@@ -962,11 +1006,13 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
       legend.box.spacing   = unit(2, "pt")
     ) +
     labs(x = NULL,
-         y = paste0(ylab_prefix, " (", metric_name, ")"),
+         y = if (is.null(ylab)) paste0(ylab_prefix, " (", metric_name, ")") else ylab,
          fill = "Model type", alpha = alpha_lab) +
     guides(
       fill  = guide_legend(override.aes = list(alpha = 1), nrow = legend_nrow),
-      alpha = guide_legend(override.aes = list(fill = "grey30"))
+      alpha = if (shade_fill)
+        guide_legend(override.aes = list(fill = c("grey30", "grey78")))
+      else guide_legend(override.aes = list(fill = "grey30"))
     )
 
   if (legend_only) return(extract_legend(p))
