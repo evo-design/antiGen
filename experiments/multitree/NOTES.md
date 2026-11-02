@@ -8734,3 +8734,31 @@ corpora.
 ### Code
 * `experiments/multitree/score_perevent.py`, `score_perevent_noattach.py` -- the
   `seen_mask` arg + the per-tree build + passing it on `novel`.
+
+## 68. De-novo kernel standardized to interpolation='lower' (2026-11-01)
+
+Follow-up to s67. The top-q boundary in `per_event_weights` now uses
+`torch.nanquantile(..., interpolation='lower')`, matching `antiGen/eval.py`
+`compute_hit_rate` -- the kernel the is-multitree `endemic_results_revised` figure is
+scored through. The torch DEFAULT, 'linear', interpolates between two cells, lands on
+no actual cell, and under-selects at the boundary by up to one cell (slightly lower
+recall); 'lower' takes the largest actual value at/below the (1-q) quantile, so the
+fractional tie-break selects exactly q*nv cells.
+
+**Why standardize on it.** The user's rule: one scoring pipeline everywhere, the one
+the endemic figure uses, so that identical models/baselines give identical numbers and
+any difference is the models, not the kernel. `per_event_weights` is now bit-identical
+to `compute_hit_rate` for whole-protein 20-letter corpora (pool + masking already
+agree) AND keeps the per-event bootstrap CIs `compute_hit_rate` cannot give -- so the
+forecast panels keep their CIs while being on the endemic kernel.
+
+**Blast radius.** Every number scored before this (the committed G-onward
+`denovo_panels_recall.csv`, the `perevent_fig13*` npz, the fig4/A-F scorers) was on
+'linear' and must be re-scored; the shift is boundary-only (fraction of a percent).
+Because the canonical kernel is imported, any scorer that does
+`from score_perevent import per_event_weights` gets 'lower' for free; the inline pew
+copies that remain (fig4_vf02_method_eval.py, score_perevent_sp4e0_budgets.py,
+score_fig4_*.py, ...) should import it rather than carry a 'linear' copy.
+
+### Code
+* `experiments/multitree/score_perevent.py` -- the one-line interpolation change.

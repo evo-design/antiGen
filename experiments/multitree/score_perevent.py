@@ -50,7 +50,13 @@ def per_event_weights(scores, aa_idx, events, seen_mask=None, q=None):
     flat=s.flatten(); valid=~torch.isnan(flat)
     nv=int(valid.sum())
     if nv==0: return [0.0]*len(events)
-    vb=torch.nanquantile(flat, 1.0-Q_)                    # boundary value
+    # interpolation='lower' matches antiGen/eval.py compute_hit_rate (the kernel the
+    # endemic_results_revised figure uses): the boundary is the largest ACTUAL value at
+    # or below the (1-q) quantile, so the fractional tie-break selects exactly q*nv cells.
+    # The torch default 'linear' interpolates between two cells, lands on no cell, and
+    # under-selects at the boundary (slightly lower recall). Standardized to 'lower' so
+    # every rung in every figure is scored by the one endemic kernel. See NOTES.md s67.
+    vb=torch.nanquantile(flat, 1.0-Q_, interpolation='lower')   # boundary value
     above=(flat>vb)&valid; n_above=int(above.sum())
     tie=(flat==vb)&valid; n_tie=int(tie.sum())
     budget=Q_*nv

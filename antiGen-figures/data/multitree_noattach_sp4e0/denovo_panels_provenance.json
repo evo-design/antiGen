@@ -1,8 +1,8 @@
 {
-  "generated": "2026-11-01T16:46:53",
-  "host": "GPU708E",
-  "slurm_job": "3509174",
-  "git_sha": "75e931094749f7396941fc45c13df63ce086ee44",
+  "generated": "2026-11-01T22:23:23",
+  "host": "GPU104C",
+  "slurm_job": "3513525",
+  "git_sha": "9d09a179413df0b92398034f47f66eb3521c3859",
   "git_dirty": true,
   "script": "/home/aakarsh/projects/antiGen/experiments/multitree/score_denovo_panels.py",
   "metric": "score_perevent.per_event_weights (shared); de-novo pool strikes pssm_root>0",
