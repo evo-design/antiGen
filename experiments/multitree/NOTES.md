@@ -11500,3 +11500,30 @@ file, so switching back is a re-run of `draw_path_panel.py` against the old CSV.
 ### Code
 
 * `antiGen-figures/data/ba286_to_kp3_ranks_2023-01-01.csv` -- new.
+
+## 106. Row 2 reordered, and the column widths that had to move with it (2026-11-02)
+
+Row 2 is now `bg_all, bg_dn, case_study`, lettered D E F by POSITION so it still reads
+left to right. Both rows now carry bar panels in columns 1 and 2, so B/C sit directly
+above D/E -- the same kind of panel over the same roster -- and the case study, which
+is an image and shares its shape with nothing, ends the row where it interrupts
+nothing.
+
+**The reorder alone was not finished work.** `COL_W` was `c(2.2, 1.65, 1.35)`, sized
+when column 1 held the only image. Moving the case study to column 3 put a fixed-aspect
+image drawn at 5.5in into the narrowest column: it rendered about **3.4in**, taking its
+8pt text to roughly **5pt**. A reorder that silently shrinks a panel below legibility is
+not a layout change, it is a defect.
+
+Rebalancing took two goes, and the first was wrong in an instructive way.
+`c(1.95, 1.5, 1.8)` took the width from column 2, which **clipped panel B's title** --
+"Top decile recall, all escape muta". A ggplot title is clipped at the panel edge
+rather than wrapped, so it fails silently and only at the glyph that falls off.
+`c(1.85, 1.65, 1.75)` takes it from column 1 instead, which holds the two panels that
+can best afford it: the cartoon is a wide image, and the background panel's longest
+label (`BA.2 DMS (LY-CoV1404 escape)`) still fits. Checked all three columns
+afterwards rather than only the one that was changed.
+
+### Code
+
+* `antiGen-figures/figures/fig_sc2_revised.R` -- row 2 order, `COL_W`.

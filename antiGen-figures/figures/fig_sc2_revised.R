@@ -8,9 +8,9 @@
 ##   row 1   A  the next-mutation recall cartoon          (sc2_results_aa20 A)
 ##           B  top decile, all list cells, cell-weighted (coguk_list_aa20 C)
 ##           C  top decile, de novo, cell-weighted        (coguk_list_aa20 D)
-##   row 2   D  BA.2.86 -> KP.3 case study          (cartoons/ba286_to_kp3.png)
-##           E  background lift, all list cells           (coguk_list_aa20 K)
-##           F  background lift, de novo                  (coguk_list_aa20 L)
+##   row 2   D  background lift, all list cells           (coguk_list_aa20 K)
+##           E  background lift, de novo                  (coguk_list_aa20 L)
+##           F  BA.2.86 -> KP.3 case study          (cartoons/ba286_to_kp3.png)
 ##   row 3   G  DMS correlation                           (sc2_results_aa20 M)
 ##           H  antiGen / PSSM gate by train/test cutoff  (sc2_results_aa20 O)
 ##
@@ -78,21 +78,27 @@ case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
 ## the bar panels, and A fills the width it is given and then pads above and below.
 ## Widening the column lets it fill the row instead. Both rows carry the same widths
 ## so the columns stay aligned.
-## The third column carries no y-axis text, so it was given the least width -- but
-## its TITLES are the longest ("... de novo escape mutations" against "... all escape
-## mutations"), and a title is clipped at the panel edge rather than wrapped. Width
-## follows the widest thing in the column, which here is the title and not the bars.
-COL_W <- c(2.2, 1.65, 1.35)
+## The third column carries no y-axis text, so it once had the least width -- but it
+## now holds TWO things that want width: its titles are the longest ("... de novo
+## escape mutations" against "... all escape mutations"), and a title is clipped at the
+## panel edge rather than wrapped; and since the case study moved to the end of row 2,
+## the column also holds a fixed-aspect IMAGE drawn at 5.5in. At 1.35 of 5.2 that image
+## rendered about 3.4in wide, which takes its 8pt text to roughly 5pt. Width is taken
+## from the first column, which holds the two panels that can best afford it: the
+## cartoon is a wide image and the background panel's model names still fit.
+COL_W <- c(1.85, 1.65, 1.75)
 row1 <- plot_grid(sc$cartoon, cg$decile_all, cg$decile_dn, nrow = 1,
                   rel_widths = COL_W, labels = c("A", "B", "C"))
-## The case study goes under the cartoon so that B/C and the two background panels -- the
-## same kind of bar panel over the same roster -- line up in two columns, and the eye
-## can read down a column as well as across a row.
+## THE BACKGROUND PANELS COME FIRST, the case study last. B/C and the two background
+## panels are the same kind of bar panel over the same roster, so putting them in the
+## first two columns of both rows lets the eye read DOWN a column as well as across a
+## row; the case study, which is an image and shares its shape with nothing, sits at
+## the end of the row where it interrupts nothing.
 ##
-## LETTERS IN READING ORDER, so D is the case study and the background panels are E and F.
-## They are assigned by POSITION rather than carried with the panel: a figure whose
-## letters run A B C / F D E reads as a mistake however sensible the history behind it.
-row2 <- plot_grid(case_study, cg$bg_all, cg$bg_dn, nrow = 1,
+## LETTERS ARE ASSIGNED BY POSITION, so they still run D E F left to right and the
+## case study is F. Carrying a letter with its panel instead would print A B C / F D E,
+## which reads as a mistake however sensible the history behind it.
+row2 <- plot_grid(cg$bg_all, cg$bg_dn, case_study, nrow = 1,
                   rel_widths = COL_W, labels = c("D", "E", "F"))
 row3 <- plot_grid(sc$dms, sc$gate, nrow = 1,
                   rel_widths = c(2, 1.4), labels = c("G", "H"))
