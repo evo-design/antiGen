@@ -71,13 +71,19 @@ options(
     ens_69de905310 = "Where x which + PSSM, val-selected (10x)"),
 
   ## --- supplements ---
-  ## aa20_supp_dms becomes Spearman with two bars per model, matching panel G of
-  ## sc2_results_revised, and gains a third target panel: the BA.2 LY-CoV1404 escape
-  ## assay, which until now appeared only as a bar. It is dropped as a bar in its OWN
-  ## panel, the rule the BA.2 bind/expression assays already follow.
+  ## aa20_supp_dms is Spearman with two bars per model, matching panel G of
+  ## sc2_results_revised.
+  ##
+  ## NO THIRD TARGET PANEL. `sc2.dms_escape_target` would add one for the BA.2
+  ## LY-CoV1404 escape assay, and it was tried and withdrawn: the assay measures escape
+  ## from ONE antibody, so its signal sits in 62 cells at 8 sites (364, 444-448, 499,
+  ## 500 -- the epitope) out of 2,023 measured RBD cells, with the rest at ~0.005. A
+  ## rank correlation over the whole RBD therefore ranks ~97% noise and returns about
+  ## zero for every model however well it finds the epitope: EVEscape put 44% of those
+  ## 62 cells in its top decile while scoring rho = 0.046. The panel reported a real
+  ## signal as nothing, so it is not drawn. NOTES s108.
   sc2.dms_spearman_csv = file.path(tempdir(), "dms_spearman_aa20.csv"),
   sc2.dms_supp_spearman = TRUE,
-  sc2.dms_escape_target = "baselines/BA2_escape_LYCoV1404.csv",
 
   ## THIS ARM'S ROSTER IS THE REASON THESE EXIST. The published supplement draws a
   ## smaller model set, so its legends fit the layout they were written for; here the
@@ -100,11 +106,8 @@ options(
   ## draws them on top of one another; and the five model types on one row are wider
   ## than the 10in canvas, so both ends are cut off.
   sc2.supp_dms_legend_nrow = 2,
-  ## THREE panels now, not two, each with the same long rotated model names. At the
-  ## two-panel height the plot areas collapse to strips and the labels take the canvas.
-  ## The legend strip is a FRACTION of the whole, so it shrinks as the canvas grows.
-  sc2.supp_dms_legend_rel = 0.085,
-  sc2.supp_dms_height = 15,
+  sc2.supp_dms_legend_rel = 0.16,
+  sc2.supp_dms_height = 9,
   ## t, r, b, l in points. The rotated tick labels reach left of the axis, and this
   ## arm's longest ("antiGen as ESM 2 (35M) full FT") runs off the canvas.
   sc2.supp_dms_margin = c(5, 5, 5, 70),

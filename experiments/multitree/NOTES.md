@@ -11575,3 +11575,47 @@ rather than uninformative.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- optional third target,
   `self_model`, the Spearman supplement branch.
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- the options.
+
+## 108. Panel C withdrawn: a one-antibody assay is the wrong target for a rank
+## correlation over the whole RBD (2026-11-02)
+
+s107 added a third target panel to `aa20_supp_dms`, correlating every model against the
+BA.2 LY-CoV1404 escape assay. Every bar came out near zero. That is not a bug, and the
+two obvious suspects were both cleared:
+
+* **RBD filtering is correct.** All 2,023 non-sentinel cells in the file are inside
+  `RBD_RANGE`; the slice discards nothing. The whole-spike figure of 7.2% measured is
+  the RBD's 45.7% diluted over 1,273 residues.
+* **No tie problem.** 1,665 distinct values among the 2,023, none of them zero, so
+  there is no tie block capping the rank correlation.
+
+**The cause is the assay's shape.** LY-CoV1404 is ONE antibody, so escape from it sits
+in **62 cells at 8 sites** (364, 444-448, 499, 500 -- its epitope) and the remaining
+~1,960 measured cells sit around 0.005, which is assay noise. A Spearman over the whole
+RBD ranks ~97% noise, so it returns about zero whatever the model does.
+
+**It was hiding a real signal, which is the reason to drop rather than keep.**
+
+| model | rho (whole RBD) | top-decile recall of the 62 epitope cells |
+|---|---:|---:|
+| EVEscape | 0.046 | **0.435** |
+| antiGen (val x10) | -0.025 | 0.065 |
+| antiGen (base) | -0.032 | 0.048 |
+| BA.1 DMS (bind) | -0.159 | 0.016 |
+
+EVEscape puts 44% of the epitope in its top decile and scores rho = 0.046. A panel that
+reports that as nothing is worse than no panel. antiGen's low value is honest -- it
+does not find this epitope -- and BA.1 bind's -0.159 is the expected anti-correlation,
+escape costing binding.
+
+Panel C is not drawn. The `sc2.dms_escape_target` machinery stays in the drawer, off,
+because the finding is about the METRIC and not the mechanism: top-decile recall of the
+high-escape cells would have measured this assay properly, and is the metric panels B
+and C of the main figure already use.
+
+The assay keeps its PREDICTOR bar on both remaining panels, as before; `self_model` is
+only needed when an assay is a panel's own target.
+
+### Code
+
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- third target off, two-panel sizing back.
