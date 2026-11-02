@@ -714,6 +714,23 @@ ref <- strsplit(readLines(REF_FILE, warn = FALSE), "")[[1]][RBD_RANGE]
 bind <- mask_wildtype(bind, ref)
 expr <- mask_wildtype(expr, ref)
 
+## AN OPTIONAL THIRD TARGET. The two above are the assays this figure has always
+## correlated against; naming a third here adds a panel for it. Loaded the same way,
+## including the `-1 means not measured` convention -- checked for this file: the only
+## negative value present is exactly -1, over 92.8% of cells, with real values in
+## 0 .. 0.809.
+ESC_TARGET <- getOption("sc2.dms_escape_target", "")
+ESC_LABEL  <- getOption("sc2.dms_escape_label", "BA.2 escape (LY-CoV1404)")
+## The assay cannot be a bar in its OWN panel without correlating with itself, which
+## is the rule the two BA.2 assays above already follow. It stays a bar on the others.
+ESC_SELF   <- getOption("sc2.dms_escape_self", "BA.2 DMS (LY-CoV1404 escape)")
+esc <- NULL
+if (nzchar(ESC_TARGET)) {
+  esc <- as.matrix(read.csv(ESC_TARGET)[RBD_RANGE, ])
+  esc[esc < 0] <- NA
+  esc <- mask_wildtype(esc, ref)
+}
+
 models         <- list.files(MODEL_DIR)
 baseline_files <- list.files(BASELINE_DIR)
 
@@ -812,7 +829,9 @@ for (i in seq_len(length(models) + length(baseline_files))) {
               variant  = variant,
               take_log = take_log,
               bind_sp  = cor_with_NA_mask(mat, bind, method = "spearman"),
-              expr_sp  = cor_with_NA_mask(mat, expr, method = "spearman")))
+              expr_sp  = cor_with_NA_mask(mat, expr, method = "spearman"),
+              esc_sp   = if (is.null(esc)) NA_real_ else
+                cor_with_NA_mask(mat, esc, method = "spearman")))
         }
         add_sp(if (mean_norm) "control_value" else "prediction", new_pred)
         if (mean_norm) add_sp("control_rank", rank_mean_rows(base_pred))
@@ -867,9 +886,12 @@ if (exists("dms_spearman")) {
   dms_long_sp <- dms_spearman %>%
     dplyr::filter(take_log == FALSE,
                   variant %in% c("prediction", "control_rank")) %>%
-    tidyr::pivot_longer(cols = c(bind_sp, expr_sp),
+    tidyr::pivot_longer(cols = c(bind_sp, expr_sp, esc_sp),
                         names_to = "metric", values_to = "correlation") %>%
-    dplyr::mutate(metric = ifelse(metric == "bind_sp", "Binding", "Expression"))
+    dplyr::mutate(metric = dplyr::case_when(metric == "bind_sp" ~ "Binding",
+                                            metric == "expr_sp" ~ "Expression",
+                                            TRUE                ~ ESC_LABEL)) %>%
+    dplyr::filter(!is.na(correlation))
   ## The same run-tag -> display-name path `dms_long` takes just above; without it
   ## every trained checkpoint on the revised arm becomes NA and merges into one bar.
   sp_tagged <- dms_long_sp$model %in% names(RUN_TAG_TO_MODEL)
@@ -914,9 +936,13 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
                                ## How far the second series is blended toward white.
                                ## Far enough to read as a separate bar, close enough
                                ## that the pair still reads as one model's colour.
-                               shade_amount = 0.35) {
+                               shade_amount = 0.35,
+                               ## Dropped from THIS panel only: the assay a panel is
+                               ## scored against cannot also be a bar in it.
+                               self_model = NULL) {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
+  if (!is.null(self_model)) df <- df[!(df$model %in% self_model), ]
   ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
   ## roster. `EXCLUDED_MODELS` cannot serve: it is applied to `performance_by_x`
   ## only and names raw ids, while by this point the frame carries display labels.
@@ -1036,11 +1062,44 @@ dms_supp_margin <- function(p) {
   if (is.null(m)) p else p + theme(plot.margin = margin(m[1], m[2], m[3], m[4], "pt"))
 }
 
+## SPEARMAN SUPPLEMENT, opt-in. Off, this is the published two-panel Pearson figure,
+## untouched. On, it is built from `dms_long_sp` -- two bars per model instead of four,
+## for the reason panel G switched -- and gains a panel per extra target.
+SUPP_SP <- isTRUE(getOption("sc2.dms_supp_spearman", FALSE)) && exists("dms_long_sp")
+supp_src  <- if (SUPP_SP) dms_long_sp else dms_long
+supp_mets <- c("Expression", "Binding")
+if (SUPP_SP && nzchar(ESC_TARGET)) supp_mets <- c(supp_mets, ESC_LABEL)
+## Just rho on the axis: each panel's TITLE already names its assay, and spelling the
+## assay out again gives "rho (BA.2 escape (LY-CoV1404))" -- nested parentheses longer
+## than the panel is tall. A plotmath expression, not a literal "rho", which is what a
+## string gives and what the pdf device refuses as a Unicode character.
+supp_lab  <- if (SUPP_SP) list(ylab = quote(rho), alpha_lab = "Score",
+                               shade_fill = TRUE) else list()
+
+supp_panel <- function(m) {
+  ## quote = TRUE: `ylab` is a plotmath SYMBOL, and do.call evaluates its arguments
+  ## by default, which turns `rho` into "object 'rho' not found". Everything else in
+  ## the list is already a value, so quoting them changes nothing.
+  do.call(make_dms_corr_plot,
+          c(list(supp_src, m, SUPP = TRUE,
+                 self_model = if (m == ESC_LABEL) ESC_SELF else NULL),
+            supp_lab), quote = TRUE)
+}
+supp_legend <- do.call(make_dms_corr_plot,
+  c(list(supp_src, supp_mets[1], SUPP = TRUE, legend_only = TRUE,
+         legend_nrow = getOption("sc2.supp_dms_legend_nrow", NULL)), supp_lab),
+  quote = TRUE)
+
 save_figure(
   plot_grid(
-    make_dms_corr_plot(dms_long, "Binding", SUPP = TRUE, legend_only = TRUE,
-                       legend_nrow = getOption("sc2.supp_dms_legend_nrow", NULL)),
-    plot_grid(
+    if (SUPP_SP) supp_legend else
+      make_dms_corr_plot(dms_long, "Binding", SUPP = TRUE, legend_only = TRUE,
+                         legend_nrow = getOption("sc2.supp_dms_legend_nrow", NULL)),
+    if (SUPP_SP) plot_grid(
+      plotlist = lapply(supp_mets, function(m)
+        dms_supp_margin(supp_panel(m) + theme(legend.position = "none"))),
+      labels = "AUTO", ncol = 1
+    ) else plot_grid(
       dms_supp_margin(p_expr_supp + theme(legend.position = "none")),
       dms_supp_margin(p_bind_supp + theme(legend.position = "none")),
       labels = "AUTO",

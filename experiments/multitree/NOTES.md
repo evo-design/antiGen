@@ -11527,3 +11527,51 @@ afterwards rather than only the one that was changed.
 ### Code
 
 * `antiGen-figures/figures/fig_sc2_revised.R` -- row 2 order, `COL_W`.
+
+## 107. aa20_supp_dms: Spearman, and a third target (2026-11-02)
+
+Two changes to `aa20_supp_dms.png`, both opt-in so the PUBLISHED `supp_dms.png` is
+untouched -- verified byte-identical by re-running `fig2_sc2_benchmarks.R` after the
+assembly was restructured, not just by reasoning about the gate.
+
+**Spearman, two bars per model**, from `dms_long_sp`, for the reason panel G switched
+(s102): the log/linear pair collapses under a rank metric, leaving prediction against
+position-only control.
+
+**A third target panel.** The figure's two roles are easy to confuse and were, in
+conversation: a BAR is a score map being scored, a PANEL is the assay it is scored
+against. `BA.2 DMS (LY-CoV1404 escape)` was already a bar on both panels -- and is a
+rung on B-E of sc2_results_revised, where the target is observed evolution and no
+conflict arises. What it was not is a TARGET. It is one now, as panel C.
+
+It is dropped as a bar **in panel C only**, via a new `self_model` argument. The two
+BA.2 bind/expression assays are dropped everywhere for the same reason, but they are
+targets of every panel; this one is a target of one, so removing it from A and B would
+throw away information. A self-correlation of 1.000 is not wrong, it is uninformative
+and reads as a result.
+
+### Three mistakes worth recording
+
+* **`do.call` evaluates its arguments.** `ylab = quote(rho)` is a plotmath SYMBOL, and
+  passing it through `do.call` without `quote = TRUE` gave "object 'rho' not found".
+* **A duplicate name in one `options()` call silently takes the last value.** The new
+  `sc2.supp_dms_height = 15` was added ABOVE an existing `= 9` in the same call, so it
+  had no effect and the figure kept rendering at the two-panel height. There is now one
+  assignment, not two.
+* **Three panels do not fit a two-panel canvas.** At height 9 the plot areas collapsed
+  to strips while the rotated model names took the page. Height 15, and the legend
+  strip's fraction cut from 0.16 to 0.085 since it is a share of a bigger canvas.
+
+### What panel C shows
+
+Mostly near zero, and the BA.1 bind/expression assays are strongly NEGATIVE (about
+-0.15). That direction is the expected one -- escape mutations tend to cost binding --
+and is worth a caption line, because a reader scanning for tall bars will read the
+panel as "nothing predicts escape" and miss that the DMS rungs are anti-correlated
+rather than uninformative.
+
+### Code
+
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- optional third target,
+  `self_model`, the Spearman supplement branch.
+* `antiGen-figures/figures/fig_sc2_aa20.R` -- the options.
