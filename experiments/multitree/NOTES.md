@@ -11365,3 +11365,66 @@ whenever the same builder serves two figures in one process.
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `rank_mean_rows`, the Spearman
   dump and frame, caller-supplied `transformation`, label parameters.
 * `antiGen-figures/figures/panels_sc2_export.R` -- panel G off the Spearman frame.
+
+## 103. Supplement: antiGen against the two fixed-split baselines (2026-11-01)
+
+`figs/supp_fixed_split.png`. Two panels, two bars each, all escape mutations only.
+
+### Why these two models get their own figure
+
+Most rungs can be scored at any cutoff -- a PSSM is refit, EVE is retrained, the
+factored baselines are refit on whatever training window they are given. **PyR0 and
+Bloom & Neher cannot**: each was fit once, on sequence data up to a particular day, and
+neither offers a dated re-fit at an arbitrary date. Scored at the cutoffs the rest of
+sc2_results_revised uses, they would be reading data they had already seen. So each is
+scored at the cutoff matching its own date, which is what makes this a separate figure
+rather than two more bars on panel B.
+
+| panel | baseline | its data ends | our cutoff | offset |
+|---|---|---|---|---|
+| A | PyR0 (Obermeyer 2022, 6,466,300 GISAID genomes) | 2022-01-20 | 2022-01-01 | +20 d, favours PyR0 |
+| B | Bloom & Neher (`results_public_2023-10-01`) | 2023-10-01 | 2023-10-01 | 0 |
+
+**PyR0's offset is deliberate and in the baseline's favour.** It is fit once at
+2022-01-20 and our grid is quarterly, so an exact match does not exist. 2022-01-01
+leaves PyR0 twenty days PAST the split; 2022-04-01 would handicap it by 71 days.
+Erring toward the baseline makes the result a floor rather than an artefact.
+
+### The numbers (macro, top decile, `list_coguk_fullpool`)
+
+| | antiGen (base, 32 ep) | baseline | gap |
+|---|---:|---:|---:|
+| A, 2022-01-01, 214 cells | **0.612** | PyR0 0.200 | +0.412 |
+| B, 2023-10-01, 139 cells | **0.849** | Bloom & Neher 0.691 | +0.158 |
+
+antiGen here is the 32-EPOCH BASE, the weaker of the two antiGen variants, so both
+margins are floors. Bloom & Neher is much the stronger baseline of the two -- it also
+beats EVEscape (0.367), pyr0 and CoVFit at its own cutoff.
+
+### De novo is not in this figure, and the reason is arithmetic
+
+It is viable at 2022-01-01 (30 cells, 469 events) and collapses at 2023-10-01 to **one
+cell and four events**: by then nearly every listed mutation has been observed, so
+there is nothing left that is de novo. A panel that exists on one half of the figure
+and not the other is worse than no panel, so all escape mutations only.
+
+Noted for whoever reads the per-cutoff CSVs: PyR0 scores exactly 0.100 on de novo, the
+same chance-level signature as the PSSM and for the same structural reason -- it
+estimates fitness from observed lineage growth, so an unobserved mutation has no
+estimate, the whole unseen pool ties, and fractional top-q returns exactly q.
+
+### Two traps in the output
+
+* **`BloomNeher_2023-10-01` is also scored in the 2022-01-01 run** (macro 0.542),
+  because it lives in `data/baselines/` and every static map there is scored. That
+  number carries ~21 months of post-split data and must not be quoted. The figure names
+  its two models explicitly rather than taking whatever the CSV holds.
+* **CoVFit is a third model of this kind** -- a trained SARS-CoV-2 fitness predictor
+  with its own fixed cutoff, currently a published default drop. It is not in this
+  figure because its date was not established; it scores 0.061 at 2022-01-01.
+
+### Code
+
+* `examples/slurm/score_fixed_split.sh` -- new (was score_bloomneher_2023.sh); `D`
+  picks the cutoff.
+* `antiGen-figures/figures/figS_fixed_split.R`, registered in `run_all.R`.

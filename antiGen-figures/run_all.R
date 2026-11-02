@@ -20,7 +20,8 @@ SCRIPTS <- c(
   "figures/fig_sc2_2021.R",             # Figure 5's arm at D = 2021-01-01
   "figures/figS_training_loss.R",
   "figures/figS_runtime.R",
-  "figures/figS_covfit.R"
+  "figures/figS_covfit.R",
+  "figures/figS_fixed_split.R"           # antiGen vs the fixed-split baselines
 )
 
 if (!dir.exists("figures")) {
