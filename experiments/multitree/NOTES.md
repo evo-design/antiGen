@@ -11463,3 +11463,40 @@ Checking the PNG is not checking the figure when `save_figure` writes both.
 
 * `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `shade_fill`, `ylab`.
 * `antiGen-figures/figures/panels_sc2_export.R` -- passes both.
+
+## 105. Panel D moved to the 2023-01-01 cutoff (2026-11-02)
+
+Same path, same figure, a later training window: base antiGen at 2023-01-01
+(`cutoff_series/2023-01-01/base/fitness_simple_d128_n2_lr0.0001_20261024_141848.pt`,
+epoch 31 of 32, no epoch selection) in place of the 2022-01-01 rung s88 used.
+
+**The path is still entirely out of sample.** BA.2.86 emerged around August 2023, so
+every one of the seven RBD steps is post-cutoff at 2023-01-01 just as it was at
+2022-01-01. The query for each step remains the PARENT genotype, which is the only
+query for which the step is a prediction rather than a fact, and all seven parents were
+re-verified to carry the expected from-residue.
+
+### Ranks, of 3,819
+
+| step | 2022-01-01 | 2023-01-01 |
+|---|---:|---:|
+| L455S | 258 | **98** |
+| V483D | 1,107 | **953** |
+| R346T | 233 | **18** |
+| F456L | 82 | 91 |
+| D483V | 261 | 302 |
+| T346R | 19 | **12** |
+| Q493E | 191 | **120** |
+
+Five of seven improve, two drift slightly worse, and the count in the top decile is
+unchanged at **6 of 7** -- V483D remains the one miss, at 953 rather than 1,107, so an
+extra year of training moves it but does not rescue it. The reversion pair at 346 is
+where the gain is largest (233 -> 18, 19 -> 12), which is what a model with another
+year of 346-site turnover in its training window should look like.
+
+The 2022-01-01 ranks stay in `data/ba286_to_kp3_ranks.csv`; the new ones are a separate
+file, so switching back is a re-run of `draw_path_panel.py` against the old CSV.
+
+### Code
+
+* `antiGen-figures/data/ba286_to_kp3_ranks_2023-01-01.csv` -- new.
