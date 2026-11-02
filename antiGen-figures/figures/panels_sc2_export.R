@@ -20,7 +20,23 @@ options(sc2.fig_main = "scratch_revised_sc2", sc2.fig_prefix = "scratch_revised_
         ## Short enough to read at this figure's scale; the full name
         ## ("antiGen, 10x val-selected epoch (mean of log-probs)") is four times the
         ## width of any other label on the panel.
-        sc2.ensemble_labels = c(ens_8a91fbbf88 = "antiGen (val x10)"))
+        sc2.ensemble_labels = c(ens_8a91fbbf88 = "antiGen (val x10)"),
+        ## PANEL G IS SPEARMAN, two bars per model instead of four.
+        ##
+        ## The four Pearson bars were {native space, log space} x {prediction,
+        ## position-only control}. Under a RANK correlation the space pair collapses --
+        ## a monotone transform cannot change ranks, verified at 1e-9 over 27 models --
+        ## so the only distinction left that carries information is prediction against
+        ## control. The control is the ROW-MEAN OF RANKS rather than of scores: the
+        ## score version is not transform-invariant and disagreed in SIGN between the
+        ## two spaces for BLOSUM62 and both MSA Transformers, so which bar you drew
+        ## decided whether the control looked positive or negative.
+        ##
+        ## Switching this on needs the Spearman frame, which is built only when the
+        ## dump option below is set.
+        ## Only the dump option is global; the LABELS are passed to the builder, so
+        ## they cannot reach the published panel M this file also causes to be drawn.
+        sc2.dms_spearman_csv = file.path(tempdir(), "dms_spearman.csv"))
 source("figures/fig_sc2_aa20.R")
 
 ## BAKED TO GROBS, NOT SHIPPED AS GGPLOTS. A ggplot stores its aesthetics as
@@ -67,6 +83,10 @@ saveRDS(list(
   ## at CALL time via `group_colors()`, so recolouring it afterwards and re-calling is
   ## what actually takes effect.
   dms     = as_grob(local({
+    ## The Spearman frame, not the Pearson one. Same shape and same display names;
+    ## it carries its own two-level `transformation`, which the plotter uses as given.
+    stopifnot(exists("dms_long_sp"))
+    dms_long <- dms_long_sp
     ## All THREE places the group name lives, or `group_colors()` drops the rows:
     ## it factors on MODEL_TYPE_LEVELS and then asserts every surviving level has a
     ## palette entry, so renaming the frame alone turns those rows into NA.
@@ -117,7 +137,11 @@ saveRDS(list(
     ## right bars in the wrong colours. Setting the factor fixes both at once.
     d$group <- factor(as.character(d$group),
                       levels = intersect(MODEL_TYPE_LEVELS, unique(as.character(d$group))))
-    make_dms_corr_plot(d, "Expression", SUPP = FALSE)
+    make_dms_corr_plot(d, "Expression", SUPP = FALSE,
+                       title = "DMS correlation (Spearman)",
+                       ## "Spearman (Expression)" is longer than the panel is tall and
+                       ## ran into the top tick; the title already names the metric.
+                       ylab_prefix = "\u03c1", alpha_lab = "Score")
   })),
   gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations"))
 ), out)

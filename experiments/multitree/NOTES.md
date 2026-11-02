@@ -11293,3 +11293,75 @@ escape mutations and de novo escape mutations.
 * `antiGen/data/baselines/BloomNeher_2023-10-01.csv` -- new.
 * `examples/slurm/train_valsel_seed.sh` -- new.
 * `examples/slurm/train_antigen_valsel10.sh` -- `SEEDS`, and the completion test.
+
+## 102. Panel G becomes Spearman: two bars, not four (2026-11-01)
+
+Panel G drew four Pearson bars per model: {native space, log space} x {prediction,
+position-only control}. It now draws two Spearman bars: prediction, and a position-only
+control summarised by RANK.
+
+### Why four collapses to two
+
+Rank correlation is invariant to a monotone transform, and `take_log` is exactly that
+(exp for the pipeline models, log for the baselines). **Checked, not assumed**: across
+all 27 models the log and linear Spearmans agree to within 1e-9 for the prediction. So
+two of the four bars carried no information once the metric changed.
+
+The control does not collapse that way. `mean_norm` replaces each row by the mean of
+its SCORES, and a row-mean of exp(x) (arithmetic) orders sites differently from a
+row-mean of x (roughly geometric): log and linear disagree for **all 27** models, and
+in SIGN for BLOSUM62 (-0.017 vs 0.141) and both MSA Transformers (-0.165 vs 0.151).
+Which bar you drew decided whether the control looked positive or negative.
+
+So the control is the row-mean of RANKS instead, which is invariant by construction --
+verified: 0 of 27 disagree. It lands near the log form (BLOSUM62 0.145, MSA Trans. BA.2
+0.118), so the negative value-mean numbers were an artifact of arithmetic averaging in
+probability space. Ties are midranks, which is what `cor(method = "spearman")` uses;
+this matters because the control is constant within a site, so every site is a 20-way
+tie block.
+
+### Panel G, Spearman (Expression)
+
+| model | prediction | position-only (rank) |
+|---|---:|---:|
+| EVEscape | 0.362 | 0.354 |
+| BLOSUM62 | 0.279 | 0.145 |
+| antiGen (val x10) | 0.270 | **0.394** |
+| EVE | 0.140 | 0.181 |
+| Tranception | 0.123 | 0.120 |
+| MSA Transformer | 0.067 | 0.133 |
+| MSA Trans. (BA.2 eval) | 0.053 | 0.118 |
+| ESM 2 (650M) | 0.038 | 0.008 |
+| ESM 2 (35M) | 0.033 | -0.098 |
+
+**antiGen's control exceeds its prediction** (0.394 vs 0.270): collapsing each site to
+its mean rank correlates with DMS expression BETTER than the full per-residue output.
+EVEscape is the same shape with the gap closed (0.362 vs 0.354). This is robust to the
+control definition, so it is a property of the models against this assay rather than a
+measurement choice -- and it is the intended reading of the panel, not a problem with
+it: the claim being supported is that there is a predictor correlating with DMS, site
+level being enough.
+
+### The option that leaked, and the clobbering it exposed
+
+The three labels were first done as options. They leaked, because
+**`panels_sc2_export.R` causes the PUBLISHED `sc2_results_aa20` to be drawn**: it sets
+`sc2.fig_main`/`sc2.fig_prefix` to scratch names, but `fig_sc2_aa20.R` sets its own
+afterwards and wins -- the precedence trap of s85 and s93 again. So the scratch naming
+never applied to that figure, every `fig_sc2_revised.R` run has been overwriting
+`figs/sc2_results_aa20.png` and the `aa20_supp_*` files, and a label set for this
+Spearman panel relabelled a PEARSON panel "Spearman" in a figure nobody asked to touch.
+
+Labels are now PARAMETERS of `make_dms_corr_plot`, which cannot leak across a source.
+Confirmed afterwards that `sc2_results_aa20.png` and `aa20_supp_dms.png` re-render
+byte-identical and only `sc2_results_revised.png` moves.
+
+Worth keeping as a shape: an option is global to the session, so it is the wrong tool
+whenever the same builder serves two figures in one process.
+
+### Code
+
+* `antiGen-figures/R/common.R` -- `cor_with_NA_mask(method=)`.
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `rank_mean_rows`, the Spearman
+  dump and frame, caller-supplied `transformation`, label parameters.
+* `antiGen-figures/figures/panels_sc2_export.R` -- panel G off the Spearman frame.

@@ -740,6 +740,29 @@ read_baseline_predictions <- function(file) {
 ## space, so each is compared both in its native space and transformed into
 ## the other. `mean_norm` replaces every row by its mean, which measures how
 ## much of the correlation is explained by position alone.
+## The position-only control, summarised by RANK rather than by value.
+##
+## `mean_norm` replaces each row by the mean of its scores, which is a different
+## summary in log space than in linear space -- row-mean of exp(x) is arithmetic,
+## row-mean of x is roughly geometric -- so under a rank metric the two disagree, in
+## sign for some models. Averaging the RANKS instead is invariant to any monotone
+## transform by construction, so the log and linear forms collapse to one number the
+## way the prediction already does.
+##
+## Ranks are midranks over the non-NA cells of the whole matrix, which is the same
+## convention `cor(method = "spearman")` uses, so the control and the prediction are
+## ranked the same way.
+rank_mean_rows <- function(m) {
+  v <- as.vector(as.matrix(m))
+  r <- rep(NA_real_, length(v))
+  keep <- !is.na(v)
+  r[keep] <- rank(v[keep])
+  rm_mat <- matrix(r, nrow = nrow(m))
+  out <- m
+  for (j in seq_len(nrow(out))) out[j, ] <- mean(rm_mat[j, ], na.rm = TRUE)
+  out
+}
+
 dms_performance <- data.frame()
 for (i in seq_len(length(models) + length(baseline_files))) {
   is_pipeline_model <- i <= length(models)
@@ -758,6 +781,9 @@ for (i in seq_len(length(models) + length(baseline_files))) {
     if (take_log && !is_pipeline_model)  new_pred <- log(new_pred + 0.00000001)
     if (!take_log && is_pipeline_model)  new_pred <- exp(new_pred)
 
+    ## `new_pred` is overwritten in place when mean_norm is TRUE, so the rank-mean
+    ## control needs its own copy of the pre-mean matrix.
+    base_pred <- new_pred
     for (mean_norm in c(FALSE, TRUE)) {
       if (mean_norm) {
         for (j in seq_len(nrow(new_pred))) {
@@ -771,8 +797,35 @@ for (i in seq_len(length(models) + length(baseline_files))) {
         mean_norm = mean_norm,
         take_log  = take_log
       ))
+      ## SPEARMAN, written to a side file rather than into `dms_performance`, so the
+      ## published panel's data frame and figure are untouched when the option is
+      ## unset. Rank correlation is invariant to a monotone transform, so the
+      ## `take_log` pair collapses to one number here -- that is the point of asking
+      ## for it, and the two rows are kept so the collapse can be CHECKED rather than
+      ## assumed. `mean_norm` does not collapse: replacing each row by its mean is a
+      ## different predictor (position alone), not a re-scaling of this one.
+      if (nzchar(getOption("sc2.dms_spearman_csv", ""))) {
+        add_sp <- function(variant, mat) {
+          dms_spearman <<- rbind(if (exists("dms_spearman")) dms_spearman else NULL,
+            data.frame(
+              model    = model_name,
+              variant  = variant,
+              take_log = take_log,
+              bind_sp  = cor_with_NA_mask(mat, bind, method = "spearman"),
+              expr_sp  = cor_with_NA_mask(mat, expr, method = "spearman")))
+        }
+        add_sp(if (mean_norm) "control_value" else "prediction", new_pred)
+        if (mean_norm) add_sp("control_rank", rank_mean_rows(base_pred))
+      }
     }
   }
+}
+
+if (nzchar(getOption("sc2.dms_spearman_csv", "")) && exists("dms_spearman")) {
+  f <- getOption("sc2.dms_spearman_csv")
+  dir.create(dirname(f), showWarnings = FALSE, recursive = TRUE)
+  write.csv(dms_spearman, f, row.names = FALSE)
+  cat("wrote", f, "with", nrow(dms_spearman), "rows\n")
 }
 
 dms_long <- dms_performance %>%
@@ -803,11 +856,50 @@ for (i in seq_along(subsets)) {
 dms_long$group[is.na(dms_long$group)] <- "antiGen"
 dms_long$model <- longform_names[match(dms_long$model, all_models)]
 
+## THE SPEARMAN FRAME, shaped exactly like `dms_long` so the same plotter draws it.
+##
+## Two variants, not four. Rank correlation is invariant to a monotone transform, so
+## `take_log` collapses -- checked, not assumed: over 27 models the log and linear
+## Spearmans agree to 1e-9 for the prediction AND for the rank-mean control, and
+## disagree for all 27 under the value-mean control, which is why that one is not
+## offered here. Only `take_log == FALSE` rows are kept; the other half is identical.
+if (exists("dms_spearman")) {
+  dms_long_sp <- dms_spearman %>%
+    dplyr::filter(take_log == FALSE,
+                  variant %in% c("prediction", "control_rank")) %>%
+    tidyr::pivot_longer(cols = c(bind_sp, expr_sp),
+                        names_to = "metric", values_to = "correlation") %>%
+    dplyr::mutate(metric = ifelse(metric == "bind_sp", "Binding", "Expression"))
+  ## The same run-tag -> display-name path `dms_long` takes just above; without it
+  ## every trained checkpoint on the revised arm becomes NA and merges into one bar.
+  sp_tagged <- dms_long_sp$model %in% names(RUN_TAG_TO_MODEL)
+  dms_long_sp$model[sp_tagged] <-
+    unname(RUN_TAG_TO_MODEL[dms_long_sp$model[sp_tagged]])
+  dms_long_sp$model <- factor(dms_long_sp$model, levels = all_models)
+  dms_long_sp$group <- NA_character_
+  for (i in seq_along(subsets)) {
+    dms_long_sp$group[dms_long_sp$model %in% subsets[[i]]] <- longform_subset_names[i]
+  }
+  dms_long_sp$group[is.na(dms_long_sp$group)] <- "antiGen"
+  dms_long_sp$model <- longform_names[match(dms_long_sp$model, all_models)]
+  dms_long_sp$transformation <- factor(
+    ifelse(dms_long_sp$variant == "prediction", "Prediction", "Position only"),
+    levels = c("Prediction", "Position only"))
+}
+
 ## `legend_nrow` wraps the "Model type" guide onto more rows. Passed in rather than
 ## read from an option inside, because this builder also draws the MAIN panel's
 ## legend and only the supplement's needs wrapping.
+## `title`, `ylab_prefix` and `alpha_lab` are PARAMETERS, not options. As options they
+## leaked: `panels_sc2_export.R` sets its options before sourcing `fig_sc2_aa20.R`,
+## which draws the PUBLISHED `sc2_results_aa20` panel M from this same builder -- so a
+## label set for the revised figure's Spearman panel relabelled a Pearson panel
+## "Spearman" in a figure nobody asked to change.
 make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALSE,
-                               legend_nrow = NULL) {
+                               legend_nrow = NULL,
+                               title = "DMS correlation",
+                               ylab_prefix = "Corr.",
+                               alpha_lab = "Transformation") {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
   ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
@@ -824,6 +916,14 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
   ## By name, over whatever survived the filter above, rather than a fixed index set.
   colors_here <- group_colors(df$group)
 
+  ## A CALLER-SUPPLIED `transformation` IS USED AS GIVEN. The Spearman frame labels
+  ## its own two variants; deriving them from mean_norm/take_log, which it does not
+  ## carry, would case_when every row to NA and draw nothing.
+  if ("transformation" %in% names(df)) {
+    df_filtered <- df %>%
+      filter(metric == metric_name) %>%
+      mutate(model = fct_reorder(model, as.integer(factor(group))))
+  } else {
   df_filtered <- df %>%
     filter(metric == metric_name) %>%
     mutate(
@@ -838,6 +938,7 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
                               levels = c("Mean", "Mean, log", "None", "Log")),
       model = fct_reorder(model, as.integer(factor(group)))
     )
+  }
 
   p <- ggplot(df_filtered,
               aes(x = model, y = correlation,
@@ -848,7 +949,7 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
     scale_fill_manual(values = colors_here) +
     scale_alpha_discrete(range = c(1, 0.4)) +
     theme_paper(base_size = 12) +
-    ggtitle("DMS correlation") +
+    ggtitle(title) +
     theme(
       axis.text.x          = element_text(angle = 45, hjust = 1),
       legend.position      = "bottom",
@@ -860,8 +961,9 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
       legend.margin        = margin(0, 0, 0, 0),
       legend.box.spacing   = unit(2, "pt")
     ) +
-    labs(x = NULL, y = paste0("Corr. (", metric_name, ")"),
-         fill = "Model type", alpha = "Transformation") +
+    labs(x = NULL,
+         y = paste0(ylab_prefix, " (", metric_name, ")"),
+         fill = "Model type", alpha = alpha_lab) +
     guides(
       fill  = guide_legend(override.aes = list(alpha = 1), nrow = legend_nrow),
       alpha = guide_legend(override.aes = list(fill = "grey30"))

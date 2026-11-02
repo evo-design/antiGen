@@ -144,11 +144,11 @@ find_metric_file <- function(dir, metric) {
 }
 
 #' Correlation between two matrices over the cells where both are present.
-cor_with_NA_mask <- function(x, y) {
+cor_with_NA_mask <- function(x, y, method = "pearson") {
   x <- as.vector(as.matrix(x))
   y <- as.vector(as.matrix(y))
   keep <- !is.na(x) & !is.na(y)
-  cor(x[keep], y[keep])
+  cor(x[keep], y[keep], method = method)
 }
 
 #' Set every wild-type cell of a residue x amino-acid matrix to NA.
