@@ -138,8 +138,8 @@ fi
 
 echo ""; echo "=== what $V now holds ==="
 b=$(ls "$ROOT/base"/fitness_*.pt 2>/dev/null | wc -l)
-v=$(ls -d "$ROOT/valsel"/antigen_vs_s*/ 2>/dev/null | while read -r d; do
-        ls "$d"/fitness_*_best.pt >/dev/null 2>&1 && echo x; done | wc -l)
+v=$(find "$ROOT/valsel" -mindepth 2 -maxdepth 2 -name 'fitness_*.pt' \
+        ! -name '*_best.pt' 2>/dev/null | wc -l)
 bl=$(ls "$ROOT/blosum62"/fitness_*.pt 2>/dev/null | wc -l)
 echo "  base   : $b checkpoint(s)"
 echo "  blosum : $bl checkpoint(s)"

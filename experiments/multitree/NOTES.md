@@ -11200,3 +11200,96 @@ the layout, and "the figure still renders" is not the test -- byte-identity is.
 * `experiments/multitree/submit_endemic_evals.sh` -- `TESTSET` / `ARM`.
 * `antiGen-figures/figures/fig_endemic_backbone.R` -- new, sources the revised drawer.
 * `antiGen-figures/figures/fig_endemic_revised.R` -- parameterised; defaults unchanged.
+
+## 101. Bloom & Neher as a baseline, at a date-matched cutoff (2026-11-01)
+
+The TreeMHN line is closed (s100 assessment stands: the whole monotonic-accumulation
+family assumes irreversibility). The paper that replaces it is a different one --
+**Bloom & Neher, "Fitness effects of mutations to SARS-CoV-2 proteins", Virus Evolution
+9(2) vead055** -- and it fits, because it is not a progression model at all. It is a
+per-(site, amino acid) fitness estimate for every SARS-CoV-2 protein, derived by
+comparing actual to expected counts of independent occurrences along the UShER
+phylogeny. That is a STATIC SCORE MAP, which is exactly the shape `load_baselines`
+already reads, and the repo already carries two of the same kind (`pyr0`, `CoVFit`).
+
+### The date, and why it is the whole design
+
+Their estimates must not be computed from sequences inside our test window, or the
+baseline is scored on occurrences it already counted. They publish dated tree snapshots
+(`results_public_<date>/`), and exactly one lands on our quarterly grid:
+
+| their snapshot | nearest cutoff of ours | offset | favours |
+|---|---|---|---|
+| 2022-01-31 | 2022-01-01 | +30 d | them |
+| 2022-12-18 | 2023-01-01 | -14 d | us |
+| 2023-03-27 | 2023-04-01 | -5 d | us |
+| **2023-10-01** | **2023-10-01** | **0** | **neither** |
+| 2024-04-19 | 2024-04-01 | +18 d | them |
+| 2024-11-06 | 2024-10-01 | +36 d | them |
+
+**2023-10-01 it is.** 64,715 training examples, a shared test tree of 75,606, and base
+antiGen already trained there. Verified the snapshot is genuinely earlier data rather
+than a copy of the main release: 1,727,136 total expected counts against 1,902,428, and
+only 13.4% of shared cells have identical fitness.
+
+### The trap: 72% of their values are negative
+
+`load_baselines` ends with `tensor[tensor < 0] = nan` -- a negative entry is the
+sentinel for "this baseline abstains here". Bloom & Neher's fitness is a LOG RATIO, so
+negative means deleterious: **6,447 of 8,917 spike cells, 72.3%**. Written raw, the
+baseline would have silently abstained on nearly three quarters of its own estimates,
+and what survived would have been the tolerated mutations -- a bias toward exactly the
+cells most likely to be observed, which would have read as skill.
+
+`bloom_neher_to_baseline.py` adds a constant instead. Measured, not assumed: the +8
+shift introduces **0 ties and 0 order inversions**, and the hit-rate metrics read
+within-query ranks only. Cells below their own `min_expected_count: 10` (a DISPLAY
+cutoff in their config, not a filter on the released file, which carries expected
+counts below 1) are written as the sentinel, so the baseline abstains where the authors
+would not quote a number.
+
+Final coverage: **1,277 of the 3,819 RBD cells, 33.4%**. Counted over the 20-residue
+alphabet, because `load_baselines` drops the `*` and `-` columns -- the first version
+of the script reported 1,345 by counting them, a number the figure would never have.
+For contrast EVEscape, whose spike-wide coverage is 13.6%, is complete over the RBD, so
+on these panels Bloom & Neher is the partial-coverage rung and the panel has to say so.
+
+The source is already heavily tied -- 583 distinct values across 1,277 cells -- and
+`load_baselines` returns float32, which merges one more pair (583 -> 582). That is the
+pipeline's behaviour for every baseline, not this conversion's.
+
+### A latent bug this turned up: `_best.pt` is not a completion marker
+
+`--save-best` rewrites `..._best.pt` every time validation improves, so it appears
+MINUTES into a run. `train_antigen_valsel10.sh`'s resume guard tested for it, so a run
+that was killed, preempted or hit its walltime looked finished and was skipped --
+quietly putting an undertrained member into a ten-member ensemble that would still
+average ten things and report OK. The plain `fitness_*.pt` is written once, at the end.
+
+Caught because the 2023-10-01 array showed 2/10 "complete" four minutes in. **The three
+endemic arms were checked and are genuinely 10/10** (final checkpoints present), so
+s99's numbers stand. Fixed in the resume guard, in both completion counters, and in the
+eval submitter's member staging, which could otherwise have put an in-progress run's
+`_best.pt` into the ensemble.
+
+### Training
+
+Ten val-selected runs at 2023-10-01, array `3509194_[0-9]`. Submitted as one job PER
+SEED rather than the series script's ten-in-series: this corpus is 64,715 examples
+against sc2-2021's 2,934, so an epoch is ~1,011 steps rather than ~46 and ten runs at
+96 epochs is a ~12 h serial job -- neither backfillable nor parallel. `SEEDS` is a new,
+defaulted knob on `train_antigen_valsel10.sh`, so split seed i / init seed 100+i are
+still derived inside it and a run produced per-seed is identical to one from the series.
+
+### Still to do
+
+Score on the panel B/C substrate (coguk list, macro pooling, top decile) once the runs
+land, then the supplement: antiGen (val x10) against Bloom & Neher at 2023-10-01, all
+escape mutations and de novo escape mutations.
+
+### Code
+
+* `experiments/multitree/bloom_neher_to_baseline.py` -- new.
+* `antiGen/data/baselines/BloomNeher_2023-10-01.csv` -- new.
+* `examples/slurm/train_valsel_seed.sh` -- new.
+* `examples/slurm/train_antigen_valsel10.sh` -- `SEEDS`, and the completion test.

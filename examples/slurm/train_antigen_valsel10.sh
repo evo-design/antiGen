@@ -47,6 +47,14 @@ OUT_ROOT=${OUT_ROOT:-/large_storage/hielab/ispecht/fitness-inference/valsel10_aa
 N=${N:-10}
 EPOCHS=${EPOCHS:-96}
 VAL_FRAC=${VAL_FRAC:-0.1}
+# WHICH SEEDS THIS INVOCATION RUNS. Default: all of them, which is what
+# train_cutoff_series.sh wants and what every existing caller gets. Naming a subset
+# lets one seed be a job of its own -- at a late cutoff the corpus is twenty times
+# the 2021 one, so ten runs in series is a twelve-hour job that is neither
+# backfillable nor parallel, while ten one-seed jobs are each about an hour. The
+# budget check below walks the SAME list, so a per-seed job reports on its own seed
+# instead of failing over the nine it was never asked to run.
+SEEDS=${SEEDS:-$(seq 0 $((N - 1)))}
 EXTRA=("$@")
 REPO_SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -57,7 +65,7 @@ echo "extra    = ${EXTRA[*]}"
 
 mkdir -p "$OUT_ROOT"
 rc=0
-for i in $(seq 0 $((N - 1))); do
+for i in $SEEDS; do
     # --split-seed picks the holdout; --seed picks the initialisation. Both move, so
     # each run is an independent draw rather than ten readings of one split. The two are
     # offset so a log line cannot be read as the wrong one.
@@ -71,9 +79,20 @@ for i in $(seq 0 $((N - 1))); do
     # was cancelled, or a cutoff whose runs were produced by an earlier submission, is
     # picked up where it stopped instead of spending the GPU again. Delete the directory
     # to force a rerun. Same convention as train_esm2_valsel10.sh.
-    if ls "$DIR"/fitness_*_best.pt >/dev/null 2>&1; then
-        echo "    already has a _best.pt; skipping (delete the directory to redo it)"
+    # DONE IS THE FINAL CHECKPOINT, NOT THE _best ONE. `--save-best` rewrites
+    # `..._best.pt` every time validation improves, so it appears minutes into a run
+    # and exists for runs that were killed, preempted or hit a walltime. Testing it
+    # made resume skip an interrupted run as finished and quietly put an undertrained
+    # member in the ensemble -- the ensemble would still average ten things and report
+    # OK. The plain `fitness_*.pt` is written once, at the end.
+    if find "$DIR" -maxdepth 1 -name 'fitness_*.pt' ! -name '*_best.pt' \
+            -print -quit 2>/dev/null | grep -q .; then
+        echo "    already finished; skipping (delete the directory to redo it)"
         continue
+    fi
+    if ls "$DIR"/fitness_*_best.pt >/dev/null 2>&1; then
+        echo "    has a _best.pt but no final checkpoint: an interrupted run, redoing it"
+        rm -f "$DIR"/fitness_*.pt
     fi
     mkdir -p "$DIR"
     antiGen-train \
@@ -96,7 +115,7 @@ echo "=== selected epochs, and the budget check ==="
 # A run that selects the last epoch has not chosen an epoch -- its validation curve was
 # still descending when the budget ran out -- so the arm collapses to "train to the
 # budget", which is what the base rung already is. That is a failure, and it is loud now.
-for i in $(seq 0 $((N - 1))); do
+for i in $SEEDS; do
     DIR="$OUT_ROOT/antigen_vs_s$i"
     f=$(ls "$DIR"/fitness_*_best.pt 2>/dev/null | head -1)
     if [ -z "$f" ]; then echo "  s$i: NO _best.pt"; rc=1; continue; fi

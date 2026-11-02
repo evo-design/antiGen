@@ -134,7 +134,9 @@ for row in "${ROWS[@]}"; do
     done_vs=0
     for d in "$ROOT/valsel"/antigen_vs_s*/; do
         [ -d "$d" ] || continue
-        if ls "$d"/fitness_*_best.pt >/dev/null 2>&1; then
+        # The FINAL checkpoint, not _best: see train_antigen_valsel10.sh.
+        if find "$d" -maxdepth 1 -name 'fitness_*.pt' ! -name '*_best.pt' \
+                -print -quit 2>/dev/null | grep -q .; then
             done_vs=$((done_vs + 1))
         fi
     done

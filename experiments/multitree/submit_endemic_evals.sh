@@ -147,6 +147,11 @@ for row in "${ROWS[@]}"; do
     vstaged=0
     for r in "$CKPT/valsel"/antigen_vs_s*/; do
         [ -d "$r" ] || continue
+        # The _best.pt IS the val-selected member, so that is what gets linked -- but
+        # only once the run has finished, which the final checkpoint attests. An
+        # in-progress run already has a _best.pt and would otherwise join the ensemble.
+        find "$r" -maxdepth 1 -name 'fitness_*.pt' ! -name '*_best.pt' \
+            -print -quit 2>/dev/null | grep -q . || continue
         b=$(ls "$r"/fitness_*_best.pt 2>/dev/null | head -1)
         [ -n "$b" ] || continue
         ln -s "$b" "$VSTAGE/fitness_vs_$(basename "$r")_$(basename "$b" | \
