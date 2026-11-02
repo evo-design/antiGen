@@ -1,0 +1,70 @@
+{
+  "generated": "2026-11-01T16:46:53",
+  "host": "GPU708E",
+  "slurm_job": "3509174",
+  "git_sha": "75e931094749f7396941fc45c13df63ce086ee44",
+  "git_dirty": true,
+  "script": "/home/aakarsh/projects/antiGen/experiments/multitree/score_denovo_panels.py",
+  "metric": "score_perevent.per_event_weights (shared); de-novo pool strikes pssm_root>0",
+  "D": "2025-01-01",
+  "data_dir": "/home/aakarsh/projects/antiGen/experiments/multitree/data/forecast_noattach",
+  "trees": [
+    "h5nx",
+    "ncov",
+    "rsv_a",
+    "rsv_b",
+    "measles",
+    "denv1",
+    "denv2",
+    "denv3",
+    "denv4",
+    "h3n2_ha",
+    "h1n1pdm_ha",
+    "vic_ha",
+    "hmpv_a_g"
+  ],
+  "budgets": {
+    "10": 0.1,
+    "05": 0.05,
+    "01": 0.01
+  },
+  "nboot": 2000,
+  "arms": [
+    "joint",
+    "joint13",
+    "single",
+    "zeroshot",
+    "site_prop",
+    "cpssm_dir",
+    "pssm",
+    "frequency",
+    "where_times_which",
+    "substitution",
+    "codon_blosum",
+    "where_only"
+  ],
+  "resolved_checkpoints": {
+    "joint": "/large_storage/hielab/aakarsh/multitree/fc13_core_surface/joint_surface_snapshot_partial4_noattach_noval/fitness_esm2_esm2_t33_650M_UR50D_multitree49_lr0.0001_20261026_185758_epoch0.pt",
+    "joint13": "/large_storage/hielab/aakarsh/multitree/fc13_joint_650m/joint13_partial4_noattach_noval/fitness_esm2_esm2_t33_650M_UR50D_multitree13_lr0.0001_20261026_223709_epoch0.pt",
+    "zeroshot_config": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_ncov_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115840_best.pt",
+    "single": {
+      "h5nx": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_h5nx_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115736_best.pt",
+      "ncov": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_ncov_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115840_best.pt",
+      "rsv_a": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_rsv_a_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115911_best.pt",
+      "rsv_b": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_rsv_b_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115953_best.pt",
+      "measles": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_measles_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115819_best.pt",
+      "denv1": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_denv1_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115703_best.pt",
+      "denv2": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_denv2_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115703_best.pt",
+      "denv3": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_denv3_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115706_best.pt",
+      "denv4": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_denv4_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115724_best.pt",
+      "h3n2_ha": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_h3n2_ha_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115740_best.pt",
+      "h1n1pdm_ha": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_h1n1pdm_ha_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115718_best.pt",
+      "vic_ha": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_vic_ha_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_120007_best.pt",
+      "hmpv_a_g": "/large_storage/hielab/aakarsh/multitree/fc13_single_esm650_noattach/single_hmpv_a_g_s0/fitness_esm2_esm2_t33_650M_UR50D_randval0.1s0_lr0.0001_20261026_115819_best.pt"
+    }
+  },
+  "torch": "2.8.0+cu126",
+  "device": "cuda",
+  "npz": "/large_storage/hielab/aakarsh/multitree/fc13_core_surface/denovo_panels/perevent_denovo_panels.npz",
+  "csv": "/home/aakarsh/projects/antiGen/antiGen-figures/data/multitree_noattach_sp4e0/denovo_panels_recall.csv"
+}

@@ -8675,3 +8675,62 @@ as holes in the figure until it lands**, which `fig_coguk_list.R` reports per me
 * `examples/slurm/{eval_sc2_varrecall,background_discrimination_sc2}.sh` -- `DATA_DIR` /
   `CKPT_DIR` / `TREE_JSON` / `REF_JSON` overrides and an `EXTRA` passthrough, so the
   20-letter arm comes off the published scripts rather than a fork.
+
+## 67. De-novo recall MUST strike training-seen cells from the candidate pool (2026-11-01)
+
+**Canonical rule, applies to every de-novo / `novel` recall number from here on:**
+a de-novo target is ranked ONLY against cells that were never seen in the training
+window. The training-seen cells (`pssm_root > 0`, i.e. the aggregated training-root
+count matrix `> 0`) are struck from the candidate pool before the top-q boundary is
+taken -- NaN'd exactly like the wild-type and gap/stop columns. This is the `unseen`
+convention `antiGen/eval.py` already uses (`score_mask = hit_rate_seen_mask`); the
+per-event scorers behind Figure 5 were the ones NOT doing it.
+
+### What was wrong
+
+`score_perevent.py` / `score_perevent_noattach.py` → `per_event_weights` flattened the
+WHOLE (L,E) map (minus WT/gap/stop) as the pool for BOTH `all` and `novel`. So a novel
+mutation competed against every training-seen cell. That conflates de-novo prediction
+with memorization: a composition-style rung piles its score mass on exactly the seen
+cells, so leaving them in the pool makes the novel targets fight uphill against the
+rung's own favourites. The `all` subset is unchanged -- it SHOULD see the full pool.
+
+### The fix (copied from eval.py's `unseen`)
+
+`per_event_weights(..., seen_mask=None)`: when `seen_mask` is given, `s[seen_mask]=nan`
+before the quantile. Each `main()` builds `seen_mask = sum(ex.mat for ex in train) > 0`
+and passes it only when `sub=='novel'`. Patched in both scorers; `all` stays None.
+
+### Measured (CPU baselines, forecast_noattach, D=2025-01-01; no-strike == the committed
+`perevent_fig13*.npz` to the digit, so this is faithful). Recall@10%, novel subset:
+
+| rung | DENV2 | DENV2* | RSV-A | RSV-A* | H3N2 | H3N2* |
+|---|---:|---:|---:|---:|---:|---:|
+| Where x which    | 0.500 | 0.500 | 0.500 | **0.714** | 0.481 | 0.519 |
+| Smoothed Counts  | 0.250 | **0.750** | 0.357 | 0.500 | 0.443 | **0.658** |
+| Site x Subst     | 0.250 | **0.750** | 0.357 | 0.500 | 0.545 | 0.658 |
+| Substitution     | 0.500 | 0.500 | 0.576 | 0.643 | 0.443 | 0.456 |
+| PSSM / Where-only / Frequency | low | ~0.10 | low | ~0.10 | low | ~0.10 |
+
+(* = strike / is-multitree convention.) The **count-based** rungs move most, because
+their mass sits on the struck cells. where×which moves modestly; DENV2 barely moves --
+the training-seen set is small here (~5-6% of the pool: 677/10890, 549/12628,
+611/12452), so the pool shrinks little. The move is real but is NOT large on these
+corpora.
+
+### Two things this corrected, both important
+
+1. **The seen-strike is NOT what explained the 0.25-vs-0.5 where×which gap.** The
+   figure's single-virus panel (A-F of `multitree_results_noattach_sp4e0_withbars.png`)
+   hard-codes H3N2 where×which de-novo = **0.248**, but the branch's OWN 650M per-event
+   pipeline (the committed npz, and this recompute) gives **0.481** -- already close to
+   the is-multitree endemic ~0.5. So the 0.248 is a stale/separate 35M eval, and the
+   "0.25 vs 0.5" was comparing two different experiments, not two pool conventions.
+2. **The 13-virus panel (G-K) used the SAME whole-pool method as the single-virus bars**
+   -- both read `per_event_weights` with no strike. Neither used the is-multitree
+   convention until this patch. A full regen needs a GPU pass for the `joint`/`single`
+   (ESM-650M) rungs; the baseline columns above are already correct.
+
+### Code
+* `experiments/multitree/score_perevent.py`, `score_perevent_noattach.py` -- the
+  `seen_mask` arg + the per-tree build + passing it on `novel`.

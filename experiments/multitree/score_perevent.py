@@ -29,18 +29,31 @@ GAP,STOP=ALPHA_SET.index('-'),ALPHA_SET.index('*'); MASK=[GAP,STOP]
 TREES=['ncov','h5nx','measles','rsv_a','rsv_b','denv1','denv2','denv3','denv4','h3n2_ha','h1n1pdm_ha','hmpv_b_g','vic_ha']
 dev=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def per_event_weights(scores, aa_idx, events):
-    """scores (L,E) float; aa_idx (L,); events list of (pos,aa). Returns weights list."""
+def per_event_weights(scores, aa_idx, events, seen_mask=None, q=None):
+    """scores (L,E) float; aa_idx (L,); events list of (pos,aa). Returns weights list.
+
+    seen_mask (L,E bool, True = cell observed in the training window, i.e. pssm_root>0):
+    when given, those cells are struck from the candidate pool BEFORE the top-q boundary,
+    so a de-novo target is ranked ONLY against never-seen cells. This is the de-novo
+    ("unseen") convention from antiGen/eval.py, where `score_mask = hit_rate_seen_mask`
+    is burned into the scores as NaN exactly like WT/gap/stop. Pass it on the `novel`
+    subset and leave it None on `all`. See experiments/multitree/NOTES.md (de-novo pool).
+
+    q: top-quantile budget; defaults to the module-level Q (0.10). Pass e.g. 0.05 / 0.01
+    for the other budgets so there is a single source of truth for this metric.
+    """
+    Q_ = Q if q is None else q
     s=scores.clone().float()
     for c in MASK: s[:,c]=float('nan')
     s[torch.arange(len(aa_idx)), aa_idx]=float('nan')     # mask WT
+    if seen_mask is not None: s[seen_mask]=float('nan')   # de-novo: strike training-seen cells
     flat=s.flatten(); valid=~torch.isnan(flat)
     nv=int(valid.sum())
     if nv==0: return [0.0]*len(events)
-    vb=torch.nanquantile(flat, 1.0-Q)                     # boundary value
+    vb=torch.nanquantile(flat, 1.0-Q_)                    # boundary value
     above=(flat>vb)&valid; n_above=int(above.sum())
     tie=(flat==vb)&valid; n_tie=int(tie.sum())
-    budget=Q*nv
+    budget=Q_*nv
     frac=max(0.0,(budget-n_above))/n_tie if n_tie>0 else 0.0
     w=[]
     for (pos,aa) in events:
@@ -77,6 +90,10 @@ def main():
     for tree in TREES:
         tr=load_examples(f"{FDATA}/examples_{tree}@{D}_train.txt",ALPHA_SET,None,source=tree)
         L=len(tr[0].aa_idx)
+        # training-root count matrix -> de-novo "seen" mask (== eval.py's pssm_root>0)
+        seen_counts=torch.zeros(L,E)
+        for ex in tr: seen_counts+=ex.mat
+        seen_mask=seen_counts>0
         st=count_baselines.fit(tr,L,E)
         # fitted substitution (for where_times_which + substitution rung)
         fitted=fit_substitution_baseline(tr,dev,ALPHA_SET)
@@ -108,7 +125,8 @@ def main():
                   'where_times_which':sub_mat[aa]+torch.log(pos_counts.clamp(min=1e-12)).view(L,1),
                   'substitution':sub_mat[aa],
                 }
-                for r,mp in maps.items(): rows[r]+=per_event_weights(mp,aa,ev)
+                sm_arg = seen_mask if sub=='novel' else None   # de-novo strikes seen cells
+                for r,mp in maps.items(): rows[r]+=per_event_weights(mp,aa,ev,seen_mask=sm_arg)
             out[f"{tree}|{sub}"]={r:np.array(v,dtype=np.float32) for r,v in rows.items()}
         del sm
         if dev.type=='cuda': torch.cuda.empty_cache()
