@@ -910,7 +910,11 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
                                ## output silently loses the character the PNG shows.
                                ylab = NULL,
                                alpha_lab = "Transformation",
-                               shade_fill = FALSE) {
+                               shade_fill = FALSE,
+                               ## How far the second series is blended toward white.
+                               ## Far enough to read as a separate bar, close enough
+                               ## that the pair still reads as one model's colour.
+                               shade_amount = 0.35) {
   ## The BA.2 DMS is the target here, so it cannot also be a predictor.
   df <- df[!(df$model %in% c("BA.2 DMS (bind)", "BA.2 DMS (expression)")), ]
   ## Rungs dropped from this panel by LABEL, for a figure that draws a pruned
@@ -956,7 +960,7 @@ make_dms_corr_plot <- function(df, metric_name, legend_only = FALSE, SUPP = FALS
     ## second LEGEND -- its values are both 1, so it has no visual effect -- and that
     ## legend's keys are overridden to a dark/light grey pair below. Two fill scales
     ## are not possible in one ggplot, which is why the legend is built this way.
-    lighten <- function(hex, f = 0.55) {
+    lighten <- function(hex, f = shade_amount) {
       v <- grDevices::col2rgb(hex)
       grDevices::rgb(t(v + (255 - v) * f), maxColorValue = 255)
     }
