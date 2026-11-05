@@ -1247,11 +1247,67 @@ gate_recall_by_name <- function() {
   out
 }
 
+#' One directory per CUTOFF holding `list_macro_summary.csv`, which carries BOTH
+#' poolings side by side. Panel H's published number is the EVENT-weighted one
+#' (`micro`): a (site, AA) pair hosted by k queries counts k times. This loader reads
+#' the CELL-weighted one (`macro`) instead -- each pair once, its value the share of
+#' the queries hosting it as a descendant mutation in which it lands in the top
+#' decile. That is the convention coguk_list_aa20's panels use, here over every RBD
+#' cell rather than a list.
+#'
+#' THE MICRO COLUMN IS THE CHECK, and it is why this reads the same CSV rather than a
+#' macro-only dump. With every cell listed, `micro` is the same quantity as
+#' quantile_hit_rates_all_all-models.csv -- same targets, same pool, same tie rule,
+#' reached through a different accumulator. `sc2.gate_macro_col = "micro"` draws it,
+#' and it must reproduce the published panel; if it does not, the macro column beside
+#' it is not to be read.
+gate_recall_by_macro <- function() {
+  want <- getOption("sc2.gate_rows")
+  if (is.null(want)) stop("sc2.gate_loader = 'by_macro' needs sc2.gate_rows")
+  variant <- getOption("sc2.gate_macro_variant", "list_allcells")
+  qtile   <- getOption("sc2.gate_macro_qtile", 0.10)
+  col     <- getOption("sc2.gate_macro_col", "macro")
+  ## The supplement row draws q = 0.2 and 0.5 beside the decile, so the frame has to
+  ## carry them like the other two loaders' do. The summary holds every quantile as
+  ## its own row, so these are a second and third lookup rather than another file.
+  q2      <- getOption("sc2.gate_macro_qtile_20", 0.20)
+  q5      <- getOption("sc2.gate_macro_qtile_50", 0.50)
+  to_x <- getOption("sc2.gate_x", function(d) as.numeric(gsub(".*_", "", d)))
+  dirs <- sort(list.files(GATING_DIR))
+  out <- data.frame()
+  for (d in dirs) {
+    f <- file.path(GATING_DIR, d, "list_macro_summary.csv")
+    if (!file.exists(f)) stop(f, " is missing. Every cutoff must carry a summary, ",
+                              "or the panel compares different rosters at different x.")
+    df <- read.csv(f)
+    df <- df[df$variant == variant, ]
+    pick <- function(q) {
+      sub <- df[abs(df$qtile - q) < 1e-9, ]
+      if (!nrow(sub)) stop(f, " has no rows for variant ", variant, " at q=", q)
+      missing <- setdiff(names(want), sub$model)
+      if (length(missing)) {
+        stop(f, " is missing row(s) ", paste(missing, collapse = ", "),
+             " at q=", q, ". Every cutoff must carry every line, or the panel ",
+             "compares different rosters at different x.")
+      }
+      sub[match(names(want), sub$model), ][[col]]
+    }
+    out <- rbind(out, data.frame(model     = unname(want),
+                                 recall    = pick(qtile),
+                                 recall_20 = pick(q2),
+                                 recall_50 = pick(q5),
+                                 cutoff    = to_x(d)))
+  }
+  out$model <- factor(out$model, levels = unname(want))
+  out
+}
+
 gate_recall <- switch(
   getOption("sc2.gate_loader", "by_position"),
   by_position = gate_recall_by_position(),
   by_name     = gate_recall_by_name(),
-  stop("sc2.gate_loader must be 'by_position' or 'by_name'"))
+  by_macro    = gate_recall_by_macro(),
+  stop("sc2.gate_loader must be 'by_position', 'by_name' or 'by_macro'"))
 if (getOption("sc2.gate_loader", "by_position") == "by_position") {
   gate_recall$model <- ifelse(gate_recall$model %in% names(GATE_MODEL_LABELS),
                               GATE_MODEL_LABELS[gate_recall$model],

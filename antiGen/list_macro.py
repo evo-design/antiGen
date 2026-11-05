@@ -304,6 +304,12 @@ def main():
                          'fixed (L, E) maps data/baselines/ holds and go through the '
                          'model path instead -- which also means they inherit the '
                          'gap/stop masking. Fitted on the TRAINING examples only.')
+    ap.add_argument('--pool-examples', action='store_true',
+                    help='pool --train-examples and --test-examples and split on '
+                         'is_training, as eval.py does, instead of taking the role '
+                         'from which flag named the file. Matters only with '
+                         '--split-date, where the test corpus carries pre-cutoff '
+                         'branches that belong to the training window.')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--skip-baselines', action='store_true',
                     help='Score only the checkpoints. The CSV baselines are fixed maps '
@@ -346,19 +352,49 @@ def main():
             raise SystemExit("--train-examples and --test-examples go together: "
                              "one of the two pools would otherwise be empty.")
         training_examples, testing_examples = [], []
-        for path in args.train_examples:
+        if args.pool_examples:
+            # eval.py's semantics: pool every file, THEN split on is_training. With
+            # --split-date the test corpus carries pre-cutoff branches that belong to
+            # the training window, and eval.py counts them as training. This script
+            # assigns the role per FILE, so it drops them -- 2,934 against eval.py's
+            # 6,836 at the 2021-01-01 cutoff, i.e. the fit sees 43% of the data.
+            #
+            # Everything built on fit_substitution_baseline then differs from the
+            # published panel: substitution, where_times_which and wxw_dirichlet all
+            # missed it, while codon (fixed table) and pssm_root (read from
+            # --root-counts) matched to 1e-8. Nothing that ignores training_examples
+            # moved, which is what identified this.
+            #
+            # OFF BY DEFAULT. Without --split-date the two agree, which is every
+            # published list_macro run, and those numbers must not move.
+            pooled = []
+            for path in list(args.train_examples) + list(args.test_examples):
+                recs = load_examples(path, allowed_aas, variant,
+                                     split_date=args.split_date)
+                print(f"  pooled {len(recs)} from {path}")
+                pooled += recs
+            training_examples = [e for e in pooled if e.is_training]
+            testing_examples = [e for e in pooled if not e.is_training]
+            print(f"  pooled split: {len(training_examples)} training, "
+                  f"{len(testing_examples)} testing (eval.py semantics)")
+            all_examples = training_examples + testing_examples
+            return_early = True
+        else:
+            return_early = False
+        for path in ([] if return_early else args.train_examples):
             recs = load_examples(path, allowed_aas, variant,
                                  split_date=args.split_date)
             kept = [e for e in recs if e.is_training]
             print(f"  training pool: kept {len(kept)} of {len(recs)} from {path}")
             training_examples += kept
-        for path in args.test_examples:
+        for path in ([] if return_early else args.test_examples):
             recs = load_examples(path, allowed_aas, variant,
                                  split_date=args.split_date)
             kept = [e for e in recs if not e.is_training]
             print(f"  testing pool: kept {len(kept)} of {len(recs)} from {path}")
             testing_examples += kept
-        all_examples = training_examples + testing_examples
+        if not return_early:
+            all_examples = training_examples + testing_examples
     else:
         examples_files = sorted(glob.glob(os.path.join(args.data_dir, "examples_cutoff_*.txt")))
         if not examples_files:

@@ -11619,3 +11619,271 @@ only needed when an assay is a panel's own target.
 ### Code
 
 * `antiGen-figures/figures/fig_sc2_aa20.R` -- third target off, two-panel sizing back.
+
+## 109. A cell-weighted panel H, and the 201 cells its list was missing (2026-11-04)
+
+Panel H draws top-decile recall against the train/test cutoff, EVENT-weighted: a
+(site, AA) pair hosted by k queries counts k times, so a handful of heavily-recurrent
+cells carry the number. The supplement asks the other question -- each pair counts
+ONCE, its value the share of the queries hosting it as a descendant mutation in which
+it lands in the top decile, averaged over pairs. That is the pooling the COG-UK list
+panels use, here over every RBD cell instead of a list.
+
+No new metric code. `compute_hit_rate(per_cell=True)` already returns the
+cell_hits / cell_events pair, `list_macro.py` already accumulates it, and
+`submit_macro_allcells_aa20.sh` already takes a `CUTOFF`. Sixteen runs of it.
+
+### The list was wrong, and the wrongness was silent
+
+`ref/all_rbd_cells_aa20.csv` is 201 sites x **19** alts. It has no row where
+`wildtype == mutant`, so all 201 (site, reference allele) cells are absent.
+
+**A reversion to the reference is an ordinary mutation.** Whenever a query has
+diverged at site i, a change back to the reference allele at i is a real event, and
+the eval predicts it from the same candidates as anything else -- the candidate pool
+is 201 x 20 = 4,020 in BOTH this run and `eval_all_sc2.sh` (`candidate pool: common
+-- 4020 of 4020`, the only pool line in any eval_all_sc2 log). The POOL was never the
+problem. The TARGET SET was: the 19-alt list drops those events.
+
+Measured at cutoff 2021-01-01:
+
+| list | queries with a target | target events |
+|---|---|---|
+| 3,819 (19 alts) | 22,317 (31.1%) | 43,314 |
+| 4,020 (20 alts) | 23,957 (33.4%) | 46,433 |
+
+3,119 events, 6.7% of the total, thrown away.
+
+### What caught it
+
+`list_macro_summary.csv` carries `macro` and `micro` side by side, and with every cell
+listed the micro column IS `quantile_hit_rates_all_all-models.csv`. On the 3,819 list
+it failed on all 21 shared models -- `where_times_which` off by 0.101,
+`Omicron_BA2_bind` by 0.089. On the 4,020 list it reproduces the published panel to
+1e-8.
+
+**The fixed maps are the tell.** `Omicron_BA2_bind` is a static score map: it ranks
+identically in both runs. Nothing but a different target population can move it. That
+ruled out the pool, the tie rule and the checkpoints in one step, and pointed straight
+at the list.
+
+I had the diagnosis backwards first -- I wrote that the 3,819 list was "still the right
+deliverable" and treated the 4,020 run as a validation device. It is the other way
+round: 4,020 is the deliverable, and excluding reversions is an unjustified
+restriction on a panel claiming "all RBD mutations". Ivan caught that.
+
+### What this does NOT change
+
+**The COG-UK panels are fine.** `coguk.csv` has no (site, reference) rows either, and
+at most 11 alts at any site -- but there the list IS the object of study, a watchlist
+of flagged mutations, which by construction contains no "revert to Wuhan" entry. Those
+panels claim performance on that watchlist and deliver it, and they already score
+against the full 4,020-cell pool, so a model ranking a reversion highly pays for it
+there exactly as in panel H.
+
+**No published figure was affected.** The 3,819 all-cells output was never staged into
+`antiGen-figures/data/`, and no figure script reads an `_allcells` path. The defect
+was latent; it would have entered the paper only through this supplement.
+
+### Guards, because the failure mode is a silent no-op
+
+* `macro_series_daemon.sh` PINS `LIST` rather than letting the submit script fall back
+  to the 19-alt default.
+* It writes to a separate `_allcells_inclref` suffix. `list_macro` RESUMES from its
+  summary CSV and skips any model already in it, so re-running a cutoff into the old
+  directory would find all 22 rows present, skip everything, and leave the stale
+  numbers standing -- a no-op that looks exactly like success.
+* `WANT=22`, not the 21 rows the per-cutoff `quantile_hit_rates` CSV carries. Those
+  evals predate `BloomNeher_2023-10-01` landing in `data/baselines`, and a run today
+  picks it up. WANT is tested with `-ge`, so 21 would mark a cutoff COMPLETE one model
+  short and stop resubmitting it.
+
+### Cost, measured rather than guessed
+
+~13 minutes per cutoff, not the ~7 hours the script's header quotes. That figure is
+the 2021 arm's 31-model roster, which carries ESM-2 650M, Tranception and three
+MSA-Transformers; a cutoff stage carries four checkpoints, one of them a 35M model.
+Sixteen cutoffs is ~4 GPU-hours, so the full quarterly grid is affordable and no
+coarsening is needed.
+
+### Code
+
+* `antiGen-figures/ref/all_rbd_cells_aa20_incl_ref.csv` -- new, 4,020 cells.
+* `antiGen-figures/figures/fig2_sc2_benchmarks.R` -- `gate_recall_by_macro()`, a third
+  `sc2.gate_loader`. Additive; `by_position` stays the default.
+* `antiGen-figures/figures/figS_gate_macro.R` -- new. Evaluates `fig_sc2_aa20.R`'s
+  option block with its trailing `source()` stripped, THEN overrides, because a
+  wrapper's own `options()` runs last and wins (the s-note trap again).
+* `experiments/multitree/macro_series_daemon.sh` -- new.
+* `experiments/multitree/stage_macro_summaries.sh` -- new.
+* `experiments/multitree/submit_macro_allcells_aa20.sh` -- header corrected: it
+  claimed a gate its own default list cannot satisfy.
+
+## 110. Panels B-E pooled per mutation, and a background row that had no such
+## pooling to switch to (2026-11-04)
+
+sc2_results_revised's B-E are CELL-weighted on the CoG-UK list: each (site, AA) pair
+counts once. The supplement asks them EVENT-weighted -- a pair hosted by k queries
+counts k times -- so the gap between the two reads as how much of each score rides on
+recurrence. Same list, same pool, same tie rule; only the denominator moves.
+
+**No GPU time.** Both halves came out of files that already existed.
+
+### The recall half was already built
+
+`fig_coguk_list.R` has carried both poolings as first-class metrics all along:
+
+```r
+RECALL_METRICS <- c("micro_all", "micro_unseen", "macro_all", "macro_unseen")
+RECALL_MAIN <- sprintf("%s, cell-weighted",  c(ALL_NOUN, DN_NOUN))
+RECALL_SUPP <- sprintf("%s, event-weighted", c(ALL_NOUN, DN_NOUN))
+```
+
+`list_macro.py` writes `micro` beside `macro`, so panels A/B of the new figure are a
+metric selection and nothing else.
+
+### The background half had no pooling to select
+
+`background_contrast.py`, line 52: "The panel value is the unweighted mean over
+cells." There is no weighted variant in it, and none in the summary CSV it writes --
+`lift`, `auc`, `n_cells`, `n_pairs`, already aggregated per cellset.
+
+But `background_percell.csv` carries per-cell `lift`/`auc`/`delta_pct` AND `n_hosts`,
+so the re-pooling is arithmetic over a file on disk rather than hours of re-scoring.
+`background_event_weighted.py` does it.
+
+**THE GATE IS `--weight none`.** An unweighted re-pool must reproduce
+`background_summary.csv`, because that is what that file already holds. It does, to
+**4.94e-07 over 180 (model, cellset) pairs**, and `--check` refuses to write on
+failure. The weighting is only trustworthy because the un-weighting is checkable.
+
+**The bootstrap is weighted too.** `rng.choice(p=...)` was unusably slow at 10k draws x
+~1.2k cells x 360 intervals, so it samples cells by inverse-CDF on a cumulative weight
+vector. Resampling cells with probability proportional to `n_hosts` and taking an
+unweighted mean has the host-weighted mean as its expectation -- so the interval is
+weighted like the point it brackets, not a cell-weighted interval around an
+event-weighted dot.
+
+### What is zero, and why that is right
+
+Background lift asks whether a model ranks a mutation higher on the backgrounds that
+HOST it than on controls. A score that never looks at the background cannot have any,
+so PSSM, EVEscape, pyr0, every DMS column and the MSA-Transformers are identically
+zero under BOTH poolings. Everything that conditions on the background sequence moves:
+antiGen and its gates, the whole ESM-2 family, Tranception, EVE, the ensembles, codon,
+substitution, wxw_dirichlet. I first wrote that only three rungs could move, from a
+sample of eight models, and that was wrong.
+
+### This is NOT the existing coguk_list_aa20_supp
+
+That figure's background row swaps the CELL SET -- the curated list for every RBD cell
+with a backbone host -- and leaves the pooling alone, as its own comment says. It
+changes the mutations, not the weighting. The two supplements answer different
+questions and both are worth having.
+
+### The size of the effect
+
+antiGen on de novo CoG-UK cells: 15.56 pp cell-weighted, **24.82 pp event-weighted**.
+The recurrent de novo mutations are the ones the background signal reads best on, so
+per-mutation pooling makes that panel considerably stronger rather than weaker --
+the opposite direction to the recall panels, where event-weighting is four fifths a
+memorisation test (s-note at the head of fig_coguk_list.R).
+
+### Code
+
+* `experiments/multitree/background_event_weighted.py` -- new.
+* `antiGen-figures/figures/figS_coguk_eventwtd.R` -- new. Same eval()-then-override
+  pattern as figS_gate_macro.R, and it redirects the drawer's own two save_figure()
+  calls to scratch names so sourcing it cannot touch a published output.
+* `antiGen-figures/data/evals_sc2_background_aa20_eventwtd/` -- the re-pooled summary.
+
+Published figures verified byte-identical before and after.
+
+## 111. Two more silent mismatches between list_macro.py and eval.py (2026-11-04)
+
+s109 fixed the cell list and declared the micro gate passed. It was not: that check ran
+with 14 of 22 models written, and the three that fail had not been computed yet.
+**A gate run against a partial roster is not a gate.** With all 21 shared models:
+
+| model | published | micro | diff |
+|---|---|---|---|
+| `where_times_which` | 0.711434 | 0.602577 | -0.109 |
+| `substitution` | 0.450944 | 0.409877 | -0.041 |
+| `wxw_dirichlet` | 0.724226 | 0.714923 | -0.009 |
+
+Eighteen others matched to 1e-8.
+
+### The diagnostic, which is the reusable part
+
+Everything that matched IGNORES `training_examples`: the eleven fixed maps, `codon`
+(a fixed table) and `pssm_root` / `pssm_root_position` (read from `--root-counts`).
+Everything built FROM `training_examples` diverged. That is a property of the INPUT,
+not of any one estimator -- three unrelated models cannot go wrong the same way by
+coincidence. It says "the training pool differs" without needing to read either model.
+
+### The cause: per-file roles vs a pooled split
+
+```
+eval.py      fitting substitution matrix on 6836 training examples (seed=0)
+list_macro   training pool: kept 2934 of 2934
+```
+
+`eval.py` pools `--train-examples` AND `--test-examples` and then splits on
+`is_training`, so the test corpus's PRE-CUTOFF branches count as training:
+2,934 + 3,902 = 6,836. `list_macro.py` assigns the role per FILE -- training comes
+only from `--train-examples` -- so the fit sees 43% of the data.
+
+**Only with `--split-date`.** Without one, the test corpus has no pre-cutoff branches
+and the two agree, which is every published list_macro run. `--pool-examples` is
+therefore DEFAULT OFF, and the published CoG-UK macro numbers cannot move.
+
+### And a second, smaller one found on the way
+
+`--substitution-seed` defaults to **14 in list_macro.py and 0 in eval.py**, and
+neither submit script passed it. Fixing only this moved `substitution` from -0.041 to
+-0.045 -- real, but not the cause. Both had to be right. The defaults still diverge in
+the repo; `submit_macro_allcells_aa20.sh` now pins the seed at the call site rather
+than changing either default, since changing list_macro.py's would move published
+numbers.
+
+### Two wrong turns, recorded because the reasoning was the error
+
+1. I read the submit scripts' flag diff and concluded the cause was the missing
+   `--variant-counts-dir` / `--counts-since`, patched it, and relaunched all 16. The
+   jobs died in 15 seconds: `list_macro.py: error: unrecognized arguments`. That
+   script has no variant-counts concept, and reading both constructors shows
+   `_where_times_which` and `_wxw_dirichlet` are IDENTICAL in the two files and use
+   neither. Inferring a cause from a flag diff without reading the code that consumes
+   the flags.
+2. Then the seed, scaled to a one-cutoff test rather than sixteen -- the right size,
+   finally -- and it failed. Only after that did I compare the two training-pool lines,
+   which is where the answer had been all along.
+
+### Three silent defects, one gate
+
+| # | defect | effect |
+|---|---|---|
+| 1 | 19-alt list omitting (site, reference) | 6.7% of target events dropped (s109) |
+| 2 | per-file example roles | substitution fit on 2,934 not 6,836 |
+| 3 | substitution seed 14 vs 0 | a different fit again |
+
+Each produced a run that completed with all 22 models and rendered a plausible figure.
+The only thing that caught any of them is that `list_macro_summary.csv` carries
+`micro` beside `macro`, and micro MUST reproduce
+`quantile_hit_rates_all_all-models.csv`. Keep that identity in any figure of this kind.
+
+### Directory suffixes, which are now load-bearing
+
+`_allcells` (s109's wrong list), `_allcells_inclref` (right list, wrong example roles)
+and `_allcells_pooled` (both right) all look complete at 22 models. `list_macro`
+resumes from its summary and skips models already present, so re-running into a
+superseded directory is a no-op that looks exactly like success. The daemon and the
+staging script both default to `allcells_pooled`.
+
+### Code
+
+* `antiGen/list_macro.py` -- `--pool-examples`, default off.
+* `experiments/multitree/submit_macro_allcells_aa20.sh` -- passes `--pool-examples`
+  with `--split-date`, and pins `--substitution-seed` (`SUBSEED`, default 0).
+* `experiments/multitree/stage_macro_summaries.sh`, `macro_series_daemon.sh` --
+  default suffix `allcells_pooled`.
