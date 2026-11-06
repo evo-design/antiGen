@@ -125,7 +125,11 @@ subsets <- list(
     ## its parent. Absent from this inventory it is NA in `add_group_and_label`,
     ## which this file's fallback puts in the "antiGen" group -- it drew as a bar
     ## called NA on every panel reading the eval CSVs (NOTES s84).
-    "wxw_dirichlet"
+    "wxw_dirichlet",
+    ## The counted siblings of the two above. Same group: both are fitted on this
+    ## arm's training examples exactly as their parents are.
+    "site_substitution",
+    "mcm_interpolation"
   ),
   dms_models = c(
     "Omicron_BA1_bind",
@@ -187,6 +191,10 @@ longform_names <- c(
   ## Positional against `all_models`: this sits with `wxw_dirichlet`'s place in
   ## `pandemic_training_data`, immediately after its parent.
   "Where × which + events",
+  ## Positional against `all_models` too, immediately after `wxw_dirichlet`, so these
+  ## two sit with the factored block rather than at the end of the vector.
+  "Site × Substitution",
+  "SxS, MCM interpolation",
   "BA.1 DMS (bind)",
   "BA.1 DMS (expression)",
   "BA.2 DMS (bind)",

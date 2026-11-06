@@ -12050,3 +12050,58 @@ merge neither lost nor duplicated anything.
 
 RENDER ORDER AGAIN: coguk, revised, eventwtd, then `fig_sc2_aa20.R` LAST. All four
 `aa20_supp_*` PNGs verified byte-identical to HEAD afterwards.
+
+### Addendum 3: the counted rungs on panel G (DMS)
+
+Panel G reads `data/sc2_aa20/<model>/variant_root_predictions_*.csv` -- one (seq_len,
+22) matrix per model at the variant root -- so a rung reaches it only by having such a
+file. `where_times_which` has an inventory entry but NO such file, which is why it has
+never appeared there.
+
+**NO GPU.** `dump_variant_root_predictions.py` rebuilds those from the `--dump-scores`
+cache, because the variant root is already one of the cached queries. The list_macro
+runs used `--dump-scores`, so `site_substitution`, `mcm_interpolation` AND the gate
+were all already in `list_score_maps_aa20`.
+
+**The dumper was checked against a committed file first**: re-dumping
+`simple_d128_n2_lr0.0001` reproduced
+`data/sc2_aa20/simple_d128_n2_lr0.0001/variant_root_predictions_*.csv` over 4,020
+finite cells at worst |delta| = 0.00e+00, with an identical NaN pattern.
+
+Both rungs also needed entries in `subsets$pandemic_training_data` AND
+`longform_names`, POSITIONALLY matched -- the two vectors are parallel and
+length-checked, and an unlisted model becomes a bar called "NA" in the antiGen group.
+
+| rung (expression, Spearman) | prediction | position-only |
+|---|---|---|
+| Site x Substitution | 0.291 | **0.442** |
+| SxS, MCM interpolation | 0.298 | **0.449** |
+| antiGen | 0.261 | 0.337 |
+| EVEscape | 0.362 | 0.354 |
+
+**Their POSITION-ONLY controls are the tallest bars on the panel** -- above every
+model's actual prediction, EVEscape included -- and for both, position-only far exceeds
+the prediction. That is mechanically unsurprising and is the point: SxS is
+`log s_i + log M[wt_i, a]`, and `s_i` IS a positional marginal, so the panel's own
+position-only control recovers most of the signal while the substitution term actively
+costs it ~0.15 of rho. Read that way, these two rungs say the DMS panel's expression
+correlation is largely a positional effect.
+
+**A cross-check of mine disagreed and was WRONG.** A ten-line reimplementation of the
+correlation gave 0.150 for `site_substitution` and 0.286 for base antiGen, against the
+figure's 0.291 and 0.261. The figure's base-antiGen value matches the bar already
+published for it, so the drawer's pipeline is right and the reimplementation's
+wild-type masking is not -- it matched the reference against `colnames(expr)` where
+`mask_wildtype` uses `AMINO_ACIDS`. Recorded because the disagreement was resolved by
+checking which one reproduced a known published number, not by preferring the newer
+code.
+
+**`data/sc2_aa20/` IS NOT TRACKED, and that is pre-existing.** All 21 model
+directories under it are untracked, where `data/sc2` (the published arm) has 45 files
+committed -- so panel G cannot be rebuilt from a clone on this arm, and could not
+before this work either. The two new directories were deliberately NOT committed
+alone: `models <- list.files(MODEL_DIR)` would then find 2 of 21 in a fresh clone and
+render panel G with two bars and no error, which is worse than the present state of
+failing outright. Committing all 21 would close the gap and match the `data/sc2`
+precedent; it is left for a decision rather than taken here, since it is 19 files
+beyond this change.
