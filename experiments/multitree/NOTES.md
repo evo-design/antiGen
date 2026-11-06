@@ -11996,3 +11996,22 @@ and walltime have to move together; it now takes a `TIME` knob.
   vectors converted POSITIONAL -> NAMED (same colours to the same rungs; naming makes
   that independent of row order, which is what the comments there warn about).
 * `fig_coguk_list.R` / `_aa20.R`, `panels_sc2_export.R`, `figS_gate_macro.R`.
+
+### Addendum: the event-weighted supplement (same day)
+
+`aa20_supp_coguk_eventwtd` carries both rungs too. Its RECALL panels needed nothing --
+the figure evaluates `fig_coguk_list_aa20.R`, which now opts in -- but its BACKGROUND
+panels read `data/evals_sc2_background_aa20_eventwtd/`, a re-pool of
+`background_percell.csv` that was generated before the rungs existed and so sat stale
+at 45 models. Re-running `background_event_weighted.py --weight hosts` brings it to 47.
+
+The gate came along for free and is the reason to keep it: `--weight none` still
+reproduces the published summary, now over **188** (model, cellset) pairs rather than
+180 at the same 4.94e-07 -- eight more, which is exactly the two new models x four
+cellsets. A re-pool that silently dropped them would have shown up as 180.
+
+Both are NON-ZERO on the adaptability panels, unlike most of that figure's roster: a
+fixed score map cannot have background lift, but these index `M[wt_i, a]` by the
+query's own residues and so condition on the background. They beat their fitted
+siblings under event weighting as well as cell weighting -- de novo, 18.7 pp against
+where_times_which's 10.1 -- so the ordering is not an artefact of the pooling.
