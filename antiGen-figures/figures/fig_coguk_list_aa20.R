@@ -154,6 +154,8 @@ options(
   ## getOption default is the drawer's own published pair.
   coguk.drop_models = c(getOption("coguk.drop_models", c("CoVFit", "pyr0")),
                         "BloomNeher_2023-10-01"),
+  ## Panel H's gate, at the cutoff that matches this arm (2021-01-01).
+  coguk.gate_rung = "gated_static_xfmr_pssm_lr0.0001",
   coguk.wxw_dirichlet = "wxw_dirichlet",
   ## The counted-statistic pair, scored by list_macro.py --counted-baselines. Each is
   ## drawn beside the fitted rung it mirrors, so panels C/D (and sc2_results_revised's

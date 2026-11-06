@@ -368,6 +368,17 @@ WXW_DIR_LABEL <- getOption("coguk.wxw_dirichlet_label", "Where × which + events
 ## published corpus has no such rows, and MODEL_GROUP's names are the per-metric
 ## "missing" report, so listing them unconditionally would add permanent holes to a
 ## figure that arm never scored. `fig_coguk_list_aa20.R` opts in.
+## The trained antiGen / PSSM gate, panel H's headline rung, on these panels too.
+## An option for the same reason as the rest: the published corpus has no such row.
+##
+## THE CUTOFF HAS TO MATCH. The gate is trained PER CUTOFF, and these panels are the
+## 2021 arm, so only `cutoff_stage_aa20/2021-01-01` is the right checkpoint. That arm's
+## training corpus and the 2021-01-01 cutoff's differ in exactly one field --
+## `POST_CUTOFF: False` against a blank -- on all 2,934 examples and nothing else, and
+## their root counts are byte-identical, so the two training sets are the same data.
+GATE_RUNG       <- getOption("coguk.gate_rung", character(0))
+GATE_RUNG_LABEL <- getOption("coguk.gate_rung_label", "antiGen / PSSM gate")
+
 SXS        <- getOption("coguk.site_substitution", character(0))
 SXS_LABEL  <- getOption("coguk.site_substitution_label", "Site × Substitution")
 MCMI       <- getOption("coguk.mcm_interpolation", character(0))
@@ -507,6 +518,11 @@ insert_beside <- function(key, label, parent) {
   MODEL_GROUP <<- ins(MODEL_GROUP, at, setNames(MODEL_GROUP[[parent]], key))
   MODEL_LABEL <<- ins(MODEL_LABEL, at, setNames(label, key))
 }
+## Beside base antiGen, and in its group: the gate is an antiGen variant, and the
+## panel's question is what it buys over its parents. Safe to anchor there even on the
+## revised figure, which DROPS base antiGen -- `drop_models` filters the data frame and
+## never prunes MODEL_GROUP, so the anchor survives the drop.
+insert_beside(GATE_RUNG, GATE_RUNG_LABEL, "simple_d128_n2_lr0.0001")
 insert_beside(SXS, SXS_LABEL, "where_times_which")
 ## After the blend when the blend is drawn, so the two Dirichlet-form rungs sit
 ## together; otherwise after its own fitted sibling.

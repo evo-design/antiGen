@@ -12015,3 +12015,38 @@ fixed score map cannot have background lift, but these index `M[wt_i, a]` by the
 query's own residues and so condition on the background. They beat their fitted
 siblings under event weighting as well as cell weighting -- de novo, 18.7 pp against
 where_times_which's 10.1 -- so the ordering is not an artefact of the pooling.
+
+### Addendum 2: the gate on B-E, at the matched cutoff
+
+`gated_static_xfmr_pssm_lr0.0001` -- panel H's headline rung -- added to B-E as an
+optional rung (`coguk.gate_rung`), beside base antiGen and in its group.
+
+**THE CUTOFF MATCH IS REAL, not nominal.** The gate is trained PER CUTOFF and these
+panels are the 2021 arm, so only `cutoff_stage_aa20/2021-01-01` is admissible. Checked
+rather than assumed: the two training corpora have byte-identical root counts and
+differ in exactly ONE field -- `POST_CUTOFF: False` against a blank -- on all 2,934
+examples and nothing else. Same data, different serialisation, so the gate saw what the
+other B-E rungs saw. (That identical counts file is also why `pssm_root` matched
+bit-identically back in s111 while the trained rungs did not: it reads --root-counts.)
+
+Anchoring on base antiGen is safe even though the revised figure DROPS it:
+`drop_models` filters the data frame and never prunes MODEL_GROUP.
+
+| panel | gate | best non-antiGen |
+|---|---|---|
+| B recall, all | 0.1391 macro, 2nd overall | Site x Substitution 3rd |
+| C recall, de novo | 0.1784 macro | Site x Substitution 2nd |
+| D adaptability, all | +8.7 pp [+4.5, +13.2] | Site x Substitution 1st, +14.1 |
+| E adaptability, de novo | +11.5 pp [+5.7, +17.8] | Site x Substitution 1st, +18.7 |
+
+So the gate is second only to antiGen (val x10) on all-escape recall, and
+`Site x Substitution` BEATS IT on de novo recall and on both adaptability panels. Worth
+noting, since the gate is what panel H is built around.
+
+Scored the same way as the counted rungs: one model in an isolated contrast directory
+(cellsets identical, 2,426 both ways) rather than re-running all 49. The unweighted
+gate went 188 -> 192 rows, exactly the gate's four cellsets, which is what shows the
+merge neither lost nor duplicated anything.
+
+RENDER ORDER AGAIN: coguk, revised, eventwtd, then `fig_sc2_aa20.R` LAST. All four
+`aa20_supp_*` PNGs verified byte-identical to HEAD afterwards.
