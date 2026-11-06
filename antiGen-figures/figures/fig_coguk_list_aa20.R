@@ -140,7 +140,26 @@ options(
   ## The Dirichlet blend of where x which with the observed mutation events, new on
   ## this arm (NOTES s73). It joins its parent's colour block rather than starting
   ## one: it is fitted on the same training examples by the same `_fit()`.
+  ## `BloomNeher_2023-10-01` landed in data/baselines AFTER this arm was last scored,
+  ## so re-running list_macro for the counted rungs picked it up too and the roster
+  ## went 31 -> 34, not 32. It is a DATE-SPECIFIC map (their 2023-10-01 tree snapshot)
+  ## and this corpus is cut at 2021, so drawing it here would compare a baseline
+  ## against a test window it already saw. Dropped by name rather than grouped.
+  ## APPENDED, NOT REPLACED. panels_coguk_export.R sets its OWN drop list -- base
+  ## antiGen and every fine-tune, pruned for the revised figure -- and then sources
+  ## this file, and a sourced wrapper's options() run AFTER the caller's and WIN. A
+  ## plain c("CoVFit", "pyr0", ...) here silently discards that pruning and puts the
+  ## whole fine-tune block back into sc2_results_revised's panels B-E. Reading the
+  ## current value first keeps whichever list the caller set; standing alone, the
+  ## getOption default is the drawer's own published pair.
+  coguk.drop_models = c(getOption("coguk.drop_models", c("CoVFit", "pyr0")),
+                        "BloomNeher_2023-10-01"),
   coguk.wxw_dirichlet = "wxw_dirichlet",
+  ## The counted-statistic pair, scored by list_macro.py --counted-baselines. Each is
+  ## drawn beside the fitted rung it mirrors, so panels C/D (and sc2_results_revised's
+  ## B/C) read as what the fitted "which" term buys over counting substitutions.
+  coguk.site_substitution = "site_substitution",
+  coguk.mcm_interpolation = "mcm_interpolation",
   coguk.fig_main     = "coguk_list_aa20",
   coguk.fig_supp     = "coguk_list_aa20_supp",
   coguk.title_suffix = " [20 AA, revised corpus]",

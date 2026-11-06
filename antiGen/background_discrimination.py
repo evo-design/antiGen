@@ -70,7 +70,8 @@ from antiGen.background_tree import (build_backbone, build_backbone_from_example
 from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.eval import (config_label, dataset_of_train_args, discover_checkpoints,
                           peek_checkpoint_meta)
-from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
+from antiGen.eval_utils import (CountedStatPredictor, RBD_RANGE,
+                                build_model_gap_stop_mask,
                                 fit_substitution_baseline, load_baselines,
                                 load_checkpoint, positional_marginal_counts,
                                 where_times_which_dirichlet,
@@ -360,6 +361,9 @@ def main():
     ap.add_argument('--skip-baselines', action='store_true')
     ap.add_argument('--multitree-baselines', action='store_true',
                     help='also score codon / substitution / where x which')
+    ap.add_argument('--counted-baselines', action='store_true',
+                    help='add site_substitution and mcm_interpolation '
+                         '(antiGen/statistical_baselines.py)')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
@@ -503,6 +507,35 @@ def main():
         for name in builtin_models:
             candidates.append((name, None))
         print(f"  added {len(builtin_models)}: {', '.join(builtin_models)}")
+
+    # The counted-statistic siblings (antiGen/statistical_baselines.py). Its own flag,
+    # so an existing roster does not grow silently -- background_contrast.py globs
+    # scores_*.npz and scores whatever it finds.
+    if args.counted_baselines:
+        print("\n=== Building counted-statistic baselines ===", flush=True)
+        from antiGen.statistical_baselines import fit as _cs_fit
+        _cs_cache = {}
+
+        def _cs_stats():
+            if "st" not in _cs_cache:
+                print(f"  fitting counted statistics on {len(training_examples)} "
+                      f"training examples...", flush=True)
+                _cs_cache["st"] = _cs_fit(training_examples, seq_len, E)
+                print(f"  N_total = {_cs_cache['st']['N_total']:.0f}", flush=True)
+            return _cs_cache["st"]
+
+        _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
+                              alphabet=AlphabetConfig(amino_acids=allowed_aas))
+        _counted = {
+            "site_substitution": lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "site_substitution").to(device),
+            "mcm_interpolation": lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
+        }
+        builtin_models.update(_counted)
+        for name in _counted:
+            candidates.append((name, None))
+        print(f"  added {len(_counted)}: {', '.join(_counted)}")
 
     skipped, scored = [], []
 

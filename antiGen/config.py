@@ -36,6 +36,8 @@ class ModelType(str, Enum):
     PSSM = "pssm"  # Per-position log(count+1) from variant-root PSSM (no training)
     CODON = "codon"  # Genetic-code single-nucleotide accessibility (no training)
     SUBSTITUTION = "substitution"  # Learned codon x BLOSUM62 log-linear mixture (5 params)
+    SITE_SUBSTITUTION = "site_substitution"  # s_i * M[wt_i, a] from COUNTED statistics (no training)
+    MCM_INTERPOLATION = "mcm_interpolation"  # (N + kappa*s*M)/(N_total+kappa), kappa=N_total (no training)
     EVCOUPLINGS = "evcouplings"  # EVcouplings mean-field DCA (no training)
     EVE = "eve"  # EVE VAE (pre-train on MSA, optional finetune)
     TRANCEPTION = "tranception"  # Tranception autoregressive LM (pre-train on MSA, optional finetune)

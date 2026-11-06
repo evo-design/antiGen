@@ -35,7 +35,8 @@ from antiGen.load import (load_counts_matrix, load_counts_series,
                           load_examples, load_pssms)
 from antiGen.mutation_lists import (cells_to_mask, describe as describe_list,
                                     load_mutation_list)
-from antiGen.eval_utils import (fit_substitution_baseline,
+from antiGen.eval_utils import (CountedStatPredictor,
+                                fit_substitution_baseline,
                                 real_wildtype_mask,
                                 positional_marginal_counts,
                                 where_times_which_dirichlet,
@@ -343,6 +344,12 @@ def parse_args():
                              'position -- so they are scored through the model path, '
                              'one forward pass per example, not broadcast as a fixed '
                              '(L, E) map.')
+    parser.add_argument('--counted-baselines', action='store_true',
+                        help='add the counted-statistic rungs: site_substitution '
+                             '(s_i * M[wt_i,a]) and mcm_interpolation '
+                             '((N + kappa*s*M)/(N_total+kappa), kappa=N_total). '
+                             'Separate from --multitree-baselines so an existing '
+                             'roster does not change.')
     parser.add_argument('--substitution-seed', type=int, default=0,
                         help="Seed for fit_substitution_baseline's minibatch sampler. "
                              "NOTES s14 found it saturates by K=2, so one fit is "
@@ -1127,6 +1134,41 @@ def main():
                           "substitution": _substitution,
                           "where_times_which": _where_times_which,
                           "wxw_dirichlet": _wxw_dirichlet}
+
+    # The COUNTED-statistic siblings of the two factored rungs above: `site_prop` is
+    # where_times_which with a counted substitution matrix in place of the fitted
+    # codon x BLOSUM one, and `cpssm_dir` is wxw_dirichlet with the same swap. Math is
+    # antiGen/statistical_baselines.py, kept verbatim from the branch it came from.
+    #
+    # ITS OWN FLAG, not --multitree-baselines: the figures key rows by name and an
+    # unknown model collapses into one NA group, so a roster must not grow silently.
+    if args.counted_baselines:
+        print("\n=== Building counted-statistic baselines ===", flush=True)
+        from antiGen.statistical_baselines import fit as _cs_fit
+        _cs_cache = {}
+
+        def _cs_stats():
+            if "st" not in _cs_cache:
+                print(f"  fitting counted statistics on {len(training_examples)} "
+                      f"training examples...", flush=True)
+                _cs_cache["st"] = _cs_fit(training_examples, seq_len, E)
+                print(f"  N_total = {_cs_cache['st']['N_total']:.0f}", flush=True)
+            return _cs_cache["st"]
+
+        _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
+                              alphabet=AlphabetConfig(amino_acids=allowed_aas))
+
+        def _site_substitution():
+            return CountedStatPredictor(_cs_cfg, _cs_stats(),
+                                        "site_substitution").to(device)
+
+        def _mcm_interpolation():
+            return CountedStatPredictor(_cs_cfg, _cs_stats(),
+                                        "mcm_interpolation").to(device)
+
+        builtin_models["site_substitution"] = _site_substitution
+        builtin_models["mcm_interpolation"] = _mcm_interpolation
+        print("  added 2: site_substitution, mcm_interpolation")
     # The val-selected runs as ONE rung. Registered beside the factored baselines
     # because `builtin_models` is the hook for "a model the eval builds rather than
     # loads", and that is exactly what an ensemble is -- it then goes through the same
@@ -1162,10 +1204,24 @@ def main():
         print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
               f"from {args.ensemble_dir}")
 
-        for name in builtin_models:
-            candidates.append((name, None, None))
-        print(f"  added {len(builtin_models)} factored baselines: "
-              f"{', '.join(builtin_models)}")
+    # EVERY BUILT MODEL BECOMES A CANDIDATE, and this loop is deliberately OUTSIDE
+    # `if args.ensemble_dir:`. Nested there -- as it was -- a run without an ensemble
+    # directory BUILDS the factored baselines and then never scores them: it prints
+    # the roster, resumes past the checkpoints, writes its outputs and reports "Done."
+    # in 26 seconds, having added nothing. That is how `site_substitution` and
+    # `mcm_interpolation` came back missing from all sixteen cutoffs, and it would
+    # equally have dropped codon / substitution / where_times_which from any fresh
+    # CSV. The older cutoff logs show "added 3 factored baselines" with no
+    # --ensemble-dir, so this is a regression being undone, not a new convention.
+    #
+    # Names already queued are skipped: `args.ensemble_name` is appended explicitly
+    # above AND lives in `builtin_models`, so an unguarded loop double-scores it.
+    _queued = {c[0] for c in candidates}
+    _to_add = [n for n in builtin_models if n not in _queued]
+    for name in _to_add:
+        candidates.append((name, None, None))
+    if _to_add:
+        print(f"  added {len(_to_add)} built model(s): {', '.join(_to_add)}")
 
     # Persist baselines / emergence baselines now, before the first (possibly slow) model.
     flush_outputs()

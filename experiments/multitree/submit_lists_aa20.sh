@@ -64,6 +64,7 @@ sbatch --parsable --job-name=macro_aa20 --partition="$PARTITION" --export=ALL \
     default \
     "${COMMON[@]}" \
     --multitree-baselines \
+    --counted-baselines \
     --dump-scores "$STORE/list_score_maps_aa20")
 echo "macro: $MACRO_ID"
 

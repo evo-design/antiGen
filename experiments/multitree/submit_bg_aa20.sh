@@ -69,6 +69,11 @@ fi
 mkdir -p logs
 # gpu_batch, NOT evo_gpu_priority: the contrast half runs for hours and the fast
 # lane is for very short jobs only (user directive, NOTES s74 / CLAUDE.md).
+# 24h suits gpu_batch for a full score of the roster. A RESUME that scores two new
+# rungs does not need it, and quick_preemptible (MaxTime=2h) refuses the ask outright
+# -- "Requested time limit is invalid" -- so the partition and the walltime have to
+# move together.
+TIME=${TIME:-24:00:00}
 PARTITION=${PARTITION:-gpu_batch}
 # EXPORTED, not prefixed. `VAR=v exec sbatch` assigns in this shell without exporting,
 # and `--export=ALL` forwards the exported environment only -- so the prefix form would
@@ -81,10 +86,11 @@ echo "contrast args   = $CONTRAST_EXTRA"
 exec sbatch \
     --job-name=bg_aa20 \
     --partition="$PARTITION" \
-    --time=24:00:00 \
+    --time="$TIME" \
     --export=ALL \
     examples/slurm/background_discrimination_sc2.sh "$OUT" \
     --alphabet ACDEFGHIKLMNPQRSTVWY \
     --train-examples "$REVISED/sc2-2021/train/examples_2021_cur.txt" \
     --root-counts "$REVISED/sc2-2021/train/counts_2021_cur.tsv" \
-    --backbone-examples "$REVISED/sc2-2021/test/examples_all_cur.txt"
+    --backbone-examples "$REVISED/sc2-2021/test/examples_all_cur.txt" \
+    --counted-baselines

@@ -361,6 +361,18 @@ Y_YIELD  <- getOption("coguk.y_yield",  "P(%s cell is listed & emerged by t)")
 WXW_DIR       <- getOption("coguk.wxw_dirichlet", character(0))
 WXW_DIR_LABEL <- getOption("coguk.wxw_dirichlet_label", "Where × which + events")
 
+## The COUNTED-statistic siblings of those two (antiGen/statistical_baselines.py):
+## `site_substitution` is `where_times_which` with a counted substitution matrix in
+## place of the fitted codon x BLOSUM one, and `mcm_interpolation` is the Dirichlet
+## blend with that same swap. Options for the same reason the blend is one -- the
+## published corpus has no such rows, and MODEL_GROUP's names are the per-metric
+## "missing" report, so listing them unconditionally would add permanent holes to a
+## figure that arm never scored. `fig_coguk_list_aa20.R` opts in.
+SXS        <- getOption("coguk.site_substitution", character(0))
+SXS_LABEL  <- getOption("coguk.site_substitution_label", "Site × Substitution")
+MCMI       <- getOption("coguk.mcm_interpolation", character(0))
+MCMI_LABEL <- getOption("coguk.mcm_interpolation_label", "SxS, MCM interpolation")
+
 
 ## --- Model inventory -------------------------------------------------------
 ##
@@ -480,6 +492,26 @@ if (length(WXW_DIR) > 0) {
   MODEL_LABEL <- insert_after(
     MODEL_LABEL, at, setNames(WXW_DIR_LABEL, WXW_DIR))
 }
+
+## The counted pair, each beside the fitted rung it mirrors, for the same reason the
+## blend sits beside its parent: this vector's order is the bar-panel order, and the
+## comparison the pair exists to support is with the fitted version directly above it.
+## No new group and no new colour -- both are fitted on the training examples exactly
+## as their parents are, so they join that block rather than starting one.
+insert_beside <- function(key, label, parent) {
+  if (length(key) == 0) return(invisible(NULL))
+  stopifnot(length(key) == 1, !key %in% names(MODEL_GROUP))
+  at <- match(parent, names(MODEL_GROUP))
+  stopifnot(!is.na(at))
+  ins <- function(v, i, x) c(v[seq_len(i)], x, v[-seq_len(i)])
+  MODEL_GROUP <<- ins(MODEL_GROUP, at, setNames(MODEL_GROUP[[parent]], key))
+  MODEL_LABEL <<- ins(MODEL_LABEL, at, setNames(label, key))
+}
+insert_beside(SXS, SXS_LABEL, "where_times_which")
+## After the blend when the blend is drawn, so the two Dirichlet-form rungs sit
+## together; otherwise after its own fitted sibling.
+insert_beside(MCMI, MCMI_LABEL,
+              if (length(WXW_DIR) > 0) WXW_DIR else "where_times_which")
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
                   "Pandemic Data in Training Window", "Pre-Pandemic Data Only")

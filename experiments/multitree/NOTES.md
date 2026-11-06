@@ -11887,3 +11887,112 @@ staging script both default to `allcells_pooled`.
   with `--split-date`, and pins `--substitution-seed` (`SUBSEED`, default 0).
 * `experiments/multitree/stage_macro_summaries.sh`, `macro_series_daemon.sh` --
   default suffix `allcells_pooled`.
+
+## 112. Two counted-statistic baselines, and a candidate-registration regression
+## they uncovered (2026-11-05)
+
+`Site x Substitution` (s_i * M[wt_i, a]) and `SxS, MCM interpolation`
+((N + kappa*s*M)/(N_total+kappa), kappa = N_total) added to sc2_results_revised's
+B-E and H, from `av-multitree`'s `statistical_baselines.py`.
+
+**The file is copied VERBATIM** to `antiGen/statistical_baselines.py`. It calls itself
+the single source of truth for this math and needs only torch, so copying beats
+re-deriving: the two arms cannot drift. `CountedStatPredictor` (eval_utils) is a thin
+wrapper that puts it behind the model interface, which it needs because the scores are
+EXAMPLE-DEPENDENT -- `M[wt_i, a]` is indexed by the query's own residues -- so they
+cannot go through `fixed_map_metrics`.
+
+### They are the counted siblings of two rungs already drawn
+
+| ours (fitted codon x BLOSUM) | these (counted M) |
+|---|---|
+| `where_times_which` = log s_i + log P_fit(a\|wt_i) | `site_substitution` |
+| `wxw_dirichlet` = (N + kappa*pi_fit)/(N_t+kappa) | `mcm_interpolation` |
+
+Each is drawn BESIDE the rung it mirrors, so the panel reads as what the fitted "which"
+term buys over counting substitutions. The answer, at every cutoff measured, is
+NOTHING: SxS beats where_times_which at both ends (0.743 vs 0.711 at 2021-01-01, 0.792
+vs 0.775 at 2024-01-01) and on panels D/E Site x Substitution places FIRST, above
+antiGen (val x10). The Dirichlet pair crosses over late (0.872 vs 0.876 at 2024-01-01).
+
+**They are near-duplicates of EACH OTHER**: rank corr 0.988 between them, 0.32 between
+the interpolation and the MCM it is supposed to interpolate toward. With kappa =
+N_total the prior s*M spreads over all 25,460 cells while N concentrates on a few
+thousand, so the interpolation is dominated by the SxS term. That is a property of the
+published kappa, not a defect, but it is why the two lines sit on top of each other.
+
+### Their own flag, not --multitree-baselines
+
+The figures key rows BY NAME and an unlisted model stops the render ("models with no
+group assignment"), so a roster must not grow silently. `--counted-baselines` in
+eval.py, list_macro.py and background_discrimination.py; the figure side uses the
+existing optional-rung pattern (`coguk.wxw_dirichlet`), default empty.
+
+### THE REGRESSION: built models were never scored
+
+All sixteen cutoff evals COMPLETED in 26 seconds having added nothing -- printing the
+roster, resuming past the checkpoints, writing outputs and reporting "Done."
+
+`eval.py`'s `for name in builtin_models: candidates.append(...)` was nested inside
+`if args.ensemble_dir:`. Without an ensemble directory every built model is
+CONSTRUCTED AND THEN DISCARDED. Not mine: it is nested at HEAD, and an older cutoff log
+shows "added 3 factored baselines" with no --ensemble-dir, so it regressed between.
+
+**It was never about the two new rungs.** `codon`, `substitution`,
+`where_times_which` and `wxw_dirichlet` would ALSO vanish from any fresh CSV; the
+existing ones only look healthy because older runs wrote them. The fix moves the loop
+out and skips names already queued (`args.ensemble_name` is appended explicitly AND
+lives in `builtin_models`, so an unguarded loop double-scores it). After it:
+"added 6 built model(s)".
+
+Re-scoring the four pre-existing baselines reproduced the published numbers EXACTLY --
+16 cutoffs, worst |new - published| = 0.0e+00, no duplicate rows.
+
+### Three figure-side traps, two of them self-inflicted
+
+* **The options-ordering trap, walked into after quoting it.** Setting
+  `coguk.drop_models` in `fig_coguk_list_aa20.R` CLOBBERED
+  `panels_coguk_export.R`'s pruned list, because a sourced wrapper's `options()` run
+  after the caller's and WIN. That put the whole fine-tune block back into B-E, which
+  widened the top legend to two rows, rebalanced the grid and CLIPPED panel B's title.
+  Fixed by APPENDING: `c(getOption("coguk.drop_models", c("CoVFit","pyr0")), ...)`.
+* **`aa20_supp_*` clobbering (pre-existing, s-note).** `fig_sc2_revised.R` runs
+  `panels_sc2_export.R`, which sets a pruned roster and then sources
+  `fig_sc2_aa20.R`, which re-writes the aa20 supplements with that pruning --
+  `aa20_supp_dms.png` lost its antiGen and Ensembles groups, 16.6% of pixels.
+  ORDER IS THE FIX: render the revised figure first, the aa20 arm LAST.
+* **A silent success in my own finisher.** `finish_counted_baselines.sh` sent the
+  render step to /dev/null, so both renders failed and it printed "DONE".
+
+### BloomNeher_2023-10-01 came along for the ride
+
+Re-running list_macro for the counted rungs also scored it (it sits in
+data/baselines), so the roster went 31 -> 34, not 32. It is a DATE-SPECIFIC map and
+this corpus is cut at 2021, so it is dropped by name rather than grouped.
+
+### Background: 2 models, not 48
+
+`background_contrast.py` has no resume and re-scores every `scores_*.npz` -- hours,
+past quick_preemptible's 2h wall, with NOTHING written when killed. Lift is per-model
+and the cellsets come from the BACKBONE, not the roster, so the two rungs were scored
+in an isolated directory (10m48s) and their rows merged. The equivalence is CHECKED,
+not assumed: 2,426 cells, identical sets AND host counts, or the merge refuses.
+
+### Cluster, for the record
+
+gpu_batch congested (6 nodes draining); cpu_batch hit `QOSGrpCpuLimit`;
+quick_preemptible caps submissions per user (8 of 16 accepted) AND walltime at 2h,
+which `submit_bg_aa20.sh`'s hardcoded `--time=24:00:00` violated outright. Partition
+and walltime have to move together; it now takes a `TIME` knob.
+
+### Code
+
+* `antiGen/statistical_baselines.py` -- new, verbatim from av-multitree.
+* `antiGen/eval_utils.py` -- `CountedStatPredictor`.
+* `antiGen/config.py` -- `SITE_SUBSTITUTION`, `MCM_INTERPOLATION`.
+* `antiGen/eval.py` -- `--counted-baselines`, and the registration fix.
+* `antiGen/list_macro.py`, `antiGen/background_discrimination.py` -- same flag.
+* `fig_sc2_aa20.R` -- two rows, dashed, legend 4 -> 5 rows, and the gate colour
+  vectors converted POSITIONAL -> NAMED (same colours to the same rungs; naming makes
+  that independent of row order, which is what the comments there warn about).
+* `fig_coguk_list.R` / `_aa20.R`, `panels_sc2_export.R`, `figS_gate_macro.R`.

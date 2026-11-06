@@ -62,7 +62,8 @@ from antiGen.config import (AlphabetConfig, CodonConfig, LEGACY_AAS, ModelConfig
 from antiGen.eval import (MutationDataset, config_label, dataset_of_train_args,
                           discover_checkpoints, peek_checkpoint_meta)
 from antiGen import eval_utils as eu
-from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
+from antiGen.eval_utils import (CountedStatPredictor, RBD_RANGE,
+                                build_model_gap_stop_mask,
                                 compute_hit_rate, fit_substitution_baseline,
                                 load_baselines, load_checkpoint,
                                 positional_marginal_counts,
@@ -310,6 +311,13 @@ def main():
                          'from which flag named the file. Matters only with '
                          '--split-date, where the test corpus carries pre-cutoff '
                          'branches that belong to the training window.')
+    ap.add_argument('--counted-baselines', action='store_true',
+                    help='add the counted-statistic rungs: site_substitution '
+                         '(s_i * M[wt_i,a]) and mcm_interpolation '
+                         '((N + kappa*s*M)/(N_total+kappa), kappa=N_total). Separate '
+                         'from --multitree-baselines so an existing roster does not '
+                         'change: the figures key rows by name and an unknown model '
+                         'collapses into an NA group (NOTES s-note).')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--skip-baselines', action='store_true',
                     help='Score only the checkpoints. The CSV baselines are fixed maps '
@@ -572,7 +580,7 @@ def main():
                     training_examples, device, allowed_aas, seed=args.substitution_seed)
             return _fit_cache["fit"]
 
-        builtin_models = {
+        builtin_models.update({
             "codon": lambda: create_model(ModelConfig(
                 model_type=ModelType.CODON, seq_len=seq_len,
                 alphabet=AlphabetConfig(amino_acids=allowed_aas),
@@ -584,10 +592,36 @@ def main():
                 _fit()).to(device),
             "wxw_dirichlet": lambda: where_times_which_dirichlet(
                 _fit(), training_examples, seq_len, E).to(device),
-        }
+        })
         for name in builtin_models:
             candidates.append((name, None))
         print(f"  added {len(builtin_models)}: {', '.join(builtin_models)}")
+
+    if args.counted_baselines:
+        print("\n=== Building counted-statistic baselines ===", flush=True)
+        from antiGen.statistical_baselines import fit as _cs_fit
+        _cs_cache = {}
+
+        def _cs_stats():
+            if "st" not in _cs_cache:
+                print(f"  fitting counted statistics on {len(training_examples)} "
+                      f"training examples...", flush=True)
+                _cs_cache["st"] = _cs_fit(training_examples, seq_len, E)
+                print(f"  N_total = {_cs_cache['st']['N_total']:.0f}", flush=True)
+            return _cs_cache["st"]
+
+        _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
+                              alphabet=AlphabetConfig(amino_acids=allowed_aas))
+        counted_models = {
+            "site_substitution": lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "site_substitution").to(device),
+            "mcm_interpolation": lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
+        }
+        builtin_models.update(counted_models)
+        for _n in counted_models:
+            candidates.append((_n, None))
+        print(f"  added {len(counted_models)}: {', '.join(counted_models)}")
 
     by_model = read_done(args.output_dir)
     skipped = []

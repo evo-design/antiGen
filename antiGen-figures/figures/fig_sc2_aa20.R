@@ -124,11 +124,18 @@ options(
     ## because the panel exists to ask what the gate buys over its parents.
     "gated_static_xfmr_pssm_lr0.0001"           = "antiGen / PSSM gate",
     "where_times_which"                         = "Where x which",
+    ## The COUNTED siblings, each beside the fitted rung it mirrors. `site_substitution`
+    ## is where_times_which with a counted substitution matrix in place of the fitted
+    ## codon x BLOSUM one; `mcm_interpolation` is wxw_dirichlet with the same swap, same
+    ## conjugate form, same kappa = N_total. Pairing them this way is the whole point:
+    ## the panel then reads as what the FITTED "which" term buys over counting.
+    "site_substitution"                         = "Site x Substitution",
     ## Beside its parent: it is the same factored map with the observed events
     ## folded in as a conjugate update, and the panel's question is what each
     ## rung does as the training window grows -- which is the one thing the
     ## update's weight depends on.
     "wxw_dirichlet"                             = "Where x which + events",
+    "mcm_interpolation"                         = "SxS, MCM interpolation",
     "pssm_root"                                 = "PSSM",
     "blosum62"                                  = "BLOSUM62",
     "EVEscape"                                  = "EVEscape"
@@ -154,7 +161,8 @@ options(
   sc2.gate_xlab = "Train / test cutoff",
   sc2.gate_xlim_hi = NA,
   ## Drawn dashed: the rungs that are not antiGen-derived.
-  sc2.gate_baselines = c("PSSM", "BLOSUM62", "EVEscape", "Where x which"),
+  sc2.gate_baselines = c("PSSM", "BLOSUM62", "EVEscape", "Where x which",
+                         "Site x Substitution", "SxS, MCM interpolation"),
   ## In `sc2.gate_rows` order, which is the factor order the loader pins.
   ## IN `sc2.gate_rows` ORDER. The by-name loader pins `model` as a factor in that
   ## order and `scale_color_manual` matches an unnamed vector to the levels
@@ -171,15 +179,38 @@ options(
   ## the legend showed two blue swatches for different models.
   ## Eight entries over four rows is two columns; over the published three rows it
   ## is three columns, which runs off the panel and over panel N's legend.
-  sc2.gate_legend_nrow = 4,
-  sc2.gate_colors_main = c(ANTIGEN_BLUE, FINETUNE_COLORS[5], GATE_BLUE,
-                           FINETUNE_COLORS[1], FINETUNE_COLORS[2],
-                           MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
-                           MODEL_TYPE_COLORS[3]),
-  sc2.gate_colors_supp = c(ANTIGEN_BLUE, FINETUNE_COLORS[5], GATE_BLUE,
-                           FINETUNE_COLORS[1], FINETUNE_COLORS[2],
-                           MODEL_TYPE_COLORS[4], MODEL_TYPE_COLORS[2],
-                           MODEL_TYPE_COLORS[3]),
+  ## FIVE now, not four: ten entries over four rows is three columns, which the note
+  ## above records as running off the panel and over panel N's legend.
+  sc2.gate_legend_nrow = 5,
+  ## NAMED, replacing the positional vectors the comments above agonise over. The
+  ## mapping is unchanged for the eight rungs that already existed, so those lines keep
+  ## their colours; naming simply makes that independent of row order and of who is
+  ## dropped. The two counted rungs get a teal absent from the rest of the palette --
+  ## not a blue (antiGen, the gate), not a mauve (the where x which family) and not a
+  ## grey (PSSM, BLOSUM62, EVEscape) -- in two shades, because they are near-duplicates
+  ## of each other (rank corr 0.99) and should read as a pair.
+  sc2.gate_colors_main = c(
+    "antiGen"                 = ANTIGEN_BLUE,
+    "ESM-2 35M, partial FT"   = FINETUNE_COLORS[5],
+    "antiGen / PSSM gate"     = GATE_BLUE,
+    "Where x which"           = FINETUNE_COLORS[1],
+    "Site x Substitution"     = "#3d7068",
+    "Where x which + events"  = FINETUNE_COLORS[2],
+    "SxS, MCM interpolation"  = "#8fb5ad",
+    "PSSM"                    = MODEL_TYPE_COLORS[4],
+    "BLOSUM62"                = MODEL_TYPE_COLORS[2],
+    "EVEscape"                = MODEL_TYPE_COLORS[3]),
+  sc2.gate_colors_supp = c(
+    "antiGen"                 = ANTIGEN_BLUE,
+    "ESM-2 35M, partial FT"   = FINETUNE_COLORS[5],
+    "antiGen / PSSM gate"     = GATE_BLUE,
+    "Where x which"           = FINETUNE_COLORS[1],
+    "Site x Substitution"     = "#3d7068",
+    "Where x which + events"  = FINETUNE_COLORS[2],
+    "SxS, MCM interpolation"  = "#8fb5ad",
+    "PSSM"                    = MODEL_TYPE_COLORS[4],
+    "BLOSUM62"                = MODEL_TYPE_COLORS[2],
+    "EVEscape"                = MODEL_TYPE_COLORS[3]),
   ## The published figure hides two gate variants that do not exist on this arm.
   sc2.gate_drop_main = character(0),
 

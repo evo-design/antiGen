@@ -98,9 +98,14 @@ REQUEUE_ARGS=()
 # marks those twelve [redo]. The re-run is cheap: eval.py resumes from its own CSVs, so
 # it skips the models already there AND the baseline sweep (eval.py:1002 guards the
 # sweep on the baseline rows already being loaded), leaving one analytic model to score.
+#
+# `site_substitution` and `mcm_interpolation` were added after all sixteen cutoffs had
+# been evaluated, so naming them here marks every one [redo]. Same cheap re-run as
+# wxw_dirichlet: eval.py resumes from its own CSVs and scores only the two new rungs.
 PANEL_ROWS="simple_d128_n2_lr0.0001 esm2_esm2_t12_35M_UR50D_lr0.0001_partial4
             gated_static_xfmr_pssm_lr0.0001
-            where_times_which wxw_dirichlet pssm_root blosum62 EVEscape"
+            where_times_which wxw_dirichlet pssm_root blosum62 EVEscape
+            site_substitution mcm_interpolation"
 
 CUTOFFS="2020-04-01 2020-07-01 2020-10-01 2021-01-01 2021-04-01 2021-07-01
          2021-10-01 2022-01-01 2022-04-01 2022-07-01 2022-10-01 2023-01-01
@@ -190,7 +195,8 @@ for D in $CUTOFFS; do
         --root-counts    "$REVISED/sc2-$D/train/counts_${D}_cur.tsv" \
         --variant-counts-dir "$REVISED/sc2-test/counts_ba2" \
         --counts-since "$D" \
-        --multitree-baselines
+        --multitree-baselines \
+        --counted-baselines
     n_sub=$((n_sub + 1))
 done
 echo ""

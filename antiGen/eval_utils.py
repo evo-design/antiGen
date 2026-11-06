@@ -502,6 +502,41 @@ class WhereTimesWhichPredictor(BaseFitnessPredictor):
         return which + self.log_position.view(1, -1, 1)
 
 
+class CountedStatPredictor(BaseFitnessPredictor):
+    """The counted-statistic family: Site x Substitution and its MCM interpolation.
+
+    Thin wrapper over ``antiGen.statistical_baselines``, which is the single source of
+    truth for this math and is kept VERBATIM from the branch it was written on so the
+    two arms cannot drift. This class exists only to put that math behind the model
+    interface, because the scores are example-dependent -- ``M[wt_i, a]`` is indexed by
+    the query's own residues -- so they cannot go through ``fixed_map_metrics``.
+
+    THE SIBLINGS ALREADY ON THESE PANELS. ``site_substitution`` is
+    ``where_times_which`` with a COUNTED substitution matrix in place of the fitted
+    codon x BLOSUM one, and ``mcm_interpolation`` is ``wxw_dirichlet`` with the same
+    swap -- same conjugate form, same kappa = N_total. So the pair reads directly as
+    what the fitted "which" term buys over simply counting substitutions.
+    """
+
+    def __init__(self, config, stats, key: str):
+        super().__init__(config)
+        self._key = key
+        self.register_buffer('_st_N', stats['N'].float())
+        self.register_buffer('_st_occ', stats['occ'].float())
+        self.register_buffer('_st_s', stats['s'].float())
+        self.register_buffer('_st_M', stats['M'].float())
+        self._n_total = float(stats['N_total'])
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        from antiGen.statistical_baselines import score_map
+        return score_map(self._key, {'N': self._st_N, 'occ': self._st_occ,
+                                     's': self._st_s, 'M': self._st_M,
+                                     'N_total': self._n_total}, x)
+
+    def get_num_parameters(self, trainable_only: bool = True) -> int:
+        return 0
+
+
 class WhereTimesWhichDirichletPredictor(BaseFitnessPredictor):
     """``where_times_which`` as a conjugate PRIOR, updated by the observed events.
 
