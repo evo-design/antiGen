@@ -12151,11 +12151,28 @@ one of the other figures' own objects.
 | E | background lift, de novo | top decile, de novo, PER MUTATION |
 | G | DMS correlation | the cutoff series, PER CELL |
 
-**The layout is the argument, and B-E is a 2x2 of it**: {all, de novo} x {per cell,
-per mutation}, reading left to right per cell -> per mutation in both rows. G and H
-carry the same contrast across the cutoff series. The gap within each pair reads
-directly as how much of a score rides on recurrence, which is the thing s109/s110 built
-the machinery to measure and which no single figure showed side by side before.
+**Reordered to read top-down as an argument** (final layout): row 1 says what the
+evaluation IS -- the definition, then one worked case; row 2 says how it behaves as the
+training window grows, per cell beside per mutation; row 3 is the full roster broken out
+as a 2x2, {all, de novo} x {per cell, per mutation}, left to right per cell -> per
+mutation in both halves so the contrast runs one way everywhere.
+
+    row 1   A cartoon            B case study
+    row 2   C cutoff, per cell   D cutoff, per mutation
+    row 3   E all, per cell      F all, per mutation
+            G de novo, per cell  H de novo, per mutation
+
+The gap within each pooling pair reads directly as how much of a score rides on
+recurrence, which is what s109/s110 built the machinery to measure and which no single
+figure showed side by side before.
+
+**FOUR BAR PANELS IN ONE ROW changes two things.** Only the LEFTMOST carries the y-axis
+model names -- all four share one roster in one order, so the names are read once per
+row rather than four times -- and the titles shrink to the subset and the pooling
+("All escape, per cell"), the x axis already saying what the number is. At 16in across,
+four long titles clip; a ggplot title is clipped, not wrapped. The per-cell pair share a
+~0.5 x-range and the per-mutation pair ~0.8, so the columns stay comparable by
+free scales rather than by a forced common one.
 
 Dropped in the process: BOTH background-lift panels. `sc2_results_revised` is untouched
 and still carries them.

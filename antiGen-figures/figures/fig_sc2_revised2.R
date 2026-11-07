@@ -10,13 +10,17 @@
 ##   G  was DMS correlation                   -> the cutoff series, PER CELL
 ##
 ##   row 1   A  the next-mutation recall cartoon             (sc2_results_aa20 A)
-##           B  top decile, all, per cell                    (coguk_list_aa20 C)
-##           C  top decile, all, per mutation                (coguk eventwtd A)
-##   row 2   D  top decile, de novo, per cell                (coguk_list_aa20 D)
-##           E  top decile, de novo, per mutation            (coguk eventwtd B)
-##           F  BA.2.86 -> KP.3 case study             (cartoons/ba286_to_kp3.png)
-##   row 3   G  cutoff series, per cell                      (gating_macro_aa20)
-##           H  cutoff series, per mutation                  (sc2_results_aa20 O)
+##           B  BA.2.86 -> KP.3 case study             (cartoons/ba286_to_kp3.png)
+##   row 2   C  cutoff series, per cell                      (gating_macro_aa20)
+##           D  cutoff series, per mutation                  (sc2_results_aa20 O)
+##   row 3   E  all escape, per cell                         (coguk_list_aa20 C)
+##           F  all escape, per mutation                     (coguk eventwtd A)
+##           G  de novo, per cell                            (coguk_list_aa20 D)
+##           H  de novo, per mutation                        (coguk eventwtd B)
+##
+## FOUR BAR PANELS IN ONE ROW, so only the LEFTMOST carries the y-axis model names --
+## all four share one roster in one order -- and their titles name only the subset and
+## the pooling, the x axis ("Recall at q = 0.1") already saying what the number is.
 ##
 ## THE ARGUMENT THIS LAYOUT MAKES is that the two poolings are the comparison, and
 ## B-E is a 2x2 of it: {all, de novo} x {per cell, per mutation}, reading left to right
@@ -79,21 +83,28 @@ case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
 
 ## Unchanged from the revised figure: the first column carries the wide cartoon and the
 ## panel whose model names need the room.
-COL_W <- c(1.85, 1.65, 1.75)
-row1 <- plot_grid(sc$cartoon, cg$decile_all_pc, cg$decile_all_evt, nrow = 1,
-                  rel_widths = COL_W, labels = c("A", "B", "C"))
-row2 <- plot_grid(cg$decile_dn_pc, cg$decile_dn_evt, case_study, nrow = 1,
-                  rel_widths = COL_W, labels = c("D", "E", "F"))
-## PER CELL ON THE LEFT, per mutation on the right, matching B -> C above, so the eye
-## reads the same direction in both halves of the figure.
-row3 <- plot_grid(gm$gate_macro, sc$gate_pm, nrow = 1,
-                  rel_widths = c(1.7, 1.7), labels = c("G", "H"))
+## Two fixed-aspect images, half the width each.
+row1 <- plot_grid(sc$cartoon, case_study, nrow = 1,
+                  rel_widths = c(1, 1), labels = c("A", "B"))
+## PER CELL ON THE LEFT, per mutation on the right -- the direction row 3 also reads,
+## so the contrast runs one way everywhere in the figure.
+row2 <- plot_grid(gm$gate_macro, sc$gate_pm, nrow = 1,
+                  rel_widths = c(1, 1), labels = c("C", "D"))
+## THE FIRST PANEL IS WIDER because it alone carries the model names.
+row3 <- plot_grid(cg$decile_all_pc, cg$decile_all_evt,
+                  cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
+                  rel_widths = c(1.75, 1.1, 1.1, 1.1),
+                  labels = c("E", "F", "G", "H"))
 
 save_figure(
   plot_grid(cg$legend, row1, row2, row3, ncol = 1,
-            rel_heights = c(0.12, 1.25, 1.25, 1.1)),
+            ## Row 3 carries 24 model rows and gets the most height; the two image
+            ## panels in row 1 are fixed-aspect and need the least.
+            rel_heights = c(0.12, 0.95, 1.0, 1.45)),
   getOption("revised2.fig_main", "sc2_results_revised2"),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
-  width = 13, height = 10.5)
+  ## WIDER AND SHORTER than the revised figure: four bar panels across need the width,
+  ## and the two rows of bar panels have become one.
+  width = 16, height = 10)
 cat("wrote figs/sc2_results_revised2.png (+ .pdf)\n")

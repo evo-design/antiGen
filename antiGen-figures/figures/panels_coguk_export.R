@@ -120,20 +120,22 @@ saveRDS(list(
   ## panel LEADS ITS ROW and FALSE for the one beside it, so a row carries the model
   ## names once. `decile_all_evt` sits second in row 1; `decile_dn_evt` leads row 2.
   decile_all_evt = as_grob(decile_bar(RECALL_SUPP[1], FALSE, RECALL_SUPP) +
-                           ggtitle("Top decile recall, all escape (per mutation)")),
+                           ggtitle("All escape, per mutation")),
   decile_dn_evt  = as_grob(decile_bar(RECALL_SUPP[2], FALSE, RECALL_SUPP) +
-                           ggtitle("Top decile recall, de novo (per mutation)")),
+                           ggtitle("De novo, per mutation")),
   ## The per-CELL partner of `decile_all_evt`, titled so it says which pooling it is.
   ## `decile_all` carries the unqualified title the revised figure uses and is left
   ## alone; a figure whose argument IS the pooling has to name both sides of the pair,
   ## or the reader has to know which one the unqualified title meant.
   decile_all_pc  = as_grob(decile_bar(RECALL_MAIN[1], TRUE,  RECALL_MAIN) +
-                           ggtitle("Top decile recall, all escape (per cell)")),
-  ## The de novo pair's per-CELL half. `decile_dn` carries the revised figure's
-  ## unqualified title and sits SECOND there, so it is drawn without y-axis labels;
-  ## here the same metric LEADS row 2 and needs them, which is a different grob.
-  decile_dn_pc   = as_grob(decile_bar(RECALL_MAIN[2], TRUE,  RECALL_MAIN) +
-                           ggtitle("Top decile recall, de novo (per cell)")),
+                           ggtitle("All escape, per cell")),
+  ## The de novo pair's per-CELL half. A separate grob from `decile_dn` because the
+  ## TITLE differs -- that one carries the revised figure's unqualified wording, these
+  ## four name their subset and pooling, which is the whole point of putting them in
+  ## one row. Both are drawn without y-axis labels: of the four, only the leftmost
+  ## carries the model names, and all four share one roster in one order.
+  decile_dn_pc   = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN) +
+                           ggtitle("De novo, per cell")),
   bg_all       = as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
                            ggtitle("Query adaptability, all escape mutations")),
   ## "de novo", not "all". The title given for this panel duplicated E's, and this
