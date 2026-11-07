@@ -146,6 +146,10 @@ saveRDS(list(
                        ylab = quote(rho ~ "(Expression)"), alpha_lab = "Score",
                        shade_fill = TRUE)
   })),
-  gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations"))
+  gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations")),
+  ## The same panel, titled to name its pooling, for a figure that draws the per-cell
+  ## cutoff series beside it. `gate` keeps the unqualified title the revised figure uses.
+  gate_pm = as_grob(gate_plot +
+                      ggtitle("Top decile recall, all RBD cells (per mutation)"))
 ), out)
 cat("exported sc2 panels ->", out, "\n")

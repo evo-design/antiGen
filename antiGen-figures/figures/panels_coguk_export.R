@@ -107,6 +107,31 @@ saveRDS(list(
                            ggtitle("Top decile recall, all escape mutations")),
   decile_dn    = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN) +
                            ggtitle("Top decile recall, de novo escape mutations")),
+  ## THE SAME TWO RECALL PANELS, EVENT-WEIGHTED. `RECALL_SUPP` is the per-mutation
+  ## pair where `RECALL_MAIN` is per-cell; everything else -- roster, pruning, colours,
+  ## pool, tie rule -- is identical, because this is the same `decile_bar` called with
+  ## a different metric. Exported so a figure can show both poolings of one quantity
+  ## side by side; `sc2_results_revised` draws neither of these and is unaffected.
+  ##
+  ## THE TITLE NAMES THE POOLING, which the per-cell panels do not have to: those are
+  ## the figure's default reading, and a qualifier on both would be noise. A reader
+  ## seeing "(per mutation)" on one of an adjacent pair knows the other is not.
+  ## THE `first` FLAG IS THE Y-AXIS LABELS, not a cosmetic. It is TRUE for whichever
+  ## panel LEADS ITS ROW and FALSE for the one beside it, so a row carries the model
+  ## names once. `decile_all_evt` sits second in row 1; `decile_dn_evt` leads row 2.
+  decile_all_evt = as_grob(decile_bar(RECALL_SUPP[1], FALSE, RECALL_SUPP) +
+                           ggtitle("Top decile recall, all escape (per mutation)")),
+  decile_dn_evt  = as_grob(decile_bar(RECALL_SUPP[2], TRUE,  RECALL_SUPP) +
+                           ## Shorter than its partner's: this panel LEADS its row, so the y-axis model names
+                           ## eat the width its title would otherwise have, and a ggplot title is
+                           ## clipped rather than wrapped.
+                           ggtitle("Top decile recall, de novo (per mutation)")),
+  ## The per-CELL partner of `decile_all_evt`, titled so it says which pooling it is.
+  ## `decile_all` carries the unqualified title the revised figure uses and is left
+  ## alone; a figure whose argument IS the pooling has to name both sides of the pair,
+  ## or the reader has to know which one the unqualified title meant.
+  decile_all_pc  = as_grob(decile_bar(RECALL_MAIN[1], TRUE,  RECALL_MAIN) +
+                           ggtitle("Top decile recall, all escape (per cell)")),
   bg_all       = as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
                            ggtitle("Query adaptability, all escape mutations")),
   ## "de novo", not "all". The title given for this panel duplicated E's, and this
@@ -116,6 +141,7 @@ saveRDS(list(
                            ggtitle("Query adaptability, de novo escape mutations")),
   legend       = legend_grob,
   decile_names = RECALL_MAIN,
+  decile_names_evt = RECALL_SUPP,
   bg_names     = BG_MAIN
 ), out)
 cat("exported coguk panels ->", out, "\n")

@@ -12138,3 +12138,67 @@ event-weighted), panels D/E (where SxS places first), and the event-weighted sup
 (18.7 pp against 10.1), the ordering now holds under BOTH poolings, on every panel, and
 across the whole cutoff series. The fitted codon x BLOSUM "which" term is not buying
 anything over counting substitutions anywhere we have measured.
+
+## 113. sc2_results_revised2: the two poolings as the figure's argument (2026-11-07)
+
+A revision of the revision. Draws nothing new and runs no evaluation; every panel is
+one of the other figures' own objects.
+
+| | sc2_results_revised | revised2 |
+|---|---|---|
+| C | top decile, de novo, PER CELL | top decile, all, PER MUTATION |
+| D | background lift, all list cells | top decile, de novo, PER MUTATION |
+| G | DMS correlation | the cutoff series, PER CELL |
+
+**The layout is the argument.** B and C are ONE quantity -- top-decile recall on all
+escape mutations -- counted per cell and per mutation; G and H are one quantity the
+same way across the cutoff series. The gap within each pair reads directly as how much
+of a score rides on recurrence, which is the thing s109/s110 built the machinery to
+measure and which no single figure showed side by side before.
+
+Dropped in the process: cell-weighted de novo recall (old C) and adaptability on all
+cells (old D). `sc2_results_revised` is untouched and still carries both.
+
+### Three subprocesses, not two
+
+The per-cell and per-mutation cutoff panels are the SAME drawer over different data
+through different loaders, and `sc2.gate_loader` is one option read at source time, so
+one R session cannot build both. `panels_gate_macro_export.R` is the third export.
+
+### The event-weighted bars are pruned like the rest
+
+They come from `panels_coguk_export.R`, which sets this figure's `coguk.drop_models`,
+so C and D carry the revised figure's roster -- NOT `aa20_supp_coguk_eventwtd`'s full
+one, which is what "filtered to the same models" asked for.
+
+### Two layout defects of mine, both caught by looking
+
+* **`first` IS THE Y-AXIS LABELS.** Exported with `first = FALSE` for `decile_dn_evt`,
+  which then LED row 2 -- so D and E both drew bars with no model names at all. It is
+  TRUE for whichever panel leads its row.
+* **A clipped title, twice.** A ggplot title is clipped rather than wrapped (the trap
+  s106 records). The leading panel of a row loses width to its y-axis labels, so D's
+  title has to be SHORTER than its partner's, not the same length.
+
+### Both sides of each pair name their pooling
+
+`decile_all` and `gate` carry unqualified titles and are left alone for the revised
+figure. revised2 uses new `decile_all_pc` and `gate_pm` objects titled "(per cell)" and
+"(per mutation)". Unqualified on both sides of a pooling comparison, a reader has to
+already know which convention the bare title meant -- and B is per cell while H is per
+mutation, so the two defaults are not even the same.
+
+### Render order, again
+
+`panels_sc2_export.R` sources `fig_sc2_aa20.R`, so running revised2 rewrites
+`aa20_supp_dms.png` and `sc2_results_aa20.png` with a pruned roster. Rendering the aa20
+arm standalone afterwards restores both to byte-identical. Verified: after the final
+render, the ONLY PNG differing from HEAD is the new figure itself.
+
+### Code
+
+* `antiGen-figures/figures/fig_sc2_revised2.R` -- new.
+* `antiGen-figures/figures/panels_gate_macro_export.R` -- new.
+* `panels_coguk_export.R` -- `decile_all_evt`, `decile_dn_evt`, `decile_all_pc` added;
+  existing objects untouched, so `sc2_results_revised` is unaffected.
+* `panels_sc2_export.R` -- `gate_pm` added, same way.
