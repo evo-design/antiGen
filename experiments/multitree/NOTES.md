@@ -12169,10 +12169,23 @@ figure showed side by side before.
 **FOUR BAR PANELS IN ONE ROW changes two things.** Only the LEFTMOST carries the y-axis
 model names -- all four share one roster in one order, so the names are read once per
 row rather than four times -- and the titles shrink to the subset and the pooling
-("All escape, per cell"), the x axis already saying what the number is. At 16in across,
-four long titles clip; a ggplot title is clipped, not wrapped. The per-cell pair share a
-~0.5 x-range and the per-mutation pair ~0.8, so the columns stay comparable by
-free scales rather than by a forced common one.
+("All escape, per cell"), the x axis already saying what the number is -- a ggplot
+title is clipped, not wrapped. The per-cell pair share a ~0.5 x-range and the
+per-mutation pair ~0.8, so the columns stay comparable by free scales rather than by a
+forced common one.
+
+**11 x 10, not 16 x 10.** At 16in the two fixed-aspect images in row 1 floated in white
+space: an image cannot grow past its own aspect, so extra width is margin rather than
+picture. Narrowing also makes every label LARGER relative to the figure, since text is
+in points and does not scale with the canvas. The binding constraint is the four titles
+in row 3 -- at 11in "De novo escape, per mutation" nearly spans its panel, so this is
+about as narrow as the figure goes without shortening them again or dropping the base
+text size.
+
+**ALL FOUR OF E-H ARE THE CoG-UK ESCAPE LIST.** "de novo" is the subset of that list
+absent from the training window, NOT a different target set, so every one of the four
+titles says "escape". Two of them said only "De novo" at first, which reads as a change
+of target rather than a change of subset -- Ivan caught it.
 
 Dropped in the process: BOTH background-lift panels. `sc2_results_revised` is untouched
 and still carries them.

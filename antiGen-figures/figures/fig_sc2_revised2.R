@@ -104,7 +104,10 @@ save_figure(
   getOption("revised2.fig_main", "sc2_results_revised2"),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
-  ## WIDER AND SHORTER than the revised figure: four bar panels across need the width,
-  ## and the two rows of bar panels have become one.
-  width = 16, height = 10)
+  ## NARROW. At 16in the two fixed-aspect images in row 1 floated in white space --
+  ## they cannot grow past their own aspect, so the extra width is margin, not picture.
+  ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
+  ## every label larger relative to the figure; the limit is the four titles in row 3,
+  ## which clip rather than wrap.
+  width = 11, height = 10)
 cat("wrote figs/sc2_results_revised2.png (+ .pdf)\n")
