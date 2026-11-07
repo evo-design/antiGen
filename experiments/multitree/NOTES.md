@@ -12147,17 +12147,24 @@ one of the other figures' own objects.
 | | sc2_results_revised | revised2 |
 |---|---|---|
 | C | top decile, de novo, PER CELL | top decile, all, PER MUTATION |
-| D | background lift, all list cells | top decile, de novo, PER MUTATION |
+| D | background lift, all list cells | top decile, de novo, PER CELL |
+| E | background lift, de novo | top decile, de novo, PER MUTATION |
 | G | DMS correlation | the cutoff series, PER CELL |
 
-**The layout is the argument.** B and C are ONE quantity -- top-decile recall on all
-escape mutations -- counted per cell and per mutation; G and H are one quantity the
-same way across the cutoff series. The gap within each pair reads directly as how much
-of a score rides on recurrence, which is the thing s109/s110 built the machinery to
-measure and which no single figure showed side by side before.
+**The layout is the argument, and B-E is a 2x2 of it**: {all, de novo} x {per cell,
+per mutation}, reading left to right per cell -> per mutation in both rows. G and H
+carry the same contrast across the cutoff series. The gap within each pair reads
+directly as how much of a score rides on recurrence, which is the thing s109/s110 built
+the machinery to measure and which no single figure showed side by side before.
 
-Dropped in the process: cell-weighted de novo recall (old C) and adaptability on all
-cells (old D). `sc2_results_revised` is untouched and still carries both.
+Dropped in the process: BOTH background-lift panels. `sc2_results_revised` is untouched
+and still carries them.
+
+**I built the wrong D and E first.** Reading "replace C and D with the event-weighted
+A and B" literally puts both event-weighted panels in C and D and discards the per-cell
+de novo panel, which destroys the 2x2 rather than completing it. The end state the
+instruction described -- not the operation it named -- was the thing to build: the old
+C MOVES to D and the second event-weighted panel takes E.
 
 ### Three subprocesses, not two
 

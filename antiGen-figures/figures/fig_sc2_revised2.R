@@ -5,22 +5,25 @@
 ## WHAT MOVED, against sc2_results_revised:
 ##
 ##   C  was top decile, de novo, PER CELL     -> top decile, all, PER MUTATION
-##   D  was background lift, all list cells   -> top decile, de novo, PER MUTATION
+##   D  was background lift, all list cells   -> top decile, de novo, PER CELL
+##   E  was background lift, de novo          -> top decile, de novo, PER MUTATION
 ##   G  was DMS correlation                   -> the cutoff series, PER CELL
 ##
 ##   row 1   A  the next-mutation recall cartoon             (sc2_results_aa20 A)
 ##           B  top decile, all, per cell                    (coguk_list_aa20 C)
 ##           C  top decile, all, per mutation                (coguk eventwtd A)
-##   row 2   D  top decile, de novo, per mutation            (coguk eventwtd B)
-##           E  background lift, de novo                     (coguk_list_aa20 L)
+##   row 2   D  top decile, de novo, per cell                (coguk_list_aa20 D)
+##           E  top decile, de novo, per mutation            (coguk eventwtd B)
 ##           F  BA.2.86 -> KP.3 case study             (cartoons/ba286_to_kp3.png)
 ##   row 3   G  cutoff series, per cell                      (gating_macro_aa20)
 ##           H  cutoff series, per mutation                  (sc2_results_aa20 O)
 ##
-## THE ARGUMENT THIS LAYOUT MAKES is that the two poolings are the comparison. B and C
-## are ONE quantity -- top-decile recall on all escape mutations -- counted per cell and
-## per mutation, and G and H are one quantity the same way across the cutoff series. The
-## gap between each pair reads directly as how much of a score rides on recurrence.
+## THE ARGUMENT THIS LAYOUT MAKES is that the two poolings are the comparison, and
+## B-E is a 2x2 of it: {all, de novo} x {per cell, per mutation}, reading left to right
+## per cell -> per mutation in both rows. G and H are the same contrast carried across
+## the cutoff series. The gap within each pair reads directly as how much of a score
+## rides on recurrence. BOTH background-lift panels drop out to make room;
+## `sc2_results_revised` still carries them.
 ##
 ## THE EVENT-WEIGHTED BARS ARE PRUNED LIKE THE REST. They come from
 ## `panels_coguk_export.R`, which sets this figure's `coguk.drop_models`, so C and D
@@ -79,7 +82,7 @@ case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
 COL_W <- c(1.85, 1.65, 1.75)
 row1 <- plot_grid(sc$cartoon, cg$decile_all_pc, cg$decile_all_evt, nrow = 1,
                   rel_widths = COL_W, labels = c("A", "B", "C"))
-row2 <- plot_grid(cg$decile_dn_evt, cg$bg_dn, case_study, nrow = 1,
+row2 <- plot_grid(cg$decile_dn_pc, cg$decile_dn_evt, case_study, nrow = 1,
                   rel_widths = COL_W, labels = c("D", "E", "F"))
 ## PER CELL ON THE LEFT, per mutation on the right, matching B -> C above, so the eye
 ## reads the same direction in both halves of the figure.
