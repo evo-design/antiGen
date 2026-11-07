@@ -158,4 +158,5 @@ exec sbatch --job-name="$JOBNAME" --partition="$PARTITION" --nice=0 \
     --substitution-seed "$SUBSEED" \
     "${SPLIT_ARGS[@]}" \
     --mutation-list "allcells=$LIST" \
-    --multitree-baselines
+    --multitree-baselines \
+    --counted-baselines

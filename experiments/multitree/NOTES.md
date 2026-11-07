@@ -12105,3 +12105,36 @@ render panel G with two bars and no error, which is worse than the present state
 failing outright. Committing all 21 would close the gap and match the `data/sc2`
 precedent; it is left for a decision rather than taken here, since it is 19 files
 beyond this change.
+
+### Addendum 4: the counted rungs on the CELL-WEIGHTED panel H (2026-11-07)
+
+`aa20_supp_gate_macro` (s109/s110) was built before these rungs existed, and its series
+lives in `data/gating_macro_aa20/`, separate from panel H's `data/gating_aa20/`, so
+none of the s112 work reached it.
+
+**RESUME, not a new suffix.** Re-run into the SAME `_allcells_pooled` directories:
+nothing about the cell list or the example-pooling changed this time, so the 22 rows
+already there are still valid and `list_macro` skips them, scoring 2 models per cutoff
+instead of 24. All sixteen in TEN MINUTES. The earlier suffix changes (s109, s111) were
+necessary precisely because those runs invalidated the existing rows; this one does not,
+and using a fresh suffix here would have cost 3.5 GPU-hours for nothing.
+
+The figure needed no edit: `figS_gate_macro.R` evaluates `fig_sc2_aa20.R`, which already
+carries both rungs in `sc2.gate_rows` with named colours.
+
+**The gate went 336 -> 368 comparisons at 6.0e-08.** The INCREASE is the check that both
+rungs landed on every cutoff: 16 x 2 is exactly 32, and a rung missing from three
+cutoffs would show up as 362, not as a passing worst-case.
+
+### Counted beats fitted at EVERY cutoff
+
+| | mean (counted - fitted) | cutoffs won |
+|---|---|---|
+| `Site x Substitution` vs `where_times_which` | +0.0091 | **16/16** |
+| `SxS, MCM interpolation` vs `wxw_dirichlet` | +0.0106 | **16/16** |
+
+32 of 32 comparisons. Taken with the main figure (0.743 vs 0.711 and 0.792 vs 0.775
+event-weighted), panels D/E (where SxS places first), and the event-weighted supplement
+(18.7 pp against 10.1), the ordering now holds under BOTH poolings, on every panel, and
+across the whole cutoff series. The fitted codon x BLOSUM "which" term is not buying
+anything over counting substitutions anywhere we have measured.
