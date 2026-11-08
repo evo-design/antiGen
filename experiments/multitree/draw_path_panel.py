@@ -52,9 +52,13 @@ BODY = "#e5f3fc"
 ## a pale peach, which is right ON the glyph -- it sits against a pale blue body and
 ## reads as a raised patch -- and unreadable as 8pt text on white. The dark accent is
 ## legible either way, so only the pale one needs a second value.
-SURF_NET, SURF_REVERT = "#d5413e", "#f6d5be"
-NET = "#c0392b"       # a site whose change is still there in KP.3
-REVERT = "#cf8f62"    # a site that changes and changes back
+## ONE WARM FAMILY. style.png's dark accent is a red at hue ~1 deg; its light blobs
+## sampled at hue ~24 deg, and an ink darkened from them drifts to orange -- which,
+## beside the blue body and the red, made three colour families. The light accent is
+## now a PINK on the red's own hue, so the panel is blue plus one red family.
+SURF_NET, SURF_REVERT = "#d5413e", "#f5c6c4"
+NET = "#c9413e"       # a site whose change is still there in KP.3
+REVERT = "#e3908c"    # a site that changes and changes back
 BAND = "#dce8f4"
 TEXT = "#1a1a1a"
 MUTED = "#6b6b6b"
@@ -165,9 +169,9 @@ def main():
                            {p: (SURF_REVERT if p in revert_sites else SURF_NET)
                             for p in marks[i]},
                            BODY, size=(380, 640),
-                           smooth=0.0150, ambient=1.0, specular=0.0, rim=0.0,
+                           smooth=0.0190, ambient=0.82, specular=0.0, rim=0.0,
                            depth_cue=0.05, color_smooth=0.30,
-                           occlusion=0.65, occlusion_scale=0.16,
+                           occlusion=0.30, occlusion_scale=0.35,
                            outline="#7f868d", outline_px=2.0)
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off")

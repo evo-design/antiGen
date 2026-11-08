@@ -12286,6 +12286,24 @@ body, but blurring COLOUR that hard makes a highlighted patch bleed until it rea
 a stain rather than a site. 0.30 keeps the sites discrete, which is how style.png
 shows them.
 
+### Revision: exposure and one warm family
+
+Matching style.png's HISTOGRAM still produced a picture that looked badly exposed --
+some areas blown out, some crushed -- because the numbers that matched were the wrong
+ones to chase. At `ambient = 1.0`, **19.3% of body pixels sat at the ceiling** (flat,
+no gradation: "overexposed") while AO crushed creases to p1 = 109 ("underexposed").
+A reference rendered at a different size and by a different renderer does not
+transfer by percentile.
+
+Final: `ambient 0.82`, `occlusion 0.30`, `occlusion_scale 0.35` (softer), `smooth
+0.019`. Clipped pixels 19.3% -> 1.6%, p1 109 -> 154. A little diffuse back, a much
+gentler occlusion: lobes still read, nothing pinned to either end.
+
+**Two colour families, not three.** The light accent sampled at hue ~24 deg, and an
+ink darkened from it drifted to orange -- blue, red, AND orange. Both accents now sit
+on the red's own hue (~1 deg): surface `#d5413e` / `#f5c6c4`, ink `#c9413e` /
+`#e3908c`.
+
 ### The lesson
 
 Three rounds of adjusting-by-eye moved slowly and in the wrong direction. One
