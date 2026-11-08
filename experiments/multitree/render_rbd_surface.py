@@ -115,8 +115,25 @@ def orient(xyz, resi):
 
 
 def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
-           pad=3.0, outline="#5b7794", outline_px=2.4, ss=2, smooth=0.0118):
-    """Raycast the surface. Returns (RGBA float array, {resi: (px, py)})."""
+           pad=3.0, outline="#5b7794", outline_px=2.4, ss=2, smooth=0.0118,
+           ambient=0.54, specular=0.13, rim=0.16, depth_cue=0.11):
+    """Raycast the surface. Returns (RGBA float array, {resi: (px, py)}).
+
+    THE FOUR SHADING TERMS ARE ARGUMENTS so a caller can ask for a FLATTER body
+    without a second renderer. Defaults reproduce the original look exactly.
+
+      ambient     base light; the rest of the diffuse is 1 - ambient, so raising it
+                  compresses the light-to-dark range and the body reads flatter.
+      specular    the glossy highlight. This is the single strongest "3D" cue -- a
+                  hard bright spot says "shiny solid" more than the shading does.
+      rim         back-light along the silhouette, which lifts the body off the page.
+      depth_cue   how much the far side is darkened.
+
+    Setting specular and rim to 0 and raising ambient gives a flat, printed-looking
+    shape that still has enough gradient to read as rounded. The SILHOUETTE is kept
+    regardless: without it the body dissolves into the page, and an outline is what
+    makes a simplified shape legible rather than a blob.
+    """
     W, H = size[0] * ss, size[1] * ss
     r = rad + probe
     lo, hi = (xyz[:, :2] - r[:, None]).min(0), (xyz[:, :2] + r[:, None]).max(0)
@@ -194,15 +211,17 @@ def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
     ndl = np.clip((nrm * L).sum(-1), 0, 1)
     ndh = np.clip((nrm * Hv).sum(-1), 0, 1)
     ndv = np.clip((nrm * V).sum(-1), 0, 1)
-    shade = 0.54 + 0.46 * ndl                       # ambient + diffuse
+    shade = ambient + (1.0 - ambient) * ndl         # ambient + diffuse
     out = rgb * shade[..., None]
-    out += (0.13 * ndh ** 16)[..., None]            # specular
-    out += (0.16 * (1 - ndv) ** 2.4)[..., None] * np.array([0.55, 0.66, 0.80])  # rim
+    if specular:
+        out += (specular * ndh ** 16)[..., None]
+    if rim:
+        out += (rim * (1 - ndv) ** 2.4)[..., None] * np.array([0.55, 0.66, 0.80])
     # Depth cue: push the far side back rather than leaving the body uniformly lit.
     if mask.any():
         zz = depth.copy(); zz[~mask] = depth[mask].min()
         t = (zz - depth[mask].min()) / max(1e-6, float(np.ptp(depth[mask])))
-        out *= (0.89 + 0.11 * t)[..., None]
+        out *= ((1.0 - depth_cue) + depth_cue * t)[..., None]
 
     rgba = np.zeros((H, W, 4), np.float32)
     rgba[..., :3] = np.clip(out, 0, 1)

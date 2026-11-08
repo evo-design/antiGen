@@ -12239,3 +12239,57 @@ render, the ONLY PNG differing from HEAD is the new figure itself.
 * `panels_coguk_export.R` -- `decile_all_evt`, `decile_dn_evt`, `decile_all_pc` added;
   existing objects untouched, so `sc2_results_revised` is unaffected.
 * `panels_sc2_export.R` -- `gate_pm` added, same way.
+
+## 114. Panel B: flatter glyphs and a cold palette (2026-11-07)
+
+### The shading terms are arguments now
+
+`render_rbd_surface.render` took its four light terms as literals; they are named
+arguments with the old values as defaults, so the original look is reproduced exactly
+and a caller can ask for a flatter one without a second renderer.
+
+| term | default | panel B |
+|---|---|---|
+| `ambient` | 0.54 | **0.80** -- compresses light-to-dark, so the body is a shape with a little modelling rather than a photograph |
+| `specular` | 0.13 | **0** -- the single strongest "3D" cue; a hard bright spot says "shiny solid" louder than the shading does |
+| `rim` | 0.16 | **0** -- back-light along the silhouette, which lifts the body off the page |
+| `depth_cue` | 0.11 | **0.05** |
+
+`smooth` 0.0118 -> 0.020 as well, merging the per-atom bumps into one body.
+
+**THE SILHOUETTE STAYS.** It is tempting to read "simpler" as "fewer lines", but the
+module docstring already records why it exists: shading alone leaves the body
+dissolving into the page. On a FLATTER body it matters more, not less -- with the rim
+light gone the outline is the only thing separating shape from background.
+
+### Cold palette
+
+`NET` `#c0392b` -> `#2d4f6b` and `REVERT` `#e8a07e` -> `#6b8ead`. The red and orange
+were the only warm colour in the panel and two more hues than it needs: filled vs
+hollow ALREADY separates the two cases in the rank chart and in the key, so colour was
+carrying a redundant distinction there -- but NOT on the structures, where the marks
+are the only thing shown and colour is all there is.
+
+**That is why `REVERT` was darkened twice.** The first cold value (`#93aec4`) read fine
+as label text on white and VANISHED into `BODY` (`#d6e4f2`) on the glyphs, where
+JN.1.11.1's reverting site became invisible. The three values have to separate from
+each other AND from the body; mid-slate does, pale slate does not.
+
+### The asset is gitignored
+
+`antiGen-figures/cartoons/*.png` is covered by `.gitignore:65`, so the glyph is NOT in
+the repo -- only `draw_path_panel.py` and the figures that embed it are. Consequence:
+`sc2_results_revised2.png` now carries the flat cold version while
+`sc2_results_revised.png` still embeds the glossy warm one, and the generator can no
+longer produce the latter. Re-rendering the revised figure would reconcile them; left
+for a decision, since it changes a published figure's appearance.
+
+Rebuild:
+
+    python experiments/multitree/draw_path_panel.py \
+      --ranks antiGen-figures/data/ba286_to_kp3_ranks_2023-01-01.csv \
+      --pdb antiGen-figures/ref/6M0J.pdb \
+      --output antiGen-figures/cartoons/ba286_to_kp3.png
+
+The `_2023-01-01` ranks file, not `ba286_to_kp3_ranks.csv`: the published panel is the
+2023-01-01 cutoff (s105), and the two files disagree (L455S 98 against 258).

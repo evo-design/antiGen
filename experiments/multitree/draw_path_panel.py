@@ -45,8 +45,17 @@ import render_rbd_surface as rs
 W_IN, H_IN = 5.5, 3.5
 
 BODY = "#d6e4f2"
-NET = "#c0392b"       # a site whose change is still there in KP.3
-REVERT = "#e8a07e"    # a site that changes and changes back
+## COLD PALETTE. The two accents were a red and an orange, the only warm colour in the
+## figure and two more hues than the panel needs: filled-vs-hollow ALREADY separates
+## the two cases in the rank chart and in the key, so colour is carrying a distinction
+## that is redundant there and absent on the structures, where the marks are labels.
+## Two values of one slate blue keep them apart on the structures without introducing
+## a hue, and sit in the same family as BODY and BAND.
+## The two values have to separate from EACH OTHER *and* from BODY, which is a pale
+## blue: a light slate read fine as text but vanished into the body on the structures,
+## where these are the only marks. Mid-slate keeps all three apart.
+NET = "#2d4f6b"       # a site whose change is still there in KP.3
+REVERT = "#6b8ead"    # a site that changes and changes back
 BAND = "#dce8f4"
 TEXT = "#1a1a1a"
 MUTED = "#6b6b6b"
@@ -138,9 +147,17 @@ def main():
     lefts = [x0 + i * (gw + gap) for i in range(n)]
 
     for i, (lf, st) in enumerate(zip(lefts, states)):
+        ## FLATTER THAN THE RENDERER'S DEFAULT. No specular and no rim light -- those
+        ## two are what read as a glossy solid -- and a high ambient, which compresses
+        ## the light-to-dark range so the body is a shape with a little modelling
+        ## rather than a photograph of a blob. The silhouette is kept: it is what makes
+        ## a simplified shape legible. `smooth` is raised as well, which merges the
+        ## per-atom bumps into one body.
         img, _ = rs.render(xyz, rad, resi,
                            {p: (REVERT if p in revert_sites else NET) for p in marks[i]},
-                           BODY, size=(380, 640))
+                           BODY, size=(380, 640),
+                           smooth=0.020, ambient=0.80, specular=0.0, rim=0.0,
+                           depth_cue=0.05)
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off")
         bg.text(lf + gw / 2, gy + gh + 0.06, st, ha="center", va="bottom",
