@@ -12240,6 +12240,58 @@ render, the ONLY PNG differing from HEAD is the new figure itself.
   existing objects untouched, so `sc2_results_revised` is unaffected.
 * `panels_sc2_export.R` -- `gate_pm` added, same way.
 
+## 114b. Panel B again, matched to style.png (2026-11-07)
+
+s114's flat cold version was wrong twice over, and MEASURING the reference said so.
+
+**The reference is not flat.** `style.png`'s body luminance runs 104..246, a min/max of
+0.42, where s114 had set `ambient = 0.80` (ratio 0.80) on the theory that "simpler"
+meant "flatter". It has MORE modelling than the flat version, not less.
+
+**But matching the range does not match the picture.** At `ambient = 0.42` the glyphs
+got a broad charcoal band. The histograms say why:
+
+| | p5 | p25 | p50 | p75 | frac < 160 |
+|---|---|---|---|---|---|
+| style.png | 157 | 203 | 233 | 241 | **5.6%** |
+| lambertian, amb 0.42 | 130 | 159 | 196 | 219 | **25.3%** |
+
+Style is light nearly EVERYWHERE with a small dark tail. Lambertian diffuse darkens
+everything turned away from the lamp, so its luminance spreads smoothly. No value of
+`ambient` fixes that: the two produce different SHAPES of histogram.
+
+**That shape is ambient occlusion.** Near-uniform lit surface, sharp dark creases.
+`render_rbd_surface` now has an `occlusion` term -- a screen-space proxy comparing the
+smoothed height field against a broader blur of itself, so a pixel sitting below its
+own neighbourhood is in a pocket. One extra gaussian, no rays. With `ambient = 1.0`
+(diffuse OFF entirely) and `occlusion = 0.65`:
+
+| | p5 | p25 | p50 | p75 | frac < 160 |
+|---|---|---|---|---|---|
+| style.png | 157 | 203 | 233 | 241 | 5.6% |
+| **AO, amb 1.0 occ 0.65** | **157** | 212 | 232 | 237 | **5.6%** |
+
+### Palette, sampled not eyeballed
+
+`BODY #e5f3fc`, `SURF_NET #d5413e`, `SURF_REVERT #f6d5be`, outline `#7f868d` -- all
+read off the reference. The outline is a NEUTRAL grey there, not the blue this used.
+
+**SURFACE AND INK NEED DIFFERENT VALUES.** The sampled peach is right on the glyph,
+against a pale blue body, and unreadable as 8pt text on white. `SURF_REVERT` is the
+sampled value; `REVERT` (`#cf8f62`) is the darker one for labels and markers. The dark
+accent is legible either way and needs only one.
+
+`color_smooth` is also a parameter now: the depth blur has to merge atoms into one
+body, but blurring COLOUR that hard makes a highlighted patch bleed until it reads as
+a stain rather than a site. 0.30 keeps the sites discrete, which is how style.png
+shows them.
+
+### The lesson
+
+Three rounds of adjusting-by-eye moved slowly and in the wrong direction. One
+histogram of the reference settled both the parameter AND the lighting model. When
+there is a reference image, measure it.
+
 ## 114. Panel B: flatter glyphs and a cold palette (2026-11-07)
 
 ### The shading terms are arguments now

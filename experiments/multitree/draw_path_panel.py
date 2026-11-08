@@ -44,18 +44,17 @@ import render_rbd_surface as rs
 
 W_IN, H_IN = 5.5, 3.5
 
-BODY = "#d6e4f2"
-## COLD PALETTE. The two accents were a red and an orange, the only warm colour in the
-## figure and two more hues than the panel needs: filled-vs-hollow ALREADY separates
-## the two cases in the rank chart and in the key, so colour is carrying a distinction
-## that is redundant there and absent on the structures, where the marks are labels.
-## Two values of one slate blue keep them apart on the structures without introducing
-## a hue, and sit in the same family as BODY and BAND.
-## The two values have to separate from EACH OTHER *and* from BODY, which is a pale
-## blue: a light slate read fine as text but vanished into the body on the structures,
-## where these are the only marks. Mid-slate keeps all three apart.
-NET = "#2d4f6b"       # a site whose change is still there in KP.3
-REVERT = "#6b8ead"    # a site that changes and changes back
+## SAMPLED FROM style.png rather than matched by eye. Its body is a paler, cooler blue
+## than the one here was, its red is softer, and its second accent is a pale peach
+## rather than a mid orange.
+BODY = "#e5f3fc"
+## SURFACE vs INK, because one value cannot do both jobs. style.png's second accent is
+## a pale peach, which is right ON the glyph -- it sits against a pale blue body and
+## reads as a raised patch -- and unreadable as 8pt text on white. The dark accent is
+## legible either way, so only the pale one needs a second value.
+SURF_NET, SURF_REVERT = "#d5413e", "#f6d5be"
+NET = "#c0392b"       # a site whose change is still there in KP.3
+REVERT = "#cf8f62"    # a site that changes and changes back
 BAND = "#dce8f4"
 TEXT = "#1a1a1a"
 MUTED = "#6b6b6b"
@@ -147,17 +146,29 @@ def main():
     lefts = [x0 + i * (gw + gap) for i in range(n)]
 
     for i, (lf, st) in enumerate(zip(lefts, states)):
-        ## FLATTER THAN THE RENDERER'S DEFAULT. No specular and no rim light -- those
-        ## two are what read as a glossy solid -- and a high ambient, which compresses
-        ## the light-to-dark range so the body is a shape with a little modelling
-        ## rather than a photograph of a blob. The silhouette is kept: it is what makes
-        ## a simplified shape legible. `smooth` is raised as well, which merges the
-        ## per-atom bumps into one body.
+        ## MEASURED OFF style.png, then corrected by looking. Its body luminance runs
+        ## 104..246, a min/max of 0.42, and `ambient = 0.42` reproduces that RANGE --
+        ## but not its DISTRIBUTION: style.png is light nearly everywhere (p25 is
+        ## #c0cad6) with only a few per cent dark, where 0.42 here put a broad charcoal
+        ## band down every glyph. The darkest pixel is not the thing to match. Ambient
+        ## 0.56 with more `smooth` lifts the crevices and gentles the normals that
+        ## produced them, keeping lobe definition without the band.
+        ##
+        ## What style.png has no trace of is a SPECULAR highlight -- its brightest body
+        ## pixel is barely above the base colour -- which is the real difference from
+        ## this renderer's default and the thing that was reading as glossy. Its
+        ## silhouette is a neutral grey, not the blue this used.
+        ##
+        ## `color_smooth` is dropped so a highlighted site keeps a crisp edge and reads
+        ## as a discrete blob sitting on the surface, which is how style.png shows them.
         img, _ = rs.render(xyz, rad, resi,
-                           {p: (REVERT if p in revert_sites else NET) for p in marks[i]},
+                           {p: (SURF_REVERT if p in revert_sites else SURF_NET)
+                            for p in marks[i]},
                            BODY, size=(380, 640),
-                           smooth=0.020, ambient=0.80, specular=0.0, rim=0.0,
-                           depth_cue=0.05)
+                           smooth=0.0150, ambient=1.0, specular=0.0, rim=0.0,
+                           depth_cue=0.05, color_smooth=0.30,
+                           occlusion=0.65, occlusion_scale=0.16,
+                           outline="#7f868d", outline_px=2.0)
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off")
         bg.text(lf + gw / 2, gy + gh + 0.06, st, ha="center", va="bottom",

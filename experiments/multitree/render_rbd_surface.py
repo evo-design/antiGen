@@ -116,7 +116,8 @@ def orient(xyz, resi):
 
 def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
            pad=3.0, outline="#5b7794", outline_px=2.4, ss=2, smooth=0.0118,
-           ambient=0.54, specular=0.13, rim=0.16, depth_cue=0.11):
+           ambient=0.54, specular=0.13, rim=0.16, depth_cue=0.11,
+           color_smooth=0.55, occlusion=0.0, occlusion_scale=0.18):
     """Raycast the surface. Returns (RGBA float array, {resi: (px, py)}).
 
     THE FOUR SHADING TERMS ARE ARGUMENTS so a caller can ask for a FLATTER body
@@ -128,6 +129,13 @@ def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
                   hard bright spot says "shiny solid" more than the shading does.
       rim         back-light along the silhouette, which lifts the body off the page.
       depth_cue   how much the far side is darkened.
+      occlusion   crease darkening, 0 to disable. Independent of the lamp: it darkens
+                  CONCAVITY rather than anything facing away, which is what gives the
+                  molecular-graphics look its near-uniform lit surface with sharp
+                  pockets. Pair it with a HIGH ambient -- the two together replace the
+                  diffuse gradient rather than adding to it.
+      occlusion_scale  depth difference, as a fraction of the body's depth range, at
+                  which a pocket reaches full darkening. Smaller bites harder.
 
     Setting specular and rim to 0 and raising ambient gives a flat, printed-looking
     shape that still has enough gradient to read as rounded. The SILHOUETTE is kept
@@ -189,11 +197,17 @@ def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
     # Relative to image WIDTH, not in pixels: a fixed pixel blur turns a small glyph
     # to mush and leaves a large one beady, and these are rendered at several sizes.
     sig = smooth * size[0] * ss
+    depth_raw = depth
     zf = np.where(mask, depth, 0).astype(np.float32)
     wm = gaussian_filter(m, sig, mode="nearest")
     zs = gaussian_filter(zf, sig, mode="nearest") / np.maximum(wm, 1e-6)
-    cs = np.stack([gaussian_filter(rgb[..., c] * m, sig * 0.55, mode="nearest")
-                   / np.maximum(gaussian_filter(m, sig * 0.55, mode="nearest"), 1e-6)
+    # COLOUR IS BLURRED LESS THAN DEPTH, and by how much is a caller's choice. The
+    # depth blur has to merge atoms into one body; the colour blur only has to stop a
+    # highlighted patch having a sphere-shaped boundary. Blur it as hard as the depth
+    # and a patch bleeds into the body until it reads as a stain rather than a site.
+    csig = sig * color_smooth
+    cs = np.stack([gaussian_filter(rgb[..., c] * m, csig, mode="nearest")
+                   / np.maximum(gaussian_filter(m, csig, mode="nearest"), 1e-6)
                    for c in range(3)], -1)
     rgb = np.where(mask[..., None], cs, rgb)
     # Normal from the smoothed height field. The sign on x/y follows from z pointing
@@ -213,6 +227,23 @@ def render(xyz, rad, resi, colors, default, size=(760, 1180), probe=1.30,
     ndv = np.clip((nrm * V).sum(-1), 0, 1)
     shade = ambient + (1.0 - ambient) * ndl         # ambient + diffuse
     out = rgb * shade[..., None]
+
+    # --- screen-space ambient occlusion ---------------------------------------
+    # DIRECTIONAL LIGHT AND OCCLUSION MAKE DIFFERENT PICTURES, and which one a surface
+    # renderer uses is visible in its histogram. Lambertian diffuse darkens everything
+    # turned away from the lamp, so luminance spreads smoothly across the body. The
+    # molecular-graphics look instead has the surface near-fully lit almost everywhere
+    # with sharp dark CREASES -- a tight bright cluster and a small dark tail.
+    #
+    # The cheap proxy: a pixel sitting below its own neighbourhood is in a pocket. The
+    # smoothed height field is already computed, so comparing it against a broader
+    # blur of the same field costs one more gaussian and needs no rays.
+    if occlusion:
+        zb = (gaussian_filter(zf, sig * 3.0, mode="nearest")
+              / np.maximum(gaussian_filter(m, sig * 3.0, mode="nearest"), 1e-6))
+        rng = max(1e-6, float(np.ptp(zs[mask]))) if mask.any() else 1.0
+        conc = np.clip((zb - zs) / (occlusion_scale * rng), 0, 1)
+        out *= (1.0 - occlusion * conc)[..., None]
     if specular:
         out += (specular * ndh ** 16)[..., None]
     if rim:
