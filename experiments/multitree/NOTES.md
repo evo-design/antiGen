@@ -12636,3 +12636,58 @@ ties and fractional top-q returns about q. This is the same signature as PyR0's 
 
 The committed `figs/old/coguk_list_aa20.png` already differs from a fresh render with or
 without these rows. It predates later code changes and is not affected by this one.
+
+## 125. sc2_results_revised2 panels I-L: the same roster on all RBD cells at 2023-01-01 (2026-11-09)
+
+Row 4 mirrors E-H panel for panel (all / de novo, per cell / per mutation). Its target
+set is all 4,020 RBD cells (`ref/all_rbd_cells_aa20_incl_ref.csv`, reference allele
+included) at the 2023-01-01 cutoff, instead of the 2021 COG-UK escape list.
+
+**Rows.** Scored into the existing run `evals_sc2_lists_macro_aa20_2023-01-01_allcells_pooled`
+(`--pool-examples`, `--split-date`, substitution seed 0, s111/s112). One resume pass,
+job 3682938 (12 min, `gpu_batch`), added the rows E-H draws that the run lacked:
+
+| row | from |
+|---|---|
+| ESM 2 (35M) / (650M), untrained | existing `ckpt_stage_2023-01-01` (`*_noft`) |
+| EVE | refit at 2023-01-01: `--freeze-backbone`, `--max-seqs 351410` (a uniform subsample, to stay in the 2021 24 h / 256 G envelope) on the regenerated MSA (7,813,585 sequences, counts verified identical) |
+| antiGen (CV x10) | `ens_vs10_2023`: s123's `--ensemble-dir` over ten val-selected runs at **256** epochs, selected epochs 235-254 |
+
+* **Epochs.** At 96 epochs all five finished seeds selected epoch 93-95, and the 32-epoch
+  arm selected the last epoch in 9/10. At 256, the val NLL fell 0.05-0.07 over epochs
+  63-127, 0.009-0.015 over 191-255 and at most 0.010 over the last 32. That is a
+  plateau, against a 0.15 spread between seeds. The 96-epoch outputs are kept as
+  `valsel_ep96_binding`.
+* **Node GPUCACE.** Seed 9 ran there at about 3.6 min/epoch (vs ~35 s elsewhere), and the
+  first Tranception run OOMed there (its GPU reports 19.6 GB). Both were resubmitted
+  with `--exclude=GPUCACE`, which several of our scripts already default to.
+* **Tranception** is still training (job 3682935) and is the one row missing from I-L.
+  It is added with the same resume once it lands.
+
+**Staging.** `experiments/multitree/stage_allcells_2023.sh` writes
+`data/evals_sc2_lists_macro_aa20_2023-01-01_allcells/` in the layout the drawer reads:
+the ensemble row split into `list_macro_summary_ensemble.csv`, plus
+`ensemble_figure_rows.tsv`.
+
+**Figure.**
+
+* `REVISED2_ARM=allcells_2023` makes `panels_coguk_export.R` (E-H's own export) read that
+  directory with `coguk.list = "allcells"`. Roster, pruning, names, colours and the MCM
+  bar are therefore shared with E-H by construction.
+* Titles say "All RBD" / "De novo RBD" and "(2023)". "Escape" is true only of the COG-UK
+  list.
+* This arm has no variant-recall or background run, and the drawer assumed every list
+  did: it filtered the varrecall CSV to zero rows and failed. `coguk.varr_dir` and
+  `coguk.bg_dir` are now overridable in `fig_coguk_list_aa20.R` (eval-then-override), the
+  arm points both at nothing, and the export builds the background grobs only
+  `if (have_bg)`.
+* The canvas is 11 x 14.7 in, so row 1, and panel B's 1:1 slot (s119), keep their size.
+
+| at 2023-01-01, q = 0.1 | I all/cell | J all/mut | K de novo/cell | L de novo/mut |
+|---|---|---|---|---|
+| antiGen (CV x10) | **0.599** | **0.930** | 0.497 | **0.688** |
+| best other | PFM (3rd) | PFM (3rd) | **Codon table 0.536** | S×S-MCM interp. 0.674 |
+
+K and L rest on 71 cells and 141 events. On that subset the plain codon table ranks 1st
+per cell, and S×S, S×M and S×M-MCM interp. tie exactly (0.518 / 0.667). That tie is
+plausible on so few cells but has not been checked.

@@ -130,10 +130,10 @@ options(
   ## QUARTER, the first being this arm's own 2021-01-01 cutoff -- which is 1.0 years
   ## into the pandemic on the axis the published figure uses, and 0.25 years per step
   ## against its 0.1. Stating both puts the two figures' panels G-J on one axis.
-  coguk.varr_dir     = "data/evals_sc2_lists_varrecall_aa20",
+  coguk.varr_dir     = getOption("coguk.varr_dir", "data/evals_sc2_lists_varrecall_aa20"),
   coguk.varr_x0      = 1.0,
   coguk.varr_dx      = 0.25,
-  coguk.bg_dir       = "data/evals_sc2_background_aa20",
+  coguk.bg_dir       = getOption("coguk.bg_dir", "data/evals_sc2_background_aa20"),
   ## The one-member gate rows that `ensemble_panels.py` writes beside the rule maps.
   ## They are the check that a rule's combination step is a no-op on one member --
   ## compared against that member's own row, worst delta 0.000e+00 -- and are not

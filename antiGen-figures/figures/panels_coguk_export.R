@@ -19,6 +19,28 @@ stopifnot(nzchar(out))
 ## sources it further down. Defining constants twice is idempotent.
 source("R/common.R")
 
+## PANELS I-L: the same roster, scored on ALL RBD cells at the 2023-01-01 cutoff
+## (NOTES s125). REVISED2_ARM=allcells_2023 points the drawer at that run's staged
+## summary instead of the 2021 COG-UK list; everything else -- pruning, names, colours,
+## pooling -- is this script's, so E-H and I-L cannot drift apart.
+ARM <- Sys.getenv("REVISED2_ARM", unset = "")
+## Titles of the four pooled panels, by arm. The COG-UK list IS escape mutations; the
+## all-cells arm is not, so it names its target set and its cutoff instead.
+T4 <- c(all_pc = "All escape, per cell", all_evt = "All escape, per mutation",
+        dn_pc = "De novo escape, per cell", dn_evt = "De novo escape, per mutation")
+if (identical(ARM, "allcells_2023")) {
+  ## No variant-recall or background run exists for this arm, and I-L draws neither:
+  ## point both at nothing so the drawer's `have_varr` / `have_bg` are FALSE.
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2023-01-01_allcells",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2023"
+  T4 <- c(all_pc = "All RBD, per cell (2023)", all_evt = "All RBD, per mutation (2023)",
+          dn_pc = "De novo RBD, per cell (2023)", dn_evt = "De novo RBD, per mutation (2023)")
+} else {
+  ENS_ID <- "ens_8a91fbbf88"
+}
+
 options(coguk.fig_main = "scratch_revised_coguk",
         coguk.fig_supp = "scratch_revised_coguk_supp",
         coguk.title_suffix = "",
@@ -27,7 +49,7 @@ options(coguk.fig_main = "scratch_revised_coguk",
         ## ORANGE (the three plain mean rules) and the hybrid blend go; the one
         ## val-selected rule that stays is antiGen's own, so `coguk.ensemble`
         ## names it alone.
-        coguk.ensemble        = "ens_8a91fbbf88",
+        coguk.ensemble        = ENS_ID,
         ## Both of these are needed BECAUSE the selection is a subset: each default
         ## is guarded on `nrow(ensemble_figure_rows.tsv) == length(ENSEMBLE)`, so
         ## naming one of five rules silently falls back to "Ensemble 8a91fb" in the
@@ -149,15 +171,15 @@ saveRDS(list(
   ## panel LEADS ITS ROW and FALSE for the one beside it, so a row carries the model
   ## names once. `decile_all_evt` sits second in row 1; `decile_dn_evt` leads row 2.
   decile_all_evt = as_grob(decile_bar(RECALL_SUPP[1], FALSE, RECALL_SUPP) +
-                           ggtitle("All escape, per mutation")),
+                           ggtitle(T4[["all_evt"]])),
   decile_dn_evt  = as_grob(decile_bar(RECALL_SUPP[2], FALSE, RECALL_SUPP) +
-                           ggtitle("De novo escape, per mutation")),
+                           ggtitle(T4[["dn_evt"]])),
   ## The per-CELL partner of `decile_all_evt`, titled so it says which pooling it is.
   ## `decile_all` carries the unqualified title the revised figure uses and is left
   ## alone; a figure whose argument IS the pooling has to name both sides of the pair,
   ## or the reader has to know which one the unqualified title meant.
   decile_all_pc  = as_grob(decile_bar(RECALL_MAIN[1], TRUE,  RECALL_MAIN) +
-                           ggtitle("All escape, per cell")),
+                           ggtitle(T4[["all_pc"]])),
   ## The de novo pair's per-CELL half. A separate grob from `decile_dn` because the
   ## TITLE differs -- that one carries the revised figure's unqualified wording, these
   ## four name their subset and pooling, which is the whole point of putting them in
@@ -166,13 +188,13 @@ saveRDS(list(
   ## says "escape"; dropping it from two of the four reads as a change of target. Both are drawn without y-axis labels: of the four, only the leftmost
   ## carries the model names, and all four share one roster in one order.
   decile_dn_pc   = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN) +
-                           ggtitle("De novo escape, per cell")),
-  bg_all       = as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
+                           ggtitle(T4[["dn_pc"]])),
+  bg_all       = if (have_bg) as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
                            ggtitle("Query adaptability, all escape mutations")),
   ## "de novo", not "all". The title given for this panel duplicated E's, and this
   ## one IS the de novo panel -- `BG_MAIN[2]` is the de novo cell set -- so calling
   ## it "all" would be wrong about what is plotted rather than merely repetitive.
-  bg_dn        = as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN) +
+  bg_dn        = if (have_bg) as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN) +
                            ggtitle("Query adaptability, de novo escape mutations")),
   legend       = legend_grob,
   decile_names = RECALL_MAIN,

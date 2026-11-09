@@ -45,8 +45,9 @@ suppressPackageStartupMessages(library(cowplot))
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
-run_export <- function(script, rds) {
-  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1"),
+run_export <- function(script, rds, extra_env = character(0)) {
+  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1",
+                                            extra_env),
                 stdout = TRUE, stderr = TRUE)
   if (!file.exists(rds)) {
     stop(script, " produced no panels. Its output was:\n",
@@ -55,12 +56,17 @@ run_export <- function(script, rds) {
   readRDS(rds)
 }
 
-message("  [1/3] exporting coguk_list_aa20 panels ...")
+message("  [1/4] exporting coguk_list_aa20 panels ...")
 cg <- run_export("figures/panels_coguk_export.R", RS("coguk"))
-message("  [2/3] exporting sc2_results_aa20 panels ...")
+message("  [2/4] exporting sc2_results_aa20 panels ...")
 sc <- run_export("figures/panels_sc2_export.R", RS("sc2"))
-message("  [3/3] exporting the per-cell cutoff panel ...")
+message("  [3/4] exporting the per-cell cutoff panel ...")
 gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
+## PANELS I-L (NOTES s125): E-H's own export, pointed at ALL RBD cells at the
+## 2023-01-01 cutoff. Same script, so the same roster, pruning, names and colours.
+message("  [4/4] exporting the 2023-01-01 all-cells panels ...")
+ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
+                 "REVISED2_ARM=allcells_2023")
 
 ## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
 ## MCM interpolations, antiGen (CV x10). The table is `figures/revised2_labels.R`;
@@ -95,6 +101,8 @@ relabel_grob <- function(g, map = REVISED2_LABELS) {
 }
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", "legend"))
   cg[[k]] <- relabel_grob(cg[[k]])
+for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
+  ca[[k]] <- relabel_grob(ca[[k]])
 ## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
 ## somewhere the walk misses, or carries a label the table does not list would still
 ## show an old name, and that is an error.
@@ -104,7 +112,9 @@ grob_text <- function(g) c(if (is.character(g$label)) g$label,
 left <- grep(REVISED2_STALE,
              unlist(lapply(c(gm[c("gate_macro", "gate_legend")], sc["gate_pm"],
                              cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
-                                  "decile_dn_evt", "legend")]), grob_text)),
+                                  "decile_dn_evt", "legend")],
+                             ca[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
+                                  "decile_dn_evt")]), grob_text)),
              value = TRUE, perl = TRUE)
 if (length(left)) stop("old names survived the relabel: ",
                        paste(unique(left), collapse = "; "))
@@ -170,11 +180,17 @@ row3 <- plot_grid(
             labels = c("E", "F", "G", "H")),
   ncol = 1, rel_heights = c(0.1, 1.45))
 
+## Row 4 mirrors row 3 panel for panel; the model-type key above row 3 serves both.
+row4 <- plot_grid(ca$decile_all_pc, ca$decile_all_evt,
+                  ca$decile_dn_pc, ca$decile_dn_evt, nrow = 1,
+                  rel_widths = c(1.75, 1.1, 1.1, 1.1),
+                  labels = c("I", "J", "K", "L"))
+
 save_figure(
-  plot_grid(row1, row2, row3, ncol = 1,
+  plot_grid(row1, row2, row3, row4, ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
-            rel_heights = c(0.95, 1.1, 1.55)),
+            rel_heights = c(0.95, 1.1, 1.55, 1.45)),
   getOption("revised2.fig_main", "sc2_results_revised2"),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
@@ -183,5 +199,5 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = 10.5)
+  width = 11, height = 14.7)
 cat("wrote figs/sc2_results_revised2.png (+ .pdf)\n")
