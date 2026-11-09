@@ -12363,3 +12363,17 @@ Rebuild:
 
 The `_2023-01-01` ranks file, not `ba286_to_kp3_ranks.csv`: the published panel is the
 2023-01-01 cutoff (s105), and the two files disagree (L455S 98 against 258).
+
+## 115. sc2_results_revised2 panel A: the redrawn recall cartoon (2026-11-08)
+
+Panel A of `sc2_results_revised2` now draws `antiGen-figures/cartoons/recall_definition_v2.png`
+(the user's redrawn cartoon, delivered as `fig2a.png` at the repo root and moved beside
+the original `recall_definition.png`). It goes through `plot_cartoon` with the same title,
+"Definition of next-mutation recall", exactly as panel B does, so the two image panels
+carry matching titles and insets. Only this figure changed: `panels_sc2_export.R` still
+ships the original as `sc$cartoon`, and `sc2_results_aa20` keeps it.
+
+Like every cartoon, the PNG is covered by `.gitignore:65` (`*.png`) and lives only on
+disk; the committed record is the rendered figure. `fig_sc2_aa20.R` was re-rendered last,
+as always (it shares outputs with the export), and the PDFs it rewrote with byte-identical
+PNGs were reverted.

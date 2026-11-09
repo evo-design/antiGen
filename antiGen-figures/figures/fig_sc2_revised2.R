@@ -9,7 +9,7 @@
 ##   E  was background lift, de novo          -> top decile, de novo, PER MUTATION
 ##   G  was DMS correlation                   -> the cutoff series, PER CELL
 ##
-##   row 1   A  the next-mutation recall cartoon             (sc2_results_aa20 A)
+##   row 1   A  the next-mutation recall cartoon    (cartoons/recall_definition_v2.png)
 ##           B  BA.2.86 -> KP.3 case study             (cartoons/ba286_to_kp3.png)
 ##   row 2   C  cutoff series, per cell                      (gating_macro_aa20)
 ##           D  cutoff series, per mutation                  (sc2_results_aa20 O)
@@ -84,7 +84,13 @@ case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
 ## Unchanged from the revised figure: the first column carries the wide cartoon and the
 ## panel whose model names need the room.
 ## Two fixed-aspect images, half the width each.
-row1 <- plot_grid(sc$cartoon, case_study, nrow = 1,
+## Panel A is the REDRAWN recall cartoon (cartoons/recall_definition_v2.png), not the
+## `sc$cartoon` grob the export ships -- sc2_results_aa20 keeps the original. Same
+## title and the same `plot_cartoon` path as panel B, so both image panels match.
+recall_cartoon <- plot_cartoon(file.path("cartoons", "recall_definition_v2.png"),
+                               "Definition of next-mutation recall",
+                               base_theme = theme_paper())
+row1 <- plot_grid(recall_cartoon, case_study, nrow = 1,
                   rel_widths = c(1, 1), labels = c("A", "B"))
 ## PER CELL ON THE LEFT, per mutation on the right -- the direction row 3 also reads,
 ## so the contrast runs one way everywhere in the figure.
