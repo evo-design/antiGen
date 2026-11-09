@@ -12691,3 +12691,55 @@ the ensemble row split into `list_macro_summary_ensemble.csv`, plus
 K and L rest on 71 cells and 141 events. On that subset the plain codon table ranks 1st
 per cell, and S×S, S×M and S×M-MCM interp. tie exactly (0.518 / 0.667). That tie is
 plausible on so few cells but has not been checked.
+
+## 126. supp_fixed_split: both poolings, and CoVFit at its own cutoff (2026-11-09)
+
+The fixed-date baselines figure (s103) now draws both poolings, the same pair as
+sc2_results_revised2: one row per baseline, per cell (macro) on the left and per mutation
+(micro) on the right. A third row adds **CoVFit**.
+
+**CoVFit's cutoff.** Our checkpoints are `covfit_model_20241007` (CLI, Zenodo 14438178).
+The CoVFit training README lists "Oct24: Training with genotype-fitness dataset up until
+October 7, 2024". It does not name the CLI version string, so 20241007 = Oct24 is
+matched by date, not stated. We score it at our 2024-10-01 cutoff, six days before its
+data ends. That error favours the baseline, the same direction as PyR0's (s103), so
+antiGen's margin is a floor. Job 3662706: `score_fixed_split.sh` with D=2024-10-01.
+
+| row | cells / events | antiGen per cell | baseline per cell | antiGen per mutation | baseline per mutation |
+|---|---|---|---|---|---|
+| PyR0, 2022-01-01 | 214 / 10,281 | 0.612 | 0.200 | 0.889 | 0.328 |
+| Bloom & Neher, 2023-10-01 | 139 / 1,908 | 0.849 | 0.691 | 0.950 | 0.791 |
+| CoVFit, 2024-10-01 | 78 / 456 | 0.902 | **0.064** | 0.976 | 0.112 |
+
+**CoVFit is below chance per cell**, at 2024-10-01 (0.064) and at 2022-01-01 (0.061, s103).
+Its map is one static (L, E) table computed on the XFG background (`eval_covfit.sh
+--variant XFG`), applied to every query whatever its own residues. That may be the
+cause, but it has not been checked. Read the row with that caveat.
+
+Also: y headroom for a value label near 1 (panel F's 0.976 was clipped). The
+`data/evals_fixedsplit_*` directories were caught by the `evals_*/` ignore rule and had
+never been tracked, so the figure was not reproducible from the repo. They are now
+allow-listed.
+
+## 127. Figures render in Arial (2026-11-09)
+
+Nothing named a font family. PNGs got fontconfig's "sans" (Liberation Sans here:
+Arial's metrics, not Arial). PDFs named Helvetica without embedding it, so each viewer
+substituted. Panel B (matplotlib) was DejaVu Sans. Arial was not installed.
+
+* **Font.** conda-forge `mscorefonts` in `antigen-figs` (`envs/antigen-figs/fonts/arial*.ttf`).
+  The environment's fontconfig resolves "Arial" to it.
+* **`save_figure`** (`R/common.R`) sets the family on the DEVICE: PNG via `type = "cairo"`
+  and PDF via `cairo_pdf`, both with `family = FIG_FONT` (option `paper.font`, default
+  Arial). Every text element without a family of its own takes the device default:
+  theme text, geom_text, cowplot letters, gridtext markdown. So no theme changed.
+  Checked: each active PDF embeds exactly ArialMT and Arial-BoldMT.
+* **`draw_path_panel.py`** registers the same files with matplotlib's font manager and
+  sets `font.family`. It exits if they are missing rather than falling back.
+* **Re-rendered:** sc2_results_revised2, supp_dms (from `fig2_sc2_benchmarks.R`, whose
+  other outputs were discarded), supp_gate_units, supp_fixed_split. Arial and Liberation
+  Sans share metrics, so no layout moved.
+
+Not covered: the three scripts that call `ggsave` directly (`fig1_overview_panels.R`,
+`fig3_pseudovirus_assay.R`, `fig2_sc2_benchmarks.R`'s optional FIG1_AUC) and panel A of
+revised2, which is the user's PNG.

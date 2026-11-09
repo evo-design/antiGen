@@ -38,6 +38,22 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyArrowPatch, Rectangle
+from matplotlib import font_manager
+
+## ARIAL, to match the R figures (NOTES s127). matplotlib does not read fontconfig, so
+## the files are registered directly; they come from conda-forge `mscorefonts` in the
+## antigen-figs environment. Without them this panel was DejaVu Sans, matplotlib's
+## default. Refuse rather than fall back: a silent fallback is how the panel drifted.
+_ARIAL_DIRS = [os.environ.get("ARIAL_DIR", ""),
+               "/home/ivan.specht/miniconda/envs/antigen-figs/fonts",
+               os.path.expanduser("~/.fonts"), os.path.expanduser("~/.local/share/fonts")]
+_arial = [os.path.join(d, f) for d in _ARIAL_DIRS if d and os.path.isdir(d)
+          for f in os.listdir(d) if f.lower().startswith("arial") and f.lower().endswith(".ttf")]
+if not _arial:
+    raise SystemExit("Arial not found; install conda-forge mscorefonts or set ARIAL_DIR")
+for _f in _arial:
+    font_manager.fontManager.addfont(_f)
+matplotlib.rcParams["font.family"] = "Arial"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_rbd_surface as rs
