@@ -12482,3 +12482,17 @@ point sizes.
 
 Ranks, colours, brackets and rendering parameters are unchanged. The PNG is gitignored
 (s114b); rebuild with the command recorded there.
+
+### s116 addendum 2: "Substitution matrix" -> "Codon-B62 mixture"
+
+The fitted substitution model's bar in `sc2_results_revised2` is renamed, in
+`revised2_labels.R`. It is not a free 20 x 20 table. It is
+w_codon · log(κ·ts + tv + c) + w_blosum · BLOSUM62 + b(m): codon reachability, with a
+fitted transition/transversion ratio κ, mixed with BLOSUM62, plus a per-destination
+background. That is about 25 fitted numbers (`antiGen/models/substitution_fitness_predictor.py`).
+"Codon-B62 mixture" names the two parts. S×M (site × mixture) is that mixture's
+conditional times the site marginal.
+
+The κ term is K80-like (a ts/tv ratio with no base frequencies), not HKY85, which also
+fits base frequencies. That detail belongs in the caption, not the bar label.
+`REVISED2_STALE` now also catches "Substitution matrix".

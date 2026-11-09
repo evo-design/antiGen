@@ -12,6 +12,8 @@
 ##   S×M  site × mixture (was "where × which")
 ##   MCM  mutation count matrix
 ##   CV   the ten-fold cross-validated (val-selected) antiGen
+##   Codon-B62 mixture   the fitted substitution model (was "Substitution matrix"):
+##        codon reachability mixed with BLOSUM62
 ##
 ## Sourced by fig_sc2_revised2.R (bar panels, by walking the baked grobs) and by the
 ## two gate exports (the cutoff-series panels, through `sc2.gate_label_map`, because
@@ -28,7 +30,10 @@ REVISED2_LABELS <- c(
   "Where x which"          = "S×M",
   "Where × which"     = "S×M",
   "Where x which + events" = "S×M-MCM interp.",
-  "Where × which + events" = "S×M-MCM interp.")
+  "Where × which + events" = "S×M-MCM interp.",
+  ## The fitted substitution model: codon reachability (with a K80-style fitted
+  ## transition/transversion ratio) mixed with BLOSUM62, plus a residue background.
+  "Substitution matrix"    = "Codon-B62 mixture")
 
 ## Anything still matching this after the rename is a label the table missed.
-REVISED2_STALE <- "\\bPSSM\\b|Where [x×] which|Site [x×] Substitution|interpolation|val x10"
+REVISED2_STALE <- "\\bPSSM\\b|Where [x×] which|Site [x×] Substitution|interpolation|val x10|Substitution matrix"
