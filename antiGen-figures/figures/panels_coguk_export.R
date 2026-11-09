@@ -80,6 +80,33 @@ TITLE_SUFFIX <- ""
 ## this legend with drop = FALSE so that its full roster always shows every group;
 ## here antiGen and antiGen Finetunes have been removed from every panel, and keeping
 ## them listed puts two keys in the legend with nothing under them.
+## sc2_results_revised2's MODEL TYPES (NOTES s116), off unless the caller asks so
+## sc2_results_revised is unchanged. The CV-selected bar is antiGen, not a model type
+## of its own, so it joins "antiGen"; the PFM gate gets its own type, "antiGen gated
+## hybrid", in the gate's light blue -- the colour panels C and D already draw it in.
+## Regrouped on the frames the panels read (by display label, which is what `model`
+## holds after `add_group_and_label`), not in MODEL_GROUP: that vector is also the
+## bar ORDER and must stay contiguous by group, and the ensemble is appended at its
+## foot, away from the antiGen block. Bar order is unchanged: `coguk.top_model` puts
+## the CV bar first and the gate stays beside it.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
+  HYBRID <- "antiGen gated hybrid"
+  regroup <- function(df) {
+    g <- as.character(df$group)
+    g[as.character(df$model) %in% ENSEMBLE_LABELS] <- "antiGen"
+    g[as.character(df$model) %in% GATE_RUNG_LABEL] <- HYBRID
+    lev <- c("antiGen", HYBRID,
+             setdiff(levels(df$group), c("antiGen", unique(as.character(df$group[
+               as.character(df$model) %in% ENSEMBLE_LABELS])))))
+    df$group <- factor(g, levels = unique(lev))
+    df
+  }
+  recall_q10_df <- regroup(recall_q10_df)
+  summary_df    <- regroup(summary_df)
+  GROUP_COLORS[[HYBRID]] <- GATE_BLUE
+  stopifnot(sum(recall_q10_df$group == HYBRID, na.rm = TRUE) > 0,
+            !any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"))
+}
 legend_df <- droplevels(summary_df[!is.na(summary_df$group), ])
 legend_df <- legend_df[legend_df$group %in% unique(recall_q10_df$group), ]
 legend_grob <- extract_legend(

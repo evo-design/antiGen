@@ -55,19 +55,68 @@ options(
 
 source("figures/fig2_sc2_benchmarks.R")
 
-## sc2_results_revised2 says PFM where the arm says PSSM (NOTES s116); off unless
-## the caller asks, so sc2_results_revised and the arm's own figures are unchanged.
-if (nzchar(Sys.getenv("REVISED_PFM"))) {
-  options(sc2.gate_label_map = c("PSSM" = "PFM",
-                                 "antiGen / PSSM gate" = "antiGen / PFM gate"))
+## sc2_results_revised2's display names (NOTES s116); off unless the caller asks,
+## so sc2_results_revised and the arm's own figures are unchanged.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
+  source("figures/revised2_labels.R")
+  options(sc2.gate_label_map = REVISED2_LABELS)
 }
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
 
+gm_plot <- make_gate_plot(gate_recall, "recall",
+                          "Top decile recall, all RBD cells (per cell)",
+                          "P(cell in top decile)",
+                          SUPP = FALSE, show_legend = TRUE)
+
 saveRDS(list(
-  gate_macro = as_grob(
-    make_gate_plot(gate_recall, "recall",
-                   "Top decile recall, all RBD cells (per cell)",
-                   "P(cell in top decile)",
-                   SUPP = FALSE, show_legend = TRUE))
+  gate_macro = as_grob(gm_plot),
+  ## THE SAME KEY AS A STRIP, for a figure that sets it under the panels rather than
+  ## over their lines (sc2_results_revised2, NOTES s117). Built from the panel's own
+  ## plot, so the entries, colours, order and the bolded gate are the panel's; only
+  ## the placement differs: two rows read left to right, swatch before label.
+  gate_legend = extract_legend(
+    gm_plot +
+      ## element_markdown and element_text do not merge; blank it first, then set.
+      theme(legend.text = element_blank()) +
+      ## Same palette as the panel (the scale is replaced only to swap the labeller).
+      suppressMessages(scale_color_manual(
+        values = local({
+          cv <- getOption("sc2.gate_colors_main")
+          lm <- getOption("sc2.gate_label_map", NULL)
+          if (!is.null(lm))
+            names(cv) <- ifelse(names(cv) %in% names(lm), unname(lm[names(cv)]), names(cv))
+          cv
+        }),
+        labels = function(x) {
+          lm <- getOption("sc2.gate_label_map", NULL)
+          gate <- "antiGen / PSSM gate"
+          if (!is.null(lm) && gate %in% names(lm)) gate <- unname(lm[gate])
+          as.expression(lapply(x, function(l)
+            if (identical(l, gate)) bquote(bold(.(l))) else l))
+        })) +
+      ## The key draws each line as the panel does: the baselines dashed. The
+      ## in-panel key never did (the linetype guide is suppressed), which was
+      ## tolerable beside the lines and is not once the key is a separate strip.
+      guides(color = guide_legend(
+        nrow = 2, byrow = TRUE,
+        override.aes = list(linetype = local({
+          lv <- levels(droplevels(factor(gm_plot$data$model)))
+          ## GATE_BASELINES under the same display renames make_gate_plot applied.
+          lab_map <- getOption("sc2.gate_label_map", NULL)
+          dashed  <- GATE_BASELINES
+          if (!is.null(lab_map))
+            dashed <- ifelse(dashed %in% names(lab_map), unname(lab_map[dashed]), dashed)
+          ifelse(lv %in% dashed, "21", "solid")
+        })))) +
+      theme(legend.position      = "bottom",
+            legend.justification = "center",
+            legend.direction     = "horizontal",
+            ## PLAIN TEXT, not markdown. gridtext measures "×" wider than it draws
+            ## it, which opened a gap after every S×S / S×M label; the one bold entry
+            ## is done with plotmath below instead.
+            legend.text          = element_text(hjust = 0, size = 8),
+            legend.text.position = "right",
+            legend.key.spacing.x = unit(10, "pt"),
+            legend.key.width     = unit(1.6, "lines")))
 ), out)
 cat("exported gate-macro panel ->", out, "\n")

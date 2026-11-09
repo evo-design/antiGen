@@ -12400,3 +12400,53 @@ downstream, at the figure, in one of two ways depending on how each panel draws 
 
 `fig_sc2_revised2.R` stops if any panel still says PSSM after both steps. The
 `sc2_results_aa20` and `sc2_results_revised` outputs are unchanged.
+
+### s116 addendum: the rest of the renames, and two model types
+
+The PSSM -> PFM rename widened into one table, `antiGen-figures/figures/revised2_labels.R`,
+still for `sc2_results_revised2` only:
+
+| was | now |
+|---|---|
+| antiGen (val x10) | antiGen (CV x10) |
+| Site × / x Substitution | S×S |
+| SxS, MCM interpolation | S×S-MCM interp. |
+| Where × / x which | S×M (site × mixture) |
+| Where × / x which + events | S×M-MCM interp. |
+
+MCM is the mutation count matrix. Both spellings of the times sign are listed because
+the bar drawer writes "×" and the gate drawer "x"; every new name uses ×. Labels are
+matched WHOLE, not by regex. Both mechanisms read this one table: the grob walk for
+E-H, and `sc2.gate_label_map` for C/D, which the exports now set from the table when
+`REVISED2_LABELS=1` (formerly `REVISED_PFM`). The figure stops if anything matching
+`REVISED2_STALE` survives.
+
+**Model types.** "Val-selected (10x)" was never a model type, only a group the
+ensemble arm appends. Under `REVISED2_LABELS`, `panels_coguk_export.R` now regroups
+the frames the bars read: the CV bar joins **antiGen**, and the gate becomes **antiGen
+gated hybrid** in `GATE_BLUE`, the colour its line already has in C/D. This is done on
+the data frames rather than in `MODEL_GROUP`, because that vector is also the bar order
+and must stay contiguous by group; bar order is unchanged.
+
+## 117. sc2_results_revised2: the C/D key moves under the panels (2026-11-08)
+
+The cutoff-series key sat inside the lower-right of C and D, over the dashed baselines.
+C and D draw the same nine lines in the same colours, so one key serves both. It is now
+a two-row strip under row 2:
+
+* `panels_gate_macro_export.R` exports it as `gate_legend`, built from the C panel's
+  own plot. Entries, colours and order are therefore the panel's.
+* `fig_sc2_revised2.R` removes the in-panel copies from both baked grobs. In
+  ggplot2 >= 3.5 the inside legend is its own `guide-box-inside` component.
+
+Three details:
+
+* **Dashed keys.** The old key drew every line solid, because the linetype guide is
+  suppressed. The strip's `override.aes` draws `GATE_BASELINES` (after the label map)
+  dashed, as in the panels.
+* **Plain text, not markdown.** gridtext measures "×" wider than it draws it, which left
+  a gap after every S×S / S×M label. The strip uses `element_text` at 8 pt, against the
+  bars' 7 pt row labels, and does the one bold entry with plotmath. `element_markdown`
+  and `element_text` do not merge, so the key text is blanked first and then set.
+* **Size.** The canvas is 10.5 in tall (was 10). Row 2 gets 1.1 of the height and a small
+  spacer keeps the strip off the E-H titles.

@@ -46,7 +46,7 @@ RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
 run_export <- function(script, rds) {
-  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED_PFM=1"),
+  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1"),
                 stdout = TRUE, stderr = TRUE)
   if (!file.exists(rds)) {
     stop(script, " produced no panels. Its output was:\n",
@@ -62,29 +62,32 @@ sc <- run_export("figures/panels_sc2_export.R", RS("sc2"))
 message("  [3/3] exporting the per-cell cutoff panel ...")
 gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
 
-## PSSM IS NOW CALLED PFM, on this figure only (NOTES s116) -- the drawers' label
-## tables are shared with every other figure, and which of those reach the paper is
-## not settled, so renaming at the source would change all of them at once.
+## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
+## MCM interpolations, antiGen (CV x10). The table is `figures/revised2_labels.R`;
+## the drawers' own label tables are shared with every other figure and stay as
+## they are.
 ##
 ## TWO MECHANISMS, because the panels render text two ways:
 ##  * the bar panels (E-H) and the legend use plain text grobs, so the rename is a
-##    walk over the BAKED GROBS below -- "PSSM", "PSSM Conservation" and
-##    "antiGen / PSSM gate" all follow. Whole words only.
+##    whole-label lookup over the BAKED GROBS below.
 ##  * the two cutoff-series panels (C, D) have an `element_markdown` legend, which
-##    places each word at a fixed x; a shorter word swapped in afterwards leaves a
-##    gap. They are renamed inside `make_gate_plot` (option `sc2.gate_label_map`),
-##    switched on by the REVISED_PFM variable `run_export` passes.
+##    places each word at a fixed x; a label swapped in afterwards leaves gaps or
+##    overlaps. They are renamed inside `make_gate_plot` (option
+##    `sc2.gate_label_map`), switched on by the REVISED2_LABELS variable `run_export`
+##    passes.
 ## The check after the walk covers every panel, whichever mechanism renamed it.
-relabel_grob <- function(g, from = "\\bPSSM\\b", to = "PFM") {
+source("figures/revised2_labels.R")
+relabel_grob <- function(g, map = REVISED2_LABELS) {
   if (is.null(g)) return(g)
-  if (!is.null(g$label) && is.character(g$label))
-    g$label <- gsub(from, to, g$label, perl = TRUE)
+  if (!is.null(g$label) && is.character(g$label)) {
+    hit <- g$label %in% names(map)
+    g$label[hit] <- unname(map[g$label[hit]])
+  }
   if (!is.null(g$grobs))
-    g$grobs <- lapply(g$grobs, relabel_grob, from = from, to = to)
+    g$grobs <- lapply(g$grobs, relabel_grob, map = map)
   if (!is.null(g$children)) {
     nm <- names(g$children)
-    g$children <- do.call(grid::gList,
-                          lapply(g$children, relabel_grob, from = from, to = to))
+    g$children <- do.call(grid::gList, lapply(g$children, relabel_grob, map = map))
     names(g$children) <- nm
     if (!is.null(g$childrenOrder)) g$childrenOrder <- nm
   }
@@ -92,16 +95,19 @@ relabel_grob <- function(g, from = "\\bPSSM\\b", to = "PFM") {
 }
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", "legend"))
   cg[[k]] <- relabel_grob(cg[[k]])
-## Checked, not assumed: a panel that arrived as a ggplot (not a grob) or kept its
-## text somewhere the walk misses would still say PSSM, and that is an error.
+## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
+## somewhere the walk misses, or carries a label the table does not list would still
+## show an old name, and that is an error.
 grob_text <- function(g) c(if (is.character(g$label)) g$label,
                            unlist(lapply(g$grobs, grob_text)),
                            unlist(lapply(g$children, grob_text)))
-left <- grep("\\bPSSM\\b", unlist(lapply(c(gm["gate_macro"], sc["gate_pm"],
-                     cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
-                          "decile_dn_evt", "legend")]), grob_text)),
+left <- grep(REVISED2_STALE,
+             unlist(lapply(c(gm[c("gate_macro", "gate_legend")], sc["gate_pm"],
+                             cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
+                                  "decile_dn_evt", "legend")]), grob_text)),
              value = TRUE, perl = TRUE)
-if (length(left)) stop("PSSM survived the relabel: ", paste(unique(left), collapse = "; "))
+if (length(left)) stop("old names survived the relabel: ",
+                       paste(unique(left), collapse = "; "))
 
 ## The scratch renders the three exports wrote as a side effect.
 for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",
@@ -135,8 +141,22 @@ row1 <- plot_grid(recall_cartoon, case_study, nrow = 1,
                   rel_widths = c(1, 1), labels = c("A", "B"))
 ## PER CELL ON THE LEFT, per mutation on the right -- the direction row 3 also reads,
 ## so the contrast runs one way everywhere in the figure.
-row2 <- plot_grid(gm$gate_macro, sc$gate_pm, nrow = 1,
-                  rel_widths = c(1, 1), labels = c("C", "D"))
+## THE KEY GOES UNDER C AND D, not over their lines (NOTES s117). Inside the panel it
+## sat on the lower-right corner, where the dashed baselines run. Both panels draw the
+## same nine lines in the same colours, so one strip serves both; the in-panel copies
+## are removed from the baked grobs (in ggplot2 >= 3.5 an inside legend is its own
+## "guide-box-inside" component), which leaves every other part of both panels as
+## exported.
+strip_inside_legend <- function(g) {
+  hit <- grepl("^guide-box", g$layout$name)
+  stopifnot(any(hit))
+  g$grobs[hit] <- list(ggplot2::zeroGrob())
+  g
+}
+row2 <- plot_grid(
+  plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
+            nrow = 1, rel_widths = c(1, 1), labels = c("C", "D")),
+  gm$gate_legend, NULL, ncol = 1, rel_heights = c(1, 0.1, 0.03))
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
 row3 <- plot_grid(cg$decile_all_pc, cg$decile_all_evt,
                   cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
@@ -147,7 +167,7 @@ save_figure(
   plot_grid(cg$legend, row1, row2, row3, ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
-            rel_heights = c(0.12, 0.95, 1.0, 1.45)),
+            rel_heights = c(0.12, 0.95, 1.1, 1.45)),
   getOption("revised2.fig_main", "sc2_results_revised2"),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
@@ -156,5 +176,5 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = 10)
+  width = 11, height = 10.5)
 cat("wrote figs/sc2_results_revised2.png (+ .pdf)\n")

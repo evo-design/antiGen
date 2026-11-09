@@ -71,11 +71,11 @@ options(
     "BLOSUM62"               = MODEL_TYPE_COLORS[2],
     "EVEscape"               = MODEL_TYPE_COLORS[3]),
   sc2.gate_drop_main = "ESM-2 35M, partial FT")
-## sc2_results_revised2 says PFM where the arm says PSSM (NOTES s116); off unless
-## the caller asks, so sc2_results_revised and the arm's own figures are unchanged.
-if (nzchar(Sys.getenv("REVISED_PFM"))) {
-  options(sc2.gate_label_map = c("PSSM" = "PFM",
-                                 "antiGen / PSSM gate" = "antiGen / PFM gate"))
+## sc2_results_revised2's display names (NOTES s116); off unless the caller asks,
+## so sc2_results_revised and the arm's own figures are unchanged.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
+  source("figures/revised2_labels.R")
+  options(sc2.gate_label_map = REVISED2_LABELS)
 }
 gate_plot <- make_gate_plot(gate_recall, "recall", "Recall, top decile",
                             "P(obs. mut. in top decile)",
