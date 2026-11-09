@@ -211,7 +211,7 @@ ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
 LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40   # the key, fixed (s129)
 PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.52, esc = 2.57)
 ROW_IN[3] <- PANEL_IN[["rbd"]]
-ROW_IN[4] <- PANEL_IN[["esc"]] + LEG_IN + 0.25   # + the key and the gap after it
+ROW_IN[4] <- PANEL_IN[["esc"]] + if (VARIANT == "supp") LEG_IN + 0.25 else 0.15
 bar_block <- function(x, letters) {
   plot_grid(x$decile_all_pc, x$decile_all_evt, x$decile_dn_pc, x$decile_dn_evt, nrow = 1,
             rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters)
@@ -219,12 +219,16 @@ bar_block <- function(x, letters) {
 row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H")))
 ## The model-type / Ours-Previous key serves E-L, so it goes UNDER I-L, followed by a
 ## gap before panel M (or the end of the figure).
+## In the MAIN figure the key goes at the very bottom, under M, which it also colours
+## (user, s135); in the supplement, which has no M, it ends the figure under I-L.
 GAP_IN <- 0.25
-row4 <- plot_grid(
-  with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L"))),
-  plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
-  NULL,
-  ncol = 1, rel_heights = c(PANEL_IN[["esc"]], LEG_IN, GAP_IN))
+key_row <- plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1))
+row4 <- if (VARIANT == "main") {
+  with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L")))
+} else {
+  plot_grid(with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L"))),
+            key_row, NULL, ncol = 1, rel_heights = c(PANEL_IN[["esc"]], LEG_IN, GAP_IN))
+}
 
 ## PANEL M (main only, NOTES s130): supp_fixed_split brought in. The three baselines that
 ## were fit ONCE, at a fixed date, each scored against antiGen at its own cutoff on the
@@ -293,14 +297,15 @@ row5 <- plot_grid(NULL, NULL,
 M_IN <- 1.05
 
 save_figure(
-  plot_grid(plotlist = c(list(row1, row2, row3, row4), if (VARIANT == "main") list(row5)),
+  plot_grid(plotlist = c(list(row1, row2, row3, row4),
+                         if (VARIANT == "main") list(row5, key_row)),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN, M_IN) else ROW_IN),
+            rel_heights = if (VARIANT == "main") c(ROW_IN, M_IN, LEG_IN) else ROW_IN),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -310,6 +315,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = sum(ROW_IN) + if (VARIANT == "main") M_IN else 0)
+  width = 11, height = sum(ROW_IN) + if (VARIANT == "main") M_IN + LEG_IN else 0)
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))

@@ -12945,3 +12945,9 @@ sites.
   continuous surface. The label routing gap doubles with the resolution, to 140 px.
 * **Panel B dots.** The dots near 100 (R346T, T346R) sat on the axes' right edge and
   were half clipped. They are now drawn with `clip_on = False`.
+
+## 135. The E-M key at the very bottom of the main figure (2026-11-09)
+
+In the MAIN figure the model-type / Ours-Previous key is now the last row, under panel M,
+which it also colours. I-L is directly followed by M (with 0.15 in between). The
+supplement has no M and keeps the s134 layout, with the key under I-L ending the figure.
