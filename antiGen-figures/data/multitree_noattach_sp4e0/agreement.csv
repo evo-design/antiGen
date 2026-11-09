@@ -1,0 +1,3 @@
+universe,eval,rule,subset,tree,budget,n_mutations,both,model_only,wxw_only,neither
+standard,Temporal holdout,pooled,all,POOLED,hit10,1757,1273,243,44,197
+standard,Temporal holdout,pooled,novel,POOLED,hit10,440,204,79,24,133

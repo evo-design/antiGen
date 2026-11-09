@@ -26,20 +26,31 @@ FIG_VECTOR_DIR <- "figs_vector"  # PDF, for submission
 #' scripts build several plots per figure and the implicit version silently
 #' saves whichever one happened to be printed last.
 save_figure <- function(plot, name, width, height) {
+  ## cairo devices so the named font (Arial) renders; the base pdf()
+  ## device only knows its built-in font families and errors on a system-font name.
   ggsave(file.path(FIG_RASTER_DIR, paste0(name, ".png")), plot,
-         width = width, height = height, bg = "white")
+         width = width, height = height, bg = "white", dpi = 300, type = "cairo")
   ggsave(file.path(FIG_VECTOR_DIR, paste0(name, ".pdf")), plot,
-         width = width, height = height, bg = "white")
+         width = width, height = height, bg = "white", device = cairo_pdf)
   invisible(plot)
 }
 
 
 ## --- Theme -----------------------------------------------------------------
 
+## Arial everywhere -- the real MS core font (installed to ~/.local/share/fonts), not the
+## metric-identical Liberation Sans stand-in.
+PAPER_FONT <- "Arial"
+## geom_text / geom_label carry their own font (the theme does not reach them), so set
+## their default family here too, once, for every figure.
+update_geom_defaults("text",  list(family = PAPER_FONT))
+update_geom_defaults("label", list(family = PAPER_FONT))
+
 #' The complete theme used by every panel in the paper.
 theme_paper <- function(...) {
-  theme_minimal(...) +
+  theme_minimal(base_family = PAPER_FONT, ...) +
     theme(
+      text       = element_text(family = PAPER_FONT),
       axis.text  = element_text(color = "black"),
       plot.title = element_text(size = 11)
     )

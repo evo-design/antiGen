@@ -1,0 +1,23 @@
+universe,metric,rule,eval,subset,rung,value,lo,hi
+standard,hit10,pooled,Temporal holdout,all,uniform,0.1,0.1,0.1
+standard,hit10,pooled,Temporal holdout,all,pssm,0.6126388311386108,0.5256978869438171,0.7029334306716919
+standard,hit10,pooled,Temporal holdout,all,codon_blosum,0.6538047194480896,0.570522665977478,0.7429852485656738
+standard,hit10,pooled,Temporal holdout,all,frequency,0.7356270551681519,0.6672914624214172,0.7984819412231445
+standard,hit10,pooled,Temporal holdout,all,where_times_which,0.7889286279678345,0.7376647591590881,0.8441343307495117
+standard,hit10,pooled,Temporal holdout,all,site_prop,0.8219847083091736,0.7731034159660339,0.8630386590957642
+standard,hit10,pooled,Temporal holdout,all,cpssm_dir,0.8303574919700623,0.7768609523773193,0.8797595500946045
+standard,hit10,pooled,Temporal holdout,all,single,0.8399228453636169,0.7864145040512085,0.893839955329895
+standard,hit10,pooled,Temporal holdout,all,joint,0.8877242803573608,0.8452332019805908,0.9291357398033142
+standard,hit10,pooled,Temporal holdout,novel,uniform,0.1,0.1,0.1
+standard,hit10,pooled,Temporal holdout,novel,pssm,0.1299947053194046,0.09259646385908127,0.1717967540025711
+standard,hit10,pooled,Temporal holdout,novel,codon_blosum,0.5236819386482239,0.4259765148162842,0.640211820602417
+standard,hit10,pooled,Temporal holdout,novel,frequency,0.04529465362429619,0.031417179852724075,0.05762161687016487
+standard,hit10,pooled,Temporal holdout,novel,where_times_which,0.5516566634178162,0.473429799079895,0.649973452091217
+standard,hit10,pooled,Temporal holdout,novel,site_prop,0.4337981641292572,0.3293091952800751,0.5232572555541992
+standard,hit10,pooled,Temporal holdout,novel,cpssm_dir,0.3866560757160187,0.28873804211616516,0.47773218154907227
+standard,hit10,pooled,Temporal holdout,novel,single,0.5150600671768188,0.42624595761299133,0.6315375566482544
+standard,hit10,pooled,Temporal holdout,novel,joint,0.702540397644043,0.6235827803611755,0.7865983247756958
+standard,hit10,pooled,Temporal holdout,all,joint13,0.8630222678184509,0.826337993144989,0.8980376720428467
+standard,hit10,pooled,Temporal holdout,novel,joint13,0.6192527413368225,0.5315218567848206,0.7171071767807007
+standard,hit10,pooled,Temporal holdout,all,zeroshot,0.27763819694519043,0.1946411430835724,0.35930025577545166
+standard,hit10,pooled,Temporal holdout,novel,zeroshot,0.17573286592960358,0.09003229439258575,0.2606755793094635

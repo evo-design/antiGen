@@ -1,0 +1,109 @@
+universe,contrast,eval,rule,metric,tree,subset,est,lo,hi,pooled
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h5nx,all,0.025495750829577446,-0.00566572230309248,0.056657224893569946,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,ncov,all,0.06395348906517029,0.011627906933426857,0.12209302186965942,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,rsv_a,all,0.01785714365541935,-0.0535714291036129,0.0892857164144516,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,rsv_b,all,0.08064515888690948,0.0,0.16129031777381897,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,measles,all,0.1428571492433548,0.0476190485060215,0.2380952388048172,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv1,all,0.06666667014360428,-0.13333334028720856,0.2666666805744171,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv2,all,0.0625,0.0,0.1875,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv3,all,0.0,0.0,0.0,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv4,all,0.0,0.0,0.0,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h3n2_ha,all,0.02651515230536461,-0.018939394503831863,0.07196969538927078,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h1n1pdm_ha,all,0.0491071417927742,-0.008928571827709675,0.1071428582072258,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,vic_ha,all,0.08870967477560043,0.04032257944345474,0.14516128599643707,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,hmpv_a_g,all,-0.0028901733458042145,-0.03179190680384636,0.02601156011223793,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,POOLED,all,0.04780131979630543,0.026928120049146506,0.07083650100976228,1
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h5nx,novel,0.26829269528388977,0.09756097197532654,0.4390243887901306,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,ncov,novel,0.15625,0.03125,0.28125,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,rsv_a,novel,0.0714285746216774,-0.2142857164144516,0.3571428656578064,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,rsv_b,novel,0.4000000059604645,0.13333334028720856,0.6666666865348816,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,measles,novel,0.2380952388048172,0.11071428656578064,0.380952388048172,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv1,novel,0.20000000298023224,0.0,0.6000000238418579,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv2,novel,0.25,0.0,0.75,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,denv4,novel,0.0,0.0,0.0,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h3n2_ha,novel,0.08860759437084198,-0.037974681705236435,0.2151898741722107,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,h1n1pdm_ha,novel,0.260869562625885,0.11594203114509583,0.4057970941066742,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,vic_ha,novel,0.2380952388048172,0.095238097012043,0.4285714328289032,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,hmpv_a_g,novel,0.078125,-0.015625,0.171875,0
+standard,vs single-tree model,Temporal holdout,pooled,hit10,POOLED,novel,0.18748032612105212,0.12740475183042385,0.24650267944671214,1
+standard,vs where x which,Temporal holdout,pooled,hit10,h5nx,all,0.11331444978713989,0.07648725062608719,0.150141641497612,0
+standard,vs where x which,Temporal holdout,pooled,hit10,ncov,all,0.22674418985843658,0.15697674453258514,0.29651162028312683,0
+standard,vs where x which,Temporal holdout,pooled,hit10,rsv_a,all,0.0535714291036129,-0.01785714365541935,0.1428571492433548,0
+standard,vs where x which,Temporal holdout,pooled,hit10,rsv_b,all,0.1387096792459488,0.05806451290845871,0.22580644488334656,0
+standard,vs where x which,Temporal holdout,pooled,hit10,measles,all,0.060333333909511566,-0.03171428665518761,0.14923809468746185,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv1,all,0.0,-0.2666666805744171,0.2666666805744171,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv2,all,0.1875,0.0,0.375,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv3,all,0.05882352963089943,0.0,0.1764705926179886,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv4,all,0.0,0.0,0.0,0
+standard,vs where x which,Temporal holdout,pooled,hit10,h3n2_ha,all,0.12878787517547607,0.08712121099233627,0.17424242198467255,0
+standard,vs where x which,Temporal holdout,pooled,hit10,h1n1pdm_ha,all,0.1383928507566452,0.0758928582072258,0.2008928507566452,0
+standard,vs where x which,Temporal holdout,pooled,hit10,vic_ha,all,0.12903225421905518,0.05645161122083664,0.2016129046678543,0
+standard,vs where x which,Temporal holdout,pooled,hit10,hmpv_a_g,all,0.049132946878671646,0.0202312134206295,0.080924853682518,0
+standard,vs where x which,Temporal holdout,pooled,hit10,POOLED,all,0.09879557988964595,0.0625859015692885,0.1362640377922127,1
+standard,vs where x which,Temporal holdout,pooled,hit10,h5nx,novel,0.2195121943950653,0.0731707289814949,0.39024388790130615,0
+standard,vs where x which,Temporal holdout,pooled,hit10,ncov,novel,0.125,0.03125,0.234375,0
+standard,vs where x which,Temporal holdout,pooled,hit10,rsv_a,novel,0.1428571492433548,-0.1428571492433548,0.4285714328289032,0
+standard,vs where x which,Temporal holdout,pooled,hit10,rsv_b,novel,0.4399999976158142,0.20000000298023224,0.6666666865348816,0
+standard,vs where x which,Temporal holdout,pooled,hit10,measles,novel,0.005317460745573044,-0.12166666239500046,0.11642856895923615,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv1,novel,0.0,-0.6000000238418579,0.6000000238418579,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv2,novel,0.5,0.0,1.0,0
+standard,vs where x which,Temporal holdout,pooled,hit10,denv4,novel,0.0,0.0,0.0,0
+standard,vs where x which,Temporal holdout,pooled,hit10,h3n2_ha,novel,0.13924050331115723,0.050632912665605545,0.2278480976819992,0
+standard,vs where x which,Temporal holdout,pooled,hit10,h1n1pdm_ha,novel,0.14492753148078918,0.04311594367027283,0.260869562625885,0
+standard,vs where x which,Temporal holdout,pooled,hit10,vic_ha,novel,0.0,-0.2380952388048172,0.2380952388048172,0
+standard,vs where x which,Temporal holdout,pooled,hit10,hmpv_a_g,novel,0.09375,0.0,0.203125,0
+standard,vs where x which,Temporal holdout,pooled,hit10,POOLED,novel,0.15088373639931282,0.07257130803385128,0.24718697222415353,1
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h5nx,all,0.0,-0.03116147220134735,0.03116147220134735,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,ncov,all,0.045478034764528275,-0.00684754503890872,0.09769057482481003,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,rsv_a,all,0.0,-0.0892857164144516,0.1071428582072258,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,rsv_b,all,0.08064515888690948,0.0,0.16129031777381897,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,measles,all,0.13414286077022552,0.030190477147698402,0.2380952388048172,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv1,all,-0.06666667014360428,-0.2666666805744171,0.13333334028720856,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv2,all,0.1875,0.0,0.375,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv3,all,0.0,0.0,0.0,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv4,all,0.3333333432674408,0.0,1.0,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h3n2_ha,all,0.022727273404598236,-0.018939394503831863,0.06439393758773804,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h1n1pdm_ha,all,-0.03125,-0.0892857164144516,0.02678571455180645,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,vic_ha,all,0.008064515888690948,-0.032258063554763794,0.04838709533214569,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,hmpv_a_g,all,0.03179190680384636,-0.005780346691608429,0.07225433737039566,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,POOLED,all,0.05736664797251041,0.004260121909185098,0.11701494761957568,1
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h5nx,novel,0.17073170840740204,0.024390242993831635,0.31707316637039185,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,ncov,novel,0.16909721493721008,0.04440104216337204,0.30635201930999756,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,rsv_a,novel,0.2857142984867096,0.0714285746216774,0.5,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,rsv_b,novel,0.4000000059604645,0.20000000298023224,0.6666666865348816,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,measles,novel,0.28706347942352295,0.13103175163269043,0.42992061376571655,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv1,novel,0.0,-0.6000000238418579,0.6000000238418579,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv2,novel,0.75,0.25,1.0,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,denv4,novel,1.0,1.0,1.0,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h3n2_ha,novel,0.17721518874168396,0.06329113990068436,0.27848100662231445,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,h1n1pdm_ha,novel,0.15942029654979706,0.028985507786273956,0.28985506296157837,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,vic_ha,novel,0.0476190485060215,-0.1428571492433548,0.2380952388048172,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,hmpv_a_g,novel,0.34375,0.234375,0.453125,0
+standard,vs PSSM + Dirichlet,Temporal holdout,pooled,hit10,POOLED,novel,0.31588427008440095,0.17969143045290062,0.4833100881737967,1
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h5nx,all,0.025495750829577446,-0.00283286115154624,0.056657224893569946,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,ncov,all,0.0058139534667134285,-0.040697675198316574,0.04651162773370743,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,rsv_a,all,0.01785714365541935,-0.0357142873108387,0.0892857164144516,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,rsv_b,all,0.016129031777381897,-0.032258063554763794,0.08064515888690948,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,measles,all,0.02857142873108387,-0.05714285746216774,0.11428571492433548,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv1,all,0.0,0.0,0.0,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv2,all,0.125,0.0,0.3125,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv3,all,0.05882352963089943,0.0,0.1764705926179886,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv4,all,0.0,0.0,0.0,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h3n2_ha,all,0.007575757801532745,-0.02651515230536461,0.0416666679084301,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h1n1pdm_ha,all,-0.004464285913854837,-0.0535714291036129,0.0401785708963871,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,vic_ha,all,0.04032257944345474,0.0,0.08064515888690948,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,hmpv_a_g,all,0.0,-0.03179190680384636,0.028973987326025963,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,POOLED,all,0.024701914570939083,0.009418683999683708,0.04674226412495884,1
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h5nx,novel,0.24390244483947754,0.0731707289814949,0.39024388790130615,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,ncov,novel,-0.03125,-0.140625,0.0625,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,rsv_a,novel,0.1428571492433548,0.0,0.3571428656578064,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,rsv_b,novel,0.06666667014360428,-0.13333334028720856,0.2666666805744171,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,measles,novel,0.0476190485060215,-0.0793650820851326,0.1746031790971756,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv1,novel,0.0,0.0,0.0,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv2,novel,0.25,0.0,0.75,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,denv4,novel,0.0,0.0,0.0,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h3n2_ha,novel,-0.012658228166401386,-0.08860759437084198,0.06329113990068436,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,h1n1pdm_ha,novel,0.08695652335882187,-0.028985507786273956,0.2028985470533371,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,vic_ha,novel,0.1428571492433548,-0.0476190485060215,0.3333333432674408,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,hmpv_a_g,novel,0.0625,-0.015625,0.15625,0
+standard,vs 13-tree model,Temporal holdout,pooled,hit10,POOLED,novel,0.08328756309735279,0.03225471964494015,0.1358623901731334,1
