@@ -12951,3 +12951,21 @@ sites.
 In the MAIN figure the model-type / Ours-Previous key is now the last row, under panel M,
 which it also colours. I-L is directly followed by M (with 0.15 in between). The
 supplement has no M and keeps the s134 layout, with the key under I-L ending the figure.
+
+## 136. Panel B drawn with av-multitree's renderer, verbatim (2026-11-09)
+
+The s134 surface tuning (smooth 0.030, ambient 0.70, ...) still looked wrong to the user.
+`experiments/multitree/render_surface.py` is now a VERBATIM copy of the av-multitree file
+of that name, the H3N2 panel's renderer. `draw_path_panel.py` imports it in place of
+`render_rbd_surface` and calls `render()` with ITS defaults at the H3N2 render size
+(760 x 1000); the glyph aspect follows that size. `render_rbd_surface.py` stays for the
+other callers.
+
+* **Labels.** The wider glyphs made F456L and Q493E collide. The label columns go back
+  to the H3N2 values: a 92 px minimum gap, and an offset of 0.45 x image width.
+* **Arrows.** Their margins shrink to 0.14 in, so the shafts show between the closer
+  glyphs.
+* **Why the RBD still looks more textured than an HA trimer.** The renderer's blur is a
+  fixed fraction of image WIDTH. A whole HA trimer fills theirs, so each atom is a few
+  pixels; one RBD fills ours, so each atom is larger against the same blur. Smaller
+  glyphs, or a higher `smooth` argument, are the levers if that matters.

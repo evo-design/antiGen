@@ -57,7 +57,8 @@ for _f in _arial:
 matplotlib.rcParams["font.family"] = "Arial"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import render_rbd_surface as rs
+## The av-multitree renderer, vendored VERBATIM (user, s136): the H3N2 panel's surface.
+import render_surface as rs
 
 ## THE CANVAS IS THE PANEL BOX, at 1:1 (NOTES s119). sc2_results_revised2 gives panel B
 ## half of an 11 in row about 2.45 in tall under its title. The old 5.5 x 3.5 canvas
@@ -169,19 +170,13 @@ def main():
     # --- the lineage ------------------------------------------------------------
     n = len(states)
     gh, gy = 0.92, 1.30
-    gw = gh * 380 / 640
+    gw = gh * 760 / 1000
     span_l, span_r = 0.55, W_IN - 0.35
     gap = (span_r - span_l - n * gw) / (n - 1)
     lefts = [span_l + i * (gw + gap) for i in range(n)]
     for i, (lf, st) in enumerate(zip(lefts, states)):
-        ## SMOOTHER than the renderer default (PI, s134). An RBD has ~1/9 the atoms of the
-        ## HA trimer and is drawn larger, so at smooth 0.0118 every atom read as a bump;
-        ## 0.030 at double resolution, with more ambient and less specular, gives the HA
-        ## panel's continuous matte surface without the dark band down one side. The site
-        ## colour is blurred a little less so a patch keeps its edge.
-        img, pts = rs.render(xyz, rad, resi, glyph_colors[i], BODY, size=(760, 1280),
-                             smooth=0.030, color_smooth=0.32,
-                             ambient=0.70, specular=0.05, rim=0.10)
+        ## Its own defaults, and the H3N2 panel's render size (760 x 1000).
+        img, pts = rs.render(xyz, rad, resi, glyph_colors[i], BODY, size=(760, 1000))
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off"); axg.set_autoscale_on(False)
         bg.text(lf + gw / 2, gy + gh + 0.03, st, ha="center", va="bottom",
@@ -202,8 +197,8 @@ def main():
             grp = sorted((r for r in new if side_of(r) == side), key=lambda r: pts[r["pos"]][1])
             lys = [pts[r["pos"]][1] for r in grp]
             for k in range(1, len(lys)):
-                lys[k] = max(lys[k], lys[k - 1] + 140)
-            lx = cx + side * 0.62 * Wimg
+                lys[k] = max(lys[k], lys[k - 1] + 92)
+            lx = cx + side * 0.45 * Wimg
             for r, ly in zip(grp, lys):
                 px, py = pts[r["pos"]]
                 t = axg.annotate(r["mutation_1based"], xy=(px, py), xytext=(lx, ly),
@@ -214,7 +209,7 @@ def main():
                 t.set_path_effects([pe.withStroke(linewidth=2.0, foreground="white")])
     arr_style = ArrowStyle("simple", head_length=0.70, head_width=0.52, tail_width=0.09)
     for i in range(n - 1):
-        a0, a1 = lefts[i] + gw + 0.30, lefts[i + 1] - 0.30
+        a0, a1 = lefts[i] + gw + 0.14, lefts[i + 1] - 0.14
         ay = gy + 0.16 * gh      # low, under the on-glyph labels
         bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle=arr_style,
                                      mutation_scale=9, linewidth=0, facecolor=ARROW,
