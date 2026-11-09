@@ -12889,3 +12889,42 @@ drawn as panel G of that branch's `figs/fig4_endemic.png`.
   * **Arrows.** Low on the glyph row (16% of its height) so they clear the on-glyph labels.
   * **No chain key.** Their HA1 / HA2 / other-protomers key has no RBD analogue.
 * **Canvas.** Unchanged at 5.5 x 2.45 in, drawn at 1:1 into its slot (s119).
+
+## 133. The codon table on de novo RBD: ties checked; Codon-B62 out of the main figure (2026-11-09)
+
+**The question.** On panel G of sc2_results_revised2 (de novo, all RBD cells, 2023-01-01,
+per cell), the codon table ranks 1st at 0.536, above antiGen (CV x10) at 0.497. Its score
+depends only on (current residue, new residue), so thousands of cells tie exactly, and
+the worry was that the top-decile tie rule flatters it.
+
+**The rule.** `compute_hit_rate` selects exactly q * n_valid cells. Every cell strictly
+above the boundary value counts in full; each cell tied AT the boundary counts as
+(slots left) / (block size). That is the expected count under uniform random
+tie-breaking.
+
+**Checked against random tie-breaks.** `LIST_MACRO_TIE_JITTER=<seed>` is a new DEBUG
+switch in `list_macro.py`, off by default and never used for a published row. It adds
+uniform noise of 1e-4 x the score range, far below a coarse predictor's gaps, so that
+ties break at random. Five copies of the 2023 all-cells run, built-in baselines only
+(jobs 3686591-5, about 1.5 min each):
+
+| codon | de novo per cell | de novo per mutation | all per cell |
+|---|---|---|---|
+| fractional rule (published) | 0.5358 | 0.4900 | 0.3013 |
+| random breaks, 4 seeds | 0.5380-0.5388 | 0.4894-0.4965 | 0.3001-0.3080 |
+
+The rule matches random tie-breaking, so this is not a tie artifact.
+
+**It is small-sample.** Panel G rests on 71 cells. Codon minus CV x10 is +0.039, with a
+bootstrap 95% CI over cells of [-0.078, +0.156]: 11 cells that codon hits and CV x10
+misses, against 6 the other way. A plausible reading is that a never-seen cell carries no
+history for a learned model, leaving single-nucleotide accessibility, which is exactly
+what the codon table scores; on all RBD cells it drops to 0.30. A check of reachability
+from the BA.2 residue was inconclusive, because 2023 queries differ from BA.2 at many
+sites.
+
+**Figure.**
+
+* **Main roster.** The main figure drops Codon-B62 mixture (`substitution`); the
+  supplement keeps it. Bar blocks are now 2.52 / 2.57 in.
+* **Hatch key.** It reads "Ours" / "Previous".

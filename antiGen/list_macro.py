@@ -88,6 +88,11 @@ def build_variants(lists, seen_mask):
     return variants
 
 
+## Set by LIST_MACRO_TIE_JITTER=<seed>: a debugging aid, never used for a published row.
+_TIE_JITTER = (int(os.environ["LIST_MACRO_TIE_JITTER"])
+               if os.environ.get("LIST_MACRO_TIE_JITTER") else None)
+
+
 def cell_pass(score_fn, loader, variants, device, eval_range, qtiles, sink=None,
               common_pool=None):
     """Accumulate per-cell hit mass and event counts over the loader.
@@ -114,6 +119,15 @@ def cell_pass(score_fn, loader, variants, device, eval_range, qtiles, sink=None,
         aa_batch = aa_batch.to(device)
         target_batch = target_batch.to(device)
         scores = score_fn(aa_batch)
+        if _TIE_JITTER is not None:
+            # DEBUG ONLY (NOTES s133): break exact ties at random, to check that the
+            # fractional top-q rule equals the mean over random tie-breaks. The noise is
+            # far below the smallest gap between distinct scores of a coarse predictor.
+            g = torch.Generator(device="cpu").manual_seed(_TIE_JITTER * 100003 + start)
+            fin = torch.isfinite(scores)
+            span = (scores[fin].max() - scores[fin].min()).item() if fin.any() else 1.0
+            noise = torch.rand(scores.shape, generator=g).to(scores.device)
+            scores = torch.where(fin, scores + noise * 1e-4 * max(span, 1e-12), scores)
         if sink is not None:
             sub = scores[:, eval_range, :] if scores.shape[1] != len(eval_range) else scores
             sink(start, sub.detach().float().cpu().numpy())

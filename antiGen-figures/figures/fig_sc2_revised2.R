@@ -56,7 +56,9 @@ DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (b
                "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), untrained
                ## Second pass (s129):
                "pssm_root_position",                      # PFM Conservation
-               "Omicron_BA1_bind", "Omicron_BA2_bind")    # the two DMS (bind)
+               "Omicron_BA1_bind", "Omicron_BA2_bind",    # the two DMS (bind)
+               ## Third pass (s133):
+               "substitution")                            # Codon-B62 mixture
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
 } else character(0)
@@ -205,7 +207,7 @@ with_header <- function(txt, panels) {
 ## (I-L). Heights are per BAR-PANEL block, in inches, and follow their content.
 ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
 LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40   # the key, fixed (s129)
-PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.70, esc = 2.75)
+PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.52, esc = 2.57)
 ROW_IN[3] <- LEG_IN + PANEL_IN[["rbd"]]
 ROW_IN[4] <- PANEL_IN[["esc"]]
 bar_block <- function(x, letters) {

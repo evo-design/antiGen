@@ -193,9 +193,9 @@ if (!is.null(getOption("coguk.ours_labels"))) {
                        cowplot::ggdraw() + cowplot::draw_label(txt, x = 0.06, hjust = 0, size = 8.8),
                        nrow = 1, rel_widths = c(0.12, 1))
   }
-  hatch_key <- cowplot::plot_grid(NULL, key_item(FALSE, "Designed in this work"),
-                                  key_item(TRUE, "External"), NULL,
-                                  nrow = 1, rel_widths = c(1, 1.1, 0.7, 1))
+  hatch_key <- cowplot::plot_grid(NULL, key_item(FALSE, "Ours"),
+                                  key_item(TRUE, "Previous"), NULL,
+                                  nrow = 1, rel_widths = c(1.4, 0.55, 0.65, 1.4))
   legend_grob <- cowplot::plot_grid(legend_grob, hatch_key, ncol = 1,
                                     rel_heights = c(1, 0.75))
 }
