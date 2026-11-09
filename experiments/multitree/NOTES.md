@@ -12969,3 +12969,11 @@ other callers.
   fixed fraction of image WIDTH. A whole HA trimer fills theirs, so each atom is a few
   pixels; one RBD fills ours, so each atom is larger against the same blur. Smaller
   glyphs, or a higher `smooth` argument, are the levers if that matters.
+
+## 137. Panel B names its structure (2026-11-09)
+
+The title is now "Case study: BA.2.86 to KP.3 (spike RBD, PDB 6M0J)". The glyph is chain E
+of 6M0J, the SARS-CoV-2 spike receptor-binding domain alone: residues 333-526, Wuhan-Hu-1
+sequence, crystallised with ACE2 (chain A, not drawn). All four glyphs are that one
+reference structure, with the sites each state changes coloured on it, not
+variant-specific models. That belongs in the caption.

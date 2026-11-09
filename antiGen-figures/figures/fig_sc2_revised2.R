@@ -155,7 +155,9 @@ for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",
 ## Titled through `plot_cartoon`, the same path panel A takes, so both image panels
 ## carry their titles at the same size and inset as the plotted ones.
 case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
-                           "Case study: BA.2.86 to KP.3",
+                           ## Names the structure drawn (user, s137): chain E of 6M0J, the
+                           ## spike RBD alone (residues 333-526), Wuhan-Hu-1 sequence.
+                           "Case study: BA.2.86 to KP.3 (spike RBD, PDB 6M0J)",
                            base_theme = theme_paper())
 
 ## Unchanged from the revised figure: the first column carries the wide cartoon and the
