@@ -1367,9 +1367,28 @@ make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
     df <- df[!(df$model %in% drop), ]
   }
 
+  ## DISPLAY RENAMES, applied after the drop and to everything that names a line:
+  ## the data, the named palette, the dashed set and the bolded gate. Read at CALL
+  ## time and NULL by default, so no published panel moves; sc2_results_revised2
+  ## sets it to say PFM for PSSM (NOTES s116). It has to happen HERE rather than on
+  ## the finished grob because the legend is `element_markdown`, which lays each
+  ## word out at a fixed position -- a shorter word swapped in afterwards leaves a gap.
+  relabel <- function(x) x
+  lab_map <- getOption("sc2.gate_label_map", NULL)
+  if (!is.null(lab_map)) {
+    relabel <- function(x) ifelse(x %in% names(lab_map), unname(lab_map[x]), x)
+    ## A FACTOR in the published path, whose level order is the legend order:
+    ## rename the levels, never the values (ifelse on a factor returns its codes).
+    if (is.factor(df$model)) levels(df$model) <- relabel(levels(df$model))
+    else df$model <- relabel(df$model)
+    if (!is.null(names(color_vals))) names(color_vals) <- relabel(names(color_vals))
+  }
+  dashed <- relabel(GATE_BASELINES)
+  bold   <- relabel("antiGen / PSSM gate")
+
   p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[col_name]],
                       group = model, color = model,
-                      linetype = (model %in% GATE_BASELINES))) +
+                      linetype = (model %in% dashed))) +
     ylim(0, NA)
   p <- p + if (geom == "line") geom_line(linewidth = 0.75) else geom_point(size = 1)
 
@@ -1378,7 +1397,7 @@ make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
       values = color_vals,
       ## Highlight the gate that made it into the main figure.
       labels = if (SUPP) waiver() else
-        function(x) ifelse(x == "antiGen / PSSM gate", paste0("**", x, "**"), x)
+        function(x) ifelse(x == bold, paste0("**", x, "**"), x)
     ) +
     scale_linetype_manual(values = c(`FALSE` = "solid", `TRUE` = "21"),
                           guide = "none") +

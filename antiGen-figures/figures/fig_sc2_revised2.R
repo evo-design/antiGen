@@ -46,7 +46,7 @@ RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
 run_export <- function(script, rds) {
-  st <- system2(RSCRIPT, c(script), env = paste0("REVISED_PANELS_RDS=", rds),
+  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED_PFM=1"),
                 stdout = TRUE, stderr = TRUE)
   if (!file.exists(rds)) {
     stop(script, " produced no panels. Its output was:\n",
@@ -61,6 +61,47 @@ message("  [2/3] exporting sc2_results_aa20 panels ...")
 sc <- run_export("figures/panels_sc2_export.R", RS("sc2"))
 message("  [3/3] exporting the per-cell cutoff panel ...")
 gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
+
+## PSSM IS NOW CALLED PFM, on this figure only (NOTES s116) -- the drawers' label
+## tables are shared with every other figure, and which of those reach the paper is
+## not settled, so renaming at the source would change all of them at once.
+##
+## TWO MECHANISMS, because the panels render text two ways:
+##  * the bar panels (E-H) and the legend use plain text grobs, so the rename is a
+##    walk over the BAKED GROBS below -- "PSSM", "PSSM Conservation" and
+##    "antiGen / PSSM gate" all follow. Whole words only.
+##  * the two cutoff-series panels (C, D) have an `element_markdown` legend, which
+##    places each word at a fixed x; a shorter word swapped in afterwards leaves a
+##    gap. They are renamed inside `make_gate_plot` (option `sc2.gate_label_map`),
+##    switched on by the REVISED_PFM variable `run_export` passes.
+## The check after the walk covers every panel, whichever mechanism renamed it.
+relabel_grob <- function(g, from = "\\bPSSM\\b", to = "PFM") {
+  if (is.null(g)) return(g)
+  if (!is.null(g$label) && is.character(g$label))
+    g$label <- gsub(from, to, g$label, perl = TRUE)
+  if (!is.null(g$grobs))
+    g$grobs <- lapply(g$grobs, relabel_grob, from = from, to = to)
+  if (!is.null(g$children)) {
+    nm <- names(g$children)
+    g$children <- do.call(grid::gList,
+                          lapply(g$children, relabel_grob, from = from, to = to))
+    names(g$children) <- nm
+    if (!is.null(g$childrenOrder)) g$childrenOrder <- nm
+  }
+  g
+}
+for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", "legend"))
+  cg[[k]] <- relabel_grob(cg[[k]])
+## Checked, not assumed: a panel that arrived as a ggplot (not a grob) or kept its
+## text somewhere the walk misses would still say PSSM, and that is an error.
+grob_text <- function(g) c(if (is.character(g$label)) g$label,
+                           unlist(lapply(g$grobs, grob_text)),
+                           unlist(lapply(g$children, grob_text)))
+left <- grep("\\bPSSM\\b", unlist(lapply(c(gm["gate_macro"], sc["gate_pm"],
+                     cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
+                          "decile_dn_evt", "legend")]), grob_text)),
+             value = TRUE, perl = TRUE)
+if (length(left)) stop("PSSM survived the relabel: ", paste(unique(left), collapse = "; "))
 
 ## The scratch renders the three exports wrote as a side effect.
 for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",

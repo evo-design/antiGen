@@ -12377,3 +12377,26 @@ Like every cartoon, the PNG is covered by `.gitignore:65` (`*.png`) and lives on
 disk; the committed record is the rendered figure. `fig_sc2_aa20.R` was re-rendered last,
 as always (it shares outputs with the export), and the PDFs it rewrote with byte-identical
 PNGs were reverted.
+
+## 116. sc2_results_revised2: PSSM is called PFM (2026-11-08)
+
+The PSSM baseline is now named PFM (position frequency matrix). For now only
+`sc2_results_revised2` is renamed, since which figures reach the paper is still open.
+The drawers' label tables are shared with every other figure, so the rename happens
+downstream, at the figure, in one of two ways depending on how each panel draws text:
+
+* **E-H and the legend** use plain text grobs. `fig_sc2_revised2.R` walks the baked
+  grobs and rewrites whole-word `PSSM` -> `PFM`, giving "PFM", "PFM Conservation" and
+  "antiGen / PFM gate".
+* **C and D** (the cutoff series) have an `element_markdown` legend, which lays each
+  word out at a fixed x. The grob walk produced "antiGen / PFM   gate" with a hole
+  where the longer word had been. These are renamed inside `make_gate_plot` instead,
+  through a new call-time option `sc2.gate_label_map` (NULL by default, so no other
+  panel moves). It renames the data, the named palette, the dashed set and the bolded
+  gate. `model` is a FACTOR there, so the LEVELS are renamed: a first version used
+  `ifelse` on the values, got the factor codes back and drew every line grey.
+  `run_export` switches the option on by passing `REVISED_PFM=1` to the two gate
+  exports.
+
+`fig_sc2_revised2.R` stops if any panel still says PSSM after both steps. The
+`sc2_results_aa20` and `sc2_results_revised` outputs are unchanged.

@@ -55,6 +55,12 @@ options(
 
 source("figures/fig2_sc2_benchmarks.R")
 
+## sc2_results_revised2 says PFM where the arm says PSSM (NOTES s116); off unless
+## the caller asks, so sc2_results_revised and the arm's own figures are unchanged.
+if (nzchar(Sys.getenv("REVISED_PFM"))) {
+  options(sc2.gate_label_map = c("PSSM" = "PFM",
+                                 "antiGen / PSSM gate" = "antiGen / PFM gate"))
+}
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
 
 saveRDS(list(
