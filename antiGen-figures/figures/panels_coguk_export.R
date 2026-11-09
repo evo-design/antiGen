@@ -53,6 +53,8 @@ options(coguk.fig_main = "scratch_revised_coguk",
           "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
           "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
           "esm2_esm2_t33_650M_UR50D_lr1e-05_full"))
+## sc2_results_revised2 draws the MCM alone beside S×S-MCM interp. (NOTES s124).
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) options(coguk.mcm = "mcm", coguk.mcm_label = "MCM")
 source("figures/fig_coguk_list_aa20.R")
 
 ## `decile_bar(metric, first, metrics)` and `bg_bar(...)` are the drawer's own panel

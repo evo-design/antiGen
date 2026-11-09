@@ -383,6 +383,12 @@ SXS        <- getOption("coguk.site_substitution", character(0))
 SXS_LABEL  <- getOption("coguk.site_substitution_label", "Site × Substitution")
 MCMI       <- getOption("coguk.mcm_interpolation", character(0))
 MCMI_LABEL <- getOption("coguk.mcm_interpolation_label", "SxS, MCM interpolation")
+## The mutation count matrix ALONE (NOTES s124): the N that the interpolation above
+## blends with its factored prior. Opt-in like its siblings; when not asked for, its row
+## is DROPPED rather than left to stop the render at the unknown-model check, because
+## the shared list CSV carries it for the one figure that draws it.
+MCM_KEY   <- getOption("coguk.mcm", character(0))
+MCM_LABEL <- getOption("coguk.mcm_label", "MCM")
 
 
 ## --- Model inventory -------------------------------------------------------
@@ -528,6 +534,9 @@ insert_beside(SXS, SXS_LABEL, "where_times_which")
 ## together; otherwise after its own fitted sibling.
 insert_beside(MCMI, MCMI_LABEL,
               if (length(WXW_DIR) > 0) WXW_DIR else "where_times_which")
+## After the interpolation it is the raw half of.
+insert_beside(MCM_KEY, MCM_LABEL,
+              if (length(MCMI) > 0) MCMI else "where_times_which")
 
 GROUP_LEVELS <- c("antiGen", "antiGen Finetunes", "Deep Mutational Scans",
                   "Pandemic Data in Training Window", "Pre-Pandemic Data Only")
@@ -615,6 +624,7 @@ drop_unrequested_ensemble <- function(df) {
 ## MODEL_LABEL below -- otherwise the "report the holes" pass would list them as
 ## missing from all twelve metrics on every run.
 DROP_MODELS <- getOption("coguk.drop_models", c("CoVFit", "pyr0"))
+if (length(MCM_KEY) == 0) DROP_MODELS <- c(DROP_MODELS, "mcm")
 
 ## A PATTERN as well as a name list, because some rows come in families.
 ## `ensemble_panels.py` writes a one-member GATE map per member alongside the rule

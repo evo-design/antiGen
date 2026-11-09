@@ -12605,3 +12605,34 @@ The 2023-01-01 rows themselves wait on training. Ten val-select seeds at 256 epo
 (job 3658552), because at 96 epochs all five finished seeds selected epoch 93-95.
 EVE and Tranception (jobs 3658555/6) were resubmitted with `--examples`; the first
 submission omitted it and died at load.
+
+## 124. The MCM alone on panels E-H of sc2_results_revised2 (2026-11-09)
+
+The s121 rung `mcm` (log N[i,a]) is now also drawn on the COG-UK bar panels E-H,
+right after S×S-MCM interp., in the interpolation's group.
+
+* **Rows.** One resume pass on the 2021 list run (`evals_sc2_lists_macro_aa20`), job
+  3670251, 40 s on `evo_gpu_priority`. It used that run's own arguments plus
+  `--mcm-baseline`; the map went to the shared cache `list_score_maps_aa20`. Every other
+  row of the summary and per-cell CSVs is byte-identical; both were staged into
+  `data/evals_sc2_lists_macro_aa20/`.
+* **Opt-in, and DROPPED otherwise.** `fig_coguk_list.R` stops on any model it has no
+  group for, and the shared list CSV now carries `mcm`, so every other figure built on
+  it would have stopped. `coguk.mcm` (default empty) inserts the bar after the
+  interpolation; when it is empty, `mcm` joins `DROP_MODELS`. `panels_coguk_export.R`
+  sets it under `REVISED2_LABELS` only. Checked: coguk_list_aa20 renders byte-identically
+  from the CSV with and without the `mcm` rows.
+
+| panel | MCM recall at q = 0.1 |
+|---|---|
+| E, all escape, per cell | 0.455 |
+| F, all escape, per mutation | 0.794 |
+| G, de novo, per cell | 0.106 |
+| H, de novo, per mutation | 0.105 |
+
+De novo is chance by construction: an unseen cell has N = 0, so the whole unseen pool
+ties and fractional top-q returns about q. This is the same signature as PyR0's 0.100
+(s103).
+
+The committed `figs/old/coguk_list_aa20.png` already differs from a fresh render with or
+without these rows. It predates later code changes and is not affected by this one.
