@@ -42,7 +42,12 @@ from matplotlib.patches import FancyArrowPatch, Rectangle
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_rbd_surface as rs
 
-W_IN, H_IN = 5.5, 3.5
+## THE CANVAS IS THE PANEL BOX, at 1:1 (NOTES s119). sc2_results_revised2 gives panel B
+## half of an 11 in row about 2.45 in tall under its title. The old 5.5 x 3.5 canvas
+## had to be shrunk to ~70% to fit that height, which left white bands either side and
+## drew every label at ~70% of its stated size. At the box's own aspect nothing is
+## rescaled: the fonts below are the printed point sizes.
+W_IN, H_IN = 5.5, 2.45
 
 ## SAMPLED FROM style.png rather than matched by eye. Its body is a paler, cooler blue
 ## than the one here was, its red is softer, and its second accent is a pale peach
@@ -144,9 +149,13 @@ def main():
 
     # --- the lineage -----------------------------------------------------------
     n = len(states)
-    gw, gh, gy = 0.64, 0.95, 2.35             # glyph box and its bottom, inches
-    gap = 0.80
-    x0 = (W_IN - (n * gw + (n - 1) * gap)) / 2
+    ## The lineage takes the top half and the full width: glyphs at the render's own
+    ## aspect (380 x 640), the arrows sharing what is left between them.
+    gh, gy = 0.98, 1.22                       # glyph height and its bottom, inches
+    gw = gh * 380 / 640
+    margin = 0.18
+    gap = (W_IN - 2 * margin - n * gw) / (n - 1)
+    x0 = margin
     lefts = [x0 + i * (gw + gap) for i in range(n)]
 
     for i, (lf, st) in enumerate(zip(lefts, states)):
@@ -175,22 +184,23 @@ def main():
                            outline="#7f868d", outline_px=2.0)
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off")
-        bg.text(lf + gw / 2, gy + gh + 0.06, st, ha="center", va="bottom",
-                fontsize=8.8, fontweight="bold", color=TEXT)
+        bg.text(lf + gw / 2, gy + gh + 0.03, st, ha="center", va="bottom",
+                fontsize=9.5, fontweight="bold", color=TEXT)
 
     for i, b in enumerate(buckets):
         a0, a1 = lefts[i] + gw + 0.05, lefts[i + 1] - 0.05
-        cx, ay = (a0 + a1) / 2, gy + 0.17
+        cx, ay = (a0 + a1) / 2, gy + 0.22
         bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle="-|>",
                                      mutation_scale=10, linewidth=1.1, color=ARROW))
         # Names sit directly over their own arrow; the ranks live in the chart below.
         for j, r in enumerate(reversed(b)):
-            bg.text(cx, ay + 0.10 + j * 0.170, r["mutation_1based"],
-                    ha="center", va="bottom", fontsize=7.8, fontweight="bold",
+            bg.text(cx, ay + 0.09 + j * 0.175, r["mutation_1based"],
+                    ha="center", va="bottom", fontsize=8.8, fontweight="bold",
                     color=REVERT if r["reverts"] else NET)
 
     # --- the ranks -------------------------------------------------------------
-    ax_l, ax_r, ax_t, ax_b = 1.46, 5.34, 1.88, 0.84
+    ## Seven rows in the bottom half: 0.11 in apart, which 7.5 pt text fits.
+    ax_l, ax_r, ax_t, ax_b = 1.40, 5.30, 1.08, 0.42
     ax = fig.add_axes([ax_l / W_IN, 0.0, (ax_r - ax_l) / W_IN, 1.0])
     ax.set_xlim(0, npool * 1.02); ax.set_ylim(0, H_IN)
     ax.patch.set_alpha(0)
@@ -200,53 +210,58 @@ def main():
     ys = np.linspace(ax_t, ax_b, len(flat))
     cut = max(1.0, npool * args.decile)
 
-    ax.add_patch(Rectangle((0, ax_b - 0.14), cut, (ax_t - ax_b) + 0.28,
+    ax.add_patch(Rectangle((0, ax_b - 0.07), cut, (ax_t - ax_b) + 0.14,
                            facecolor=BAND, edgecolor="none", zorder=0))
-    ax.text(cut * 1.3, ax_t + 0.10, "top decile", ha="left", va="center",
-            fontsize=7.4, color="#4a6b8a")
 
-    axis_y = ax_b - 0.26
+    axis_y = ax_b - 0.11
     ax.plot([0, npool], [axis_y, axis_y], color="#555555", linewidth=0.9, zorder=2)
     for t in (0, 1000, 2000, 3000, npool):
-        ax.plot([t, t], [axis_y - 0.045, axis_y], color="#555555", linewidth=0.9,
+        ax.plot([t, t], [axis_y - 0.035, axis_y], color="#555555", linewidth=0.9,
                 zorder=2)
-        ax.text(t, axis_y - 0.095, "1" if t == 0 else f"{t:,}", ha="center", va="top",
-                fontsize=7.2, color=MUTED)
-    ax.text(npool / 2, axis_y - 0.30, "antiGen rank", ha="center", va="top",
-            fontsize=9.6, color=TEXT)
+        ax.text(t, axis_y - 0.06, "1" if t == 0 else f"{t:,}", ha="center", va="top",
+                fontsize=7, color=MUTED)
+    ax.text(npool / 2, axis_y - 0.19, "antiGen rank", ha="center", va="top",
+            fontsize=8.5, color=TEXT)
 
     for r, y in zip(flat, ys):
         col = REVERT if r["reverts"] else NET
         ax.plot([0, r["rank"]], [y, y], color=col, linewidth=1.3, zorder=2,
                 alpha=0.55 if r["reverts"] else 0.9)
-        ax.scatter([r["rank"]], [y], s=34, zorder=3, linewidths=1.3,
+        ax.scatter([r["rank"]], [y], s=26, zorder=3, linewidths=1.2,
                    facecolors="white" if r["reverts"] else col, edgecolors=col)
         ax.text(-npool * 0.020, y, r["mutation_1based"], ha="right", va="center",
-                fontsize=7.8, fontweight="bold", color=TEXT)
+                fontsize=7.5, fontweight="bold", color=TEXT)
         ax.text(r["rank"] + npool * 0.022, y, f"{r['rank']:,}", ha="left", va="center",
-                fontsize=7.6, color=TEXT)
+                fontsize=7.3, color=TEXT)
 
     # A linear axis leaves most of its width empty, which is the message and also the
     # only place a key fits without crowding anything.
+    ## "top decile" joins the key as a swatch: there is no row above the chart for it
+    ## to sit in at this height.
+    ky, kdy = ys[1], 0.17
     for i, (face, lab) in enumerate(((NET, "still changed in KP.3"),
                                      ("white", "reverts along the way"))):
         col = NET if i == 0 else REVERT
-        ax.scatter([npool * 0.47], [ys[2] - i * 0.19], s=34, zorder=3, linewidths=1.3,
+        ax.scatter([npool * 0.47], [ky - i * kdy], s=26, zorder=3, linewidths=1.2,
                    facecolors=face, edgecolors=col)
-        ax.text(npool * 0.50, ys[2] - i * 0.19, lab, ha="left", va="center",
-                fontsize=7.4, color=TEXT)
+        ax.text(npool * 0.50, ky - i * kdy, lab, ha="left", va="center",
+                fontsize=7.5, color=TEXT)
+    ax.add_patch(Rectangle((npool * 0.455, ky - 2 * kdy - 0.045), npool * 0.03, 0.09,
+                           facecolor=BAND, edgecolor="none", zorder=0))
+    ax.text(npool * 0.50, ky - 2 * kdy, "top decile", ha="left", va="center",
+            fontsize=7.5, color=TEXT)
 
     # The binding: one bracket per transition, named for the state it produces.
     k = 0
     for b, st in zip(buckets, states[1:]):
         top, bot = ys[k], ys[k + len(b) - 1]
-        bx = 0.86
-        for xx, yy in (((bx, bx), (top + 0.07, bot - 0.07)),
-                       ((bx, bx + 0.07), (top + 0.07, top + 0.07)),
-                       ((bx, bx + 0.07), (bot - 0.07, bot - 0.07))):
+        bx, e = 0.80, 0.04
+        for xx, yy in (((bx, bx), (top + e, bot - e)),
+                       ((bx, bx + 0.06), (top + e, top + e)),
+                       ((bx, bx + 0.06), (bot - e, bot - e))):
             bg.plot(xx, yy, color=RULE, linewidth=0.9, zorder=1)
         bg.text(bx - 0.06, (top + bot) / 2, st, ha="right", va="center",
-                fontsize=7.6, color=MUTED)
+                fontsize=7.3, color=MUTED)
         k += len(b)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)

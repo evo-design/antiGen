@@ -12462,3 +12462,23 @@ The two keys now sit directly above the panels they describe:
 Each row is now a `plot_grid` of key and panels, with rel_heights `c(0.1, 1)` for row 2
 and `c(0.1, 1.45)` for row 3. The figure's rel_heights are `c(0.95, 1.1, 1.55)`, and the
 canvas is unchanged at 11 x 10.5 in.
+
+## 119. Panel B redrawn at its slot's size (2026-11-08)
+
+In `sc2_results_revised2`, panel B's slot is half of the 11 in row and about 2.45 in tall
+under its title. `draw_path_panel.py` drew it on a 5.5 x 3.5 in canvas, so `draw_image`
+shrank it to about 70% to fit the height. That left white bands either side, and every
+label printed at about 70% of its stated size. The canvas is now 5.5 x 2.45 in (`W_IN`,
+`H_IN`), so the panel is drawn at 1:1 and the font sizes in the script are the printed
+point sizes.
+
+* **Lineage, top half.** The four glyphs (0.98 in tall, at the render's own 380:640
+  aspect) span the full width with 0.18 in margins; the arrows share the gaps. Variant
+  names are 9.5 pt bold and the mutations on the arrows 8.8 pt bold. Both are about 1.5x
+  their previous printed size.
+* **Rank chart, bottom half.** Seven rows 0.11 in apart, at 7.3-7.5 pt. The "top decile"
+  label had no row above the chart left to sit in, so it is now a third entry in the key,
+  drawn as a band-coloured swatch.
+
+Ranks, colours, brackets and rendering parameters are unchanged. The PNG is gitignored
+(s114b); rebuild with the command recorded there.
