@@ -209,6 +209,7 @@ ROW_IN[3] <- ROW_IN[3] + (if (VARIANT == "supp") 0.45 else 0.2)
 ## The key above row 3 in INCHES: as a fraction of the row it shrank with the roster
 ## and clipped its own swatches (s129).
 LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40
+M_IN <- 1.9   # panel M's row, main only
 row3 <- plot_grid(
   plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
   with_header("CoG-UK escape list, 2021-01-01 cutoff",
@@ -227,14 +228,76 @@ row4 <- with_header("All RBD cells, 2023-01-01 cutoff",
                               rel_widths = c(1.75, 1.1, 1.1, 1.1),
                               labels = c("I", "J", "K", "L")))
 
+## PANEL M (main only, NOTES s130): supp_fixed_split brought in. The three baselines that
+## were fit ONCE, at a fixed date, each scored against antiGen at its own cutoff on the
+## CoG-UK list, both poolings. Six small sub-plots under one letter; each names its
+## baseline, cutoff and pooling. Drawn here rather than exported because the data are two
+## rows per sub-plot, and in E-L's style: horizontal bars, the same type colours, the
+## external baseline hatched. The antiGen bar is the BASE model -- the only antiGen
+## checkpoint scored at these three cutoffs -- so it is labelled as such.
+FS_ARMS <- list(
+  list(date = "2022-01-01", raw = "pyr0",                  label = "PyR0"),
+  list(date = "2023-10-01", raw = "BloomNeher_2023-10-01", label = "Bloom & Neher"),
+  list(date = "2024-10-01", raw = "CoVFit",                label = "CoVFit"))
+fs_panel <- function(arm, col, pool_name, first) {
+  f <- file.path("data", paste0("evals_fixedsplit_", arm$date), "list_macro_summary.csv")
+  d <- read.csv(f)
+  d <- d[d$variant == "list_coguk_fullpool" & abs(d$qtile - 0.1) < 1e-9, ]
+  want <- c("simple_d128_n2_lr0.0001", arm$raw)
+  stopifnot(all(want %in% d$model))
+  d <- d[match(want, d$model), ]
+  df <- data.frame(model = factor(c("antiGen (base)", arm$label),
+                                  levels = rev(c("antiGen (base)", arm$label))),
+                   value = d[[col]],
+                   group = c("antiGen", "Pandemic Data in Training Window"),
+                   hatch = c("none", "stripe"))
+  ggplot(df, aes(y = model, x = value, fill = group)) +
+    ggpattern::geom_col_pattern(aes(pattern = hatch), width = 0.7, colour = NA,
+                                pattern_colour = NA, pattern_fill = "black",
+                                pattern_angle = 45, pattern_density = 0.06,
+                                pattern_spacing = 0.07, pattern_key_scale_factor = 0.6) +
+    ggpattern::scale_pattern_identity() +
+    geom_text(aes(label = sprintf("%.2f", value)), hjust = -0.15, size = 2.4) +
+    scale_fill_manual(values = c("antiGen" = ANTIGEN_BLUE,
+                                 "Pandemic Data in Training Window" = MODEL_TYPE_COLORS[3]),
+                      guide = "none") +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1), labels = c("0", "0.5", "1"),
+                       expand = expansion(mult = c(0, 0))) +
+    ## Value labels past a bar near 1 draw into the margin rather than being clipped.
+    coord_cartesian(clip = "off") +
+    labs(x = "Recall at q = 0.1", y = NULL, title = pool_name) +
+    theme_paper() +
+    theme(plot.title = element_text(size = 8.5, colour = "grey25"),
+          axis.title.x = element_text(size = 8),
+          axis.text.y = if (first) element_text(size = 7.5) else element_blank(),
+          panel.grid.major.y = element_blank(),
+          plot.margin = margin(2, 14, 2, 2))
+}
+## One PAIR per baseline under one heading naming the baseline and its cutoff; the model
+## names are drawn once per pair, on its left sub-plot.
+fs_pair <- function(arm) {
+  plot_grid(
+    ggdraw() + draw_label(sprintf("%s, %s cutoff", arm$label, arm$date),
+                          x = 0.04, hjust = 0, size = 9.5),
+    plot_grid(fs_panel(arm, "macro", "per cell", TRUE),
+              fs_panel(arm, "micro", "per mutation", FALSE),
+              nrow = 1, rel_widths = c(1.55, 1)),
+    ncol = 1, rel_heights = c(0.16, 1))
+}
+## M gets a narrow column of its own: on the pairs it sat on the first heading.
+row5 <- with_header("Date-matched baselines",
+                    plot_grid(NULL, plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
+                              nrow = 1, rel_widths = c(0.035, 1), labels = c("M", "")))
+
 save_figure(
-  plot_grid(row1, row2, row3, row4, ncol = 1,
+  plot_grid(plotlist = c(list(row1, row2, row3, row4), if (VARIANT == "main") list(row5)),
+            ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = ROW_IN),
+            rel_heights = if (VARIANT == "main") c(ROW_IN, M_IN) else ROW_IN),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -244,6 +307,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = sum(ROW_IN))
+  width = 11, height = sum(ROW_IN) + if (VARIANT == "main") M_IN else 0)
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))

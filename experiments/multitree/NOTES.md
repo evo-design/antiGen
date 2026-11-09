@@ -12825,3 +12825,24 @@ squares keep a thin border, so the plain one stays visible on white.
 * **The key above row 3 is a fixed height in inches** (`LEG_IN`: 0.40 main, 0.75 supp). As
   a fraction of the row it shrank with the roster and clipped its own swatches.
   `ROW_IN` is now computed before the rows that use it.
+
+## 130. sc2_results_revised2 panel M: the date-matched baselines in the main figure (2026-11-09)
+
+The six results of supp_fixed_split (s126) are panel M of the MAIN figure, a new bottom
+row with the rotated header "Date-matched baselines". The supplement version has no M.
+`supp_fixed_split.png` is still drawn on its own.
+
+* **Data.** The same files: `data/evals_fixedsplit_<date>/list_macro_summary.csv`,
+  `list_coguk_fullpool`, q = 0.1. Per cell = macro, per mutation = micro.
+* **Layout.** Built in `fig_sc2_revised2.R` itself, since it is two rows per sub-plot,
+  so no export is needed. There is one PAIR per baseline under a heading naming baseline
+  and cutoff (PyR0 2022-01-01, Bloom & Neher 2023-10-01, CoVFit 2024-10-01), split
+  "per cell" / "per mutation". Model names are drawn once per pair, and the single letter
+  M has a column of its own.
+* **Style, as E-L.** Horizontal bars in the type colours, the external baseline hatched,
+  values at the bar ends (`clip = "off"`), x ticks 0 / 0.5 / 1 so neighbouring
+  sub-plots' ticks do not collide. The row is 1.9 in (`M_IN`).
+* **The antiGen bar is the BASE model**, labelled "antiGen (base)": the only antiGen
+  checkpoint scored at these three cutoffs. E-L draw the CV x10 ensemble. Matching them
+  would need val-select runs at three more cutoffs.
+* **CoVFit's per-cell 0.06 is below chance** (s126), and the reason has not been checked.
