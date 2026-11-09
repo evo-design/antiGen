@@ -1148,9 +1148,11 @@ bar_panel <- function(df, metric, xlab, title, labels_on_y = TRUE,
     ## SPARSE THIN BLACK LINES on outlined bars, after the reference style the user
     ## supplied (inspo.png): dense white stripes read as noise (s128 first version).
     ggpattern::geom_col_pattern(
-      aes(pattern = hatch), colour = "grey15", linewidth = 0.2,
-      pattern_colour = "black", pattern_fill = "black", pattern_linewidth = 0.12,
-      pattern_angle = 45, pattern_density = 0.008,
+      ## No bar outline (user, s128). Stripes are FILL ONLY: a stroked stripe border is
+      ## drawn half outside the clip, which made the lines overhang the bar ends.
+      aes(pattern = hatch), colour = NA,
+      pattern_colour = NA, pattern_fill = "black",
+      pattern_angle = 45, pattern_density = 0.06,
       pattern_spacing = 0.07, pattern_key_scale_factor = 0.6)
   }
   p <- ggplot(sub, aes(y = model, x = value, fill = group)) +

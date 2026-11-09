@@ -12806,3 +12806,9 @@ reference, `inspo.png` at the repo root (not committed), and the hatching now fo
   diagonal for "External".
 
 Medals keep their solid patch (s128), so they read over the lines.
+
+**Then (user):** no bar outlines (`colour = NA`). The lines no longer overhang the bar
+ends. A stroked stripe border (`pattern_colour`) is drawn half outside the bar's clip,
+which put a stub past every bar end. Stripes are now fill only (`pattern_colour = NA`,
+`pattern_fill = "black"`), with density 0.06 for the same visual weight. The key's
+squares keep a thin border, so the plain one stays visible on white.
