@@ -12846,3 +12846,19 @@ row with the rotated header "Date-matched baselines". The supplement version has
   checkpoint scored at these three cutoffs. E-L draw the CV x10 ensemble. Matching them
   would need val-select runs at three more cutoffs.
 * **CoVFit's per-cell 0.06 is below chance** (s126), and the reason has not been checked.
+
+## 131. sc2_results_revised2: bar rows swapped, headers shortened, M's bars matched (2026-11-09)
+
+* **The two bar rows are swapped.** All RBD cells at 2023-01-01 is now the first bar row,
+  lettered E-H; the CoG-UK escape list at 2021-01-01 is second, lettered I-L. The
+  model-type key stays above the first bar row. Heights are per bar-panel block in inches
+  (`PANEL_IN`, rbd / esc), plus the fixed key (`LEG_IN`), so each block keeps its own size
+  after the swap. A helper `bar_block()` builds both rows.
+* **Shorter row headers:** "All RBD, 2023 cutoff" and "Escape, 2021 cutoff".
+* **Panel M has no row header**, but keeps the same left gutter (`HDR_W`) so it lines up
+  with E-L.
+* **M's bars are the same height as E-L's.** The row is now 1.05 in (was 1.9) and the bar
+  width is 0.9, as `geom_col`'s default in E-L. Measured at 300 dpi, the antiGen bar is
+  40 px in E, 39 px in I and 40 px in M.
+* **M's stripe pitch matches E-L's.** ggpattern's spacing is relative to the plot, and M's
+  sub-plots are about a sixth as tall, so M uses `pattern_spacing = 0.30` against E-L's 0.07.

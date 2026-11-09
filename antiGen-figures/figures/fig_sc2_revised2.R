@@ -200,33 +200,24 @@ HDR_W <- 0.045
 with_header <- function(txt, panels) {
   plot_grid(row_header(txt), panels, nrow = 1, rel_widths = c(HDR_W, 1))
 }
-## The supplement is the s125 canvas exactly (rel 0.95/1.1/1.55/1.45 of 14.7 in); the
-## main figure keeps its rows 1-2 to the inch and shortens the two bar rows.
+## Rows 1-2 are the s125 canvas to the inch. The two bar rows are SWAPPED (user, s131):
+## all RBD cells at 2023-01-01 first (E-H), the CoG-UK escape list at 2021-01-01 second
+## (I-L). Heights are per BAR-PANEL block, in inches, and follow their content.
 ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
-if (VARIANT == "main") ROW_IN[3:4] <- c(2.95, 2.70)   # 14 bars in E-H, 13 in I-L
-## Room for the taller key above row 3, so the bars do not give it up.
-ROW_IN[3] <- ROW_IN[3] + (if (VARIANT == "supp") 0.45 else 0.2)
-## The key above row 3 in INCHES: as a fraction of the row it shrank with the roster
-## and clipped its own swatches (s129).
-LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40
-M_IN <- 1.9   # panel M's row, main only
+LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40   # the key, fixed (s129)
+PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.70, esc = 2.75)
+ROW_IN[3] <- LEG_IN + PANEL_IN[["rbd"]]
+ROW_IN[4] <- PANEL_IN[["esc"]]
+bar_block <- function(x, letters) {
+  plot_grid(x$decile_all_pc, x$decile_all_evt, x$decile_dn_pc, x$decile_dn_evt, nrow = 1,
+            rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters)
+}
 row3 <- plot_grid(
   plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
-  with_header("CoG-UK escape list, 2021-01-01 cutoff",
-              plot_grid(cg$decile_all_pc, cg$decile_all_evt,
-                        cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
-                        rel_widths = c(1.75, 1.1, 1.1, 1.1),
-                        labels = c("E", "F", "G", "H"))),
-  ## The key is two lines now (model type, then designed / external; s128), and the
-  ## supplement's model types wrap to two on their own.
-  ncol = 1, rel_heights = c(LEG_IN, ROW_IN[3] - LEG_IN))
-
-## Row 4 mirrors row 3 panel for panel; the model-type key above row 3 serves both.
-row4 <- with_header("All RBD cells, 2023-01-01 cutoff",
-                    plot_grid(ca$decile_all_pc, ca$decile_all_evt,
-                              ca$decile_dn_pc, ca$decile_dn_evt, nrow = 1,
-                              rel_widths = c(1.75, 1.1, 1.1, 1.1),
-                              labels = c("I", "J", "K", "L")))
+  with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H"))),
+  ncol = 1, rel_heights = c(LEG_IN, PANEL_IN[["rbd"]]))
+## The model-type key above row 3 serves both bar rows.
+row4 <- with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L")))
 
 ## PANEL M (main only, NOTES s130): supp_fixed_split brought in. The three baselines that
 ## were fit ONCE, at a fixed date, each scored against antiGen at its own cutoff on the
@@ -252,10 +243,13 @@ fs_panel <- function(arm, col, pool_name, first) {
                    group = c("antiGen", "Pandemic Data in Training Window"),
                    hatch = c("none", "stripe"))
   ggplot(df, aes(y = model, x = value, fill = group)) +
-    ggpattern::geom_col_pattern(aes(pattern = hatch), width = 0.7, colour = NA,
+    ggpattern::geom_col_pattern(aes(pattern = hatch), width = 0.9, colour = NA,
                                 pattern_colour = NA, pattern_fill = "black",
                                 pattern_angle = 45, pattern_density = 0.06,
-                                pattern_spacing = 0.07, pattern_key_scale_factor = 0.6) +
+                                ## ggpattern spaces stripes relative to the plot, and these
+                                ## sub-plots are about a sixth as tall as E-L: 0.30, not 0.07, so
+                                ## the stripes come out at the same pitch.
+                                pattern_spacing = 0.30, pattern_key_scale_factor = 0.6) +
     ggpattern::scale_pattern_identity() +
     geom_text(aes(label = sprintf("%.2f", value)), hjust = -0.15, size = 2.4) +
     scale_fill_manual(values = c("antiGen" = ANTIGEN_BLUE,
@@ -284,10 +278,12 @@ fs_pair <- function(arm) {
               nrow = 1, rel_widths = c(1.55, 1)),
     ncol = 1, rel_heights = c(0.16, 1))
 }
-## M gets a narrow column of its own: on the pairs it sat on the first heading.
-row5 <- with_header("Date-matched baselines",
-                    plot_grid(NULL, plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
-                              nrow = 1, rel_widths = c(0.035, 1), labels = c("M", "")))
+## No row header for M (user, s131), but the same left gutter, so M lines up with E-L.
+row5 <- plot_grid(NULL, NULL,
+                  plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
+                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "M", ""))
+## Panel M's row, sized so its bars come out the same height as E-L's.
+M_IN <- 1.05
 
 save_figure(
   plot_grid(plotlist = c(list(row1, row2, row3, row4), if (VARIANT == "main") list(row5)),
