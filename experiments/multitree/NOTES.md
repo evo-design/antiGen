@@ -12496,3 +12496,18 @@ conditional times the site marginal.
 The κ term is K80-like (a ts/tv ratio with no base frequencies), not HKY85, which also
 fits base frequencies. That detail belongs in the caption, not the bar label.
 `REVISED2_STALE` now also catches "Substitution matrix".
+
+## 120. figs/ reorganised: inactive figures moved to figs/old/ (2026-11-08)
+
+`antiGen-figures/figs/` now holds only the figures under active revision:
+`sc2_results_revised2.png`, `supp_dms.png` and `supp_fixed_split.png`. The other 46 PNGs
+moved to `figs/old/` (git renames, content unchanged), `supp_endemic_results.png`
+among them. No code reads from `figs/`; it is output only. `figs_vector/` was not
+reorganised.
+
+**A render repopulates figs/.** `save_figure` still writes to `figs/`, so re-running
+an old figure's script puts a fresh PNG there beside its copy in `old/`. The
+revised2 render does this as a side effect: `panels_sc2_export.R` sources
+`fig_sc2_aa20.R`, which writes `sc2_results_aa20.png` and the `aa20_supp_*` PNGs.
+Until those side effects go to scratch names, delete them after a revised2 render
+rather than re-rendering `fig_sc2_aa20.R`.
