@@ -12928,3 +12928,20 @@ sites.
 * **Main roster.** The main figure drops Codon-B62 mixture (`substitution`); the
   supplement keeps it. Bar blocks are now 2.52 / 2.57 in.
 * **Hatch key.** It reads "Ours" / "Previous".
+
+## 134. PI feedback: keys under their rows; panel B's surface and dots (2026-11-09)
+
+* **Each key goes UNDER the rows it serves, with a gap after it**, so it cannot be read as
+  belonging to the next row. The C/D line key sits directly beneath C and D, followed by
+  white space. The model-type and Ours/Previous key moves from above E-H to under I-L,
+  with 0.25 in before panel M; in the supplement, which has no M, it ends the figure.
+  `ROW_IN[3]` is now the E-H block alone, and `ROW_IN[4]` is I-L + key + gap.
+* **Panel B surface.** The PI found it oddly rendered next to the HA glyphs. An RBD has
+  about 1/9 the atoms of the HA trimer and is drawn larger, so at the renderer's default
+  smoothing (0.0118) each atom read as a bump, and the directional light left a dark band
+  down one side. Now: size 760x1280 (was 380x640), `smooth = 0.030`,
+  `color_smooth = 0.32`, `ambient = 0.70`, `specular = 0.05`, `rim = 0.10`. Four
+  settings were compared side by side and this one was closest to the HA panel's matte,
+  continuous surface. The label routing gap doubles with the resolution, to 140 px.
+* **Panel B dots.** The dots near 100 (R346T, T346R) sat on the axes' right edge and
+  were half clipped. They are now drawn with `clip_on = False`.

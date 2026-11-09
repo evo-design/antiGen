@@ -184,11 +184,13 @@ strip_inside_legend <- function(g) {
   g
 }
 ## ABOVE the panels it serves (NOTES s118), so each key reads before its row.
+## EACH KEY UNDER THE ROWS IT SERVES, with a gap after it (PI, s134): C/D's line key
+## directly beneath C and D, then white space before the bar rows begin.
 row2 <- plot_grid(
-  gm$gate_legend,
   plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
             nrow = 1, rel_widths = c(1, 1), labels = c("C", "D")),
-  ncol = 1, rel_heights = c(0.1, 1))
+  gm$gate_legend, NULL,
+  ncol = 1, rel_heights = c(1, 0.1, 0.07))
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
 ## The MODEL TYPE key colours only these bars, so it sits directly above them rather
 ## than at the head of the figure (NOTES s118).
@@ -208,18 +210,21 @@ with_header <- function(txt, panels) {
 ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
 LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40   # the key, fixed (s129)
 PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.52, esc = 2.57)
-ROW_IN[3] <- LEG_IN + PANEL_IN[["rbd"]]
-ROW_IN[4] <- PANEL_IN[["esc"]]
+ROW_IN[3] <- PANEL_IN[["rbd"]]
+ROW_IN[4] <- PANEL_IN[["esc"]] + LEG_IN + 0.25   # + the key and the gap after it
 bar_block <- function(x, letters) {
   plot_grid(x$decile_all_pc, x$decile_all_evt, x$decile_dn_pc, x$decile_dn_evt, nrow = 1,
             rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters)
 }
-row3 <- plot_grid(
+row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H")))
+## The model-type / Ours-Previous key serves E-L, so it goes UNDER I-L, followed by a
+## gap before panel M (or the end of the figure).
+GAP_IN <- 0.25
+row4 <- plot_grid(
+  with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L"))),
   plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
-  with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H"))),
-  ncol = 1, rel_heights = c(LEG_IN, PANEL_IN[["rbd"]]))
-## The model-type key above row 3 serves both bar rows.
-row4 <- with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L")))
+  NULL,
+  ncol = 1, rel_heights = c(PANEL_IN[["esc"]], LEG_IN, GAP_IN))
 
 ## PANEL M (main only, NOTES s130): supp_fixed_split brought in. The three baselines that
 ## were fit ONCE, at a fixed date, each scored against antiGen at its own cutoff on the

@@ -174,7 +174,14 @@ def main():
     gap = (span_r - span_l - n * gw) / (n - 1)
     lefts = [span_l + i * (gw + gap) for i in range(n)]
     for i, (lf, st) in enumerate(zip(lefts, states)):
-        img, pts = rs.render(xyz, rad, resi, glyph_colors[i], BODY, size=(380, 640))
+        ## SMOOTHER than the renderer default (PI, s134). An RBD has ~1/9 the atoms of the
+        ## HA trimer and is drawn larger, so at smooth 0.0118 every atom read as a bump;
+        ## 0.030 at double resolution, with more ambient and less specular, gives the HA
+        ## panel's continuous matte surface without the dark band down one side. The site
+        ## colour is blurred a little less so a patch keeps its edge.
+        img, pts = rs.render(xyz, rad, resi, glyph_colors[i], BODY, size=(760, 1280),
+                             smooth=0.030, color_smooth=0.32,
+                             ambient=0.70, specular=0.05, rim=0.10)
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
         axg.imshow(np.clip(img, 0, 1)); axg.axis("off"); axg.set_autoscale_on(False)
         bg.text(lf + gw / 2, gy + gh + 0.03, st, ha="center", va="bottom",
@@ -195,7 +202,7 @@ def main():
             grp = sorted((r for r in new if side_of(r) == side), key=lambda r: pts[r["pos"]][1])
             lys = [pts[r["pos"]][1] for r in grp]
             for k in range(1, len(lys)):
-                lys[k] = max(lys[k], lys[k - 1] + 70)
+                lys[k] = max(lys[k], lys[k - 1] + 140)
             lx = cx + side * 0.62 * Wimg
             for r, ly in zip(grp, lys):
                 px, py = pts[r["pos"]]
@@ -248,9 +255,10 @@ def main():
         ax.plot([0, px], [yy, yy], color=col, lw=1.2, alpha=0.5, zorder=3,
                 solid_capstyle="round")
         # Hollow for a site that changes back later on the path; filled otherwise.
+        ## clip_on=False: a dot near 100 sits on the axes' right edge and was half cut.
         ax.scatter([px], [yy], s=22, zorder=5, linewidths=1.0,
                    facecolors="white" if r["reverts"] else col,
-                   edgecolors=col)
+                   edgecolors=col, clip_on=False)
         bg.text(name_x, yy, r["mutation_1based"], ha="right", va="center",
                 fontsize=7, fontweight="bold", color=col)
         bg.text(rank_x, yy, f"({r['rank']:,})", ha="left", va="center",
