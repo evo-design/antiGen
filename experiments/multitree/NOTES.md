@@ -12743,3 +12743,52 @@ substituted. Panel B (matplotlib) was DejaVu Sans. Arial was not installed.
 Not covered: the three scripts that call `ggsave` directly (`fig1_overview_panels.R`,
 `fig3_pseudovirus_assay.R`, `fig2_sc2_benchmarks.R`'s optional FIG1_AUC) and panel A of
 revised2, which is the user's PNG.
+
+## 128. sc2_results_revised2: a pruned main figure, a full supplement, and who designed what (2026-11-09)
+
+**Two versions from one script.** `REVISED2_VARIANT=main` (the default) writes
+`sc2_results_revised2`; `=supp` writes `sc2_results_revised2_supp`.
+
+* **The supplement.** Before this section's styling changes it was pixel-identical to
+  the s125 figure. Its canvas is the s125 one (rel 0.95/1.1/1.55/1.45 of 14.7 in), plus
+  0.45 in for the taller key.
+* **The main figure.** Bar panels E-L drop eight rungs, passed by KEY (`DROP_MAIN` ->
+  `REVISED2_DROP`, appended to `coguk.drop_models`) so a later rename cannot un-drop one:
+  `gated_static_xfmr_pssm_lr0.0001` (bars only; its C/D line stays),
+  `MSA_Transformer_BA2`, `MSA_Transformer_XFG`, `where_times_which`, `wxw_dirichlet`,
+  `mcm`, `BA2_escape_LYCoV1404`, `esm2_esm2_t33_650M_UR50D_lr0.001_noft`. That leaves 17
+  bars in E-H (16 in I-L until Tranception lands). Rows 1-2 keep their inches, so panel
+  B's 1:1 slot is unchanged.
+* **Gate check.** The export's check that the gate is grouped as the hybrid now applies
+  only when the gate is drawn.
+
+**Row headers.** Rotated and bold, at the left of rows 3 and 4: "CoG-UK escape list,
+2021-01-01 cutoff" and "All RBD cells, 2023-01-01 cutoff". The I-L titles lose their
+"(2023)".
+
+**"Statistical models", a new model type.** S×M, S×S, S×M-MCM interp. and S×S-MCM interp.
+(`where_times_which`, `site_substitution`, `wxw_dirichlet`, `mcm_interpolation`) leave
+"Pandemic Data in Training Window".
+
+* **Colour.** Pale blue, `#a9c9e3`.
+* **Position.** Directly under the antiGen bars: the CV bar, and the gate where it is
+  drawn. The drawer orders bars by the `model` factor's levels, so `regroup()` re-levels it.
+* **Medal text.** White text does not read on pale blue. New call-time option
+  `coguk.medal_dark_groups` (default empty) draws those medals dark.
+* **Not included.** MCM and Codon-B62 mixture were not asked for and stay where they were.
+
+**Hatching: designed here vs external.** Every bar NOT designed in this work is striped
+(white, 45 deg) via `ggpattern`. Plain bars: antiGen, the gate, the four statistical
+models, Codon-B62 mixture (`substitution`), MCM.
+
+* **Option.** Call-time `coguk.ours_labels`, display labels; unset by default, so plain
+  `geom_col` and no other figure changes.
+* **Medals.** With hatching on, they are `geom_label`s on a solid patch of their bar's own
+  fill, so they read over stripes.
+* **Key.** Its own line under the model-type key, with HAND-DRAWN swatches: ggpattern's
+  legend key draws the pattern at another scale and looked nothing like the bars.
+* **Stripe density.** It took three passes. Fine dense stripes (spacing 0.012) washed
+  every bar out until the model types could not be told apart. The final setting is
+  spacing 0.025, density 0.2, white at 0.85.
+* **Install.** `r-ggpattern` 1.3.1 into `antigen-figs` from conda-forge with
+  `--freeze-installed`. The dry run showed only NEW packages; ggplot2 is still 4.0.3.

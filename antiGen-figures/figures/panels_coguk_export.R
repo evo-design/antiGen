@@ -35,8 +35,8 @@ if (identical(ARM, "allcells_2023")) {
           coguk.list = "allcells",
           coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
   ENS_ID <- "ens_vs10_2023"
-  T4 <- c(all_pc = "All RBD, per cell (2023)", all_evt = "All RBD, per mutation (2023)",
-          dn_pc = "De novo RBD, per cell (2023)", dn_evt = "De novo RBD, per mutation (2023)")
+  T4 <- c(all_pc = "All RBD, per cell", all_evt = "All RBD, per mutation",
+          dn_pc = "De novo RBD, per cell", dn_evt = "De novo RBD, per mutation")
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }
@@ -74,7 +74,10 @@ options(coguk.fig_main = "scratch_revised_coguk",
           "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
           "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
           "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
-          "esm2_esm2_t33_650M_UR50D_lr1e-05_full"))
+          "esm2_esm2_t33_650M_UR50D_lr1e-05_full",
+          ## The MAIN sc2_results_revised2 prunes further (NOTES s128); its supplement
+          ## copy passes nothing here and keeps the full roster.
+          strsplit(Sys.getenv("REVISED2_DROP"), ",", fixed = TRUE)[[1]]))
 ## sc2_results_revised2 draws the MCM alone beside S×S-MCM interp. (NOTES s124).
 if (nzchar(Sys.getenv("REVISED2_LABELS"))) options(coguk.mcm = "mcm", coguk.mcm_label = "MCM")
 source("figures/fig_coguk_list_aa20.R")
@@ -115,21 +118,48 @@ TITLE_SUFFIX <- ""
 ## the CV bar first and the gate stays beside it.
 if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   HYBRID <- "antiGen gated hybrid"
+  ## STATISTICAL MODELS (NOTES s128): the four site x residue factorisations, counted or
+  ## fitted, moved out of "Pandemic Data in Training Window" into their own type, drawn
+  ## pale blue and placed directly under the antiGen bars. Matched by KEY through
+  ## MODEL_LABEL, so the revised2 renames applied later cannot unmatch them.
+  STAT <- "Statistical models"
+  STAT_KEYS <- c("where_times_which", "site_substitution",
+                 "wxw_dirichlet", "mcm_interpolation")
+  STAT_LABELS <- unname(MODEL_LABEL[intersect(STAT_KEYS, names(MODEL_LABEL))])
   regroup <- function(df) {
     g <- as.character(df$group)
     g[as.character(df$model) %in% ENSEMBLE_LABELS] <- "antiGen"
     g[as.character(df$model) %in% GATE_RUNG_LABEL] <- HYBRID
-    lev <- c("antiGen", HYBRID,
+    g[as.character(df$model) %in% STAT_LABELS] <- STAT
+    lev <- c("antiGen", HYBRID, STAT,
              setdiff(levels(df$group), c("antiGen", unique(as.character(df$group[
                as.character(df$model) %in% ENSEMBLE_LABELS])))))
     df$group <- factor(g, levels = unique(lev))
+    ## BAR ORDER: the drawer orders bars by the `model` factor's levels (after putting
+    ## coguk.top_model first), so the statistical rungs move to just after the antiGen
+    ## bars -- the CV bar and, where drawn, the gate -- keeping their own relative order.
+    ml <- levels(df$model)
+    head_ <- intersect(c(ENSEMBLE_LABELS, GATE_RUNG_LABEL), ml)
+    stat_ <- intersect(ml, STAT_LABELS)
+    df$model <- factor(as.character(df$model),
+                       levels = c(head_, stat_, setdiff(ml, c(head_, stat_))))
     df
   }
+  GROUP_COLORS[[STAT]] <- "#a9c9e3"
+  options(coguk.medal_dark_groups = STAT)
+  ## OURS vs NOT (NOTES s128): the approaches this work designed are drawn plain, every
+  ## other bar hatched. By key, mapped to the drawer's display labels.
+  OURS_KEYS <- c("simple_d128_n2_lr0.0001", "gated_static_xfmr_pssm_lr0.0001",
+                 STAT_KEYS, "substitution", "mcm")
+  options(coguk.ours_labels = c(ENSEMBLE_LABELS,
+                                unname(MODEL_LABEL[intersect(OURS_KEYS, names(MODEL_LABEL))])))
   recall_q10_df <- regroup(recall_q10_df)
   summary_df    <- regroup(summary_df)
   GROUP_COLORS[[HYBRID]] <- GATE_BLUE
-  stopifnot(sum(recall_q10_df$group == HYBRID, na.rm = TRUE) > 0,
-            !any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"))
+  ## The gate may be pruned (main revised2, s128); if it is drawn, it must be the hybrid.
+  stopifnot(!any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"),
+            !GATE_RUNG_LABEL %in% as.character(recall_q10_df$model) ||
+              sum(recall_q10_df$group == HYBRID, na.rm = TRUE) > 0)
 }
 legend_df <- droplevels(summary_df[!is.na(summary_df$group), ])
 legend_df <- legend_df[legend_df$group %in% unique(recall_q10_df$group), ]
@@ -141,6 +171,34 @@ legend_grob <- extract_legend(
     theme_paper() +
     theme(legend.position = "top", legend.key.size = unit(0.8, "lines"))
 )
+## The hatching's own key (NOTES s128), on a LINE OF ITS OWN under the model-type key:
+## beside it, the supplement's seven types wrapped into the panel titles. The two swatches
+## are drawn by hand in the bars' own stripe geometry -- ggpattern's legend key draws
+## its pattern at a different scale and did not look like the bars it labels.
+if (!is.null(getOption("coguk.ours_labels"))) {
+  swatch <- function(hatched) {
+    g <- list(grid::rectGrob(gp = grid::gpar(fill = "grey45", col = NA)))
+    if (hatched) {
+      at <- seq(-1, 1, by = 0.28)
+      g <- c(g, list(grid::segmentsGrob(x0 = at, y0 = 0, x1 = at + 1, y1 = 1,
+                                        gp = grid::gpar(col = grDevices::adjustcolor("white", 0.85),
+                                                        lwd = 1.6, lineend = "butt"))))
+    }
+    grid::gTree(children = do.call(grid::gList, g),
+                vp = grid::viewport(width = unit(0.8, "lines"), height = unit(0.8, "lines"),
+                                    clip = "on"))
+  }
+  key_item <- function(hatched, txt) {
+    cowplot::plot_grid(cowplot::ggdraw() + cowplot::draw_grob(swatch(hatched)),
+                       cowplot::ggdraw() + cowplot::draw_label(txt, x = 0.06, hjust = 0, size = 8.8),
+                       nrow = 1, rel_widths = c(0.12, 1))
+  }
+  hatch_key <- cowplot::plot_grid(NULL, key_item(FALSE, "Designed in this work"),
+                                  key_item(TRUE, "External"), NULL,
+                                  nrow = 1, rel_widths = c(1, 1.1, 0.7, 1))
+  legend_grob <- cowplot::plot_grid(legend_grob, hatch_key, ncol = 1,
+                                    rel_heights = c(1, 0.75))
+}
 
 ## BAKED TO GROBS, NOT SHIPPED AS GGPLOTS. A ggplot stores its aesthetics as
 ## quosures that are evaluated at DRAW time against the environment they were

@@ -1132,12 +1132,42 @@ bar_panel <- function(df, metric, xlab, title, labels_on_y = TRUE,
   sub$model <- factor(sub$model, levels = rev(c(intersect(top_model, lev),
                                                 setdiff(lev, top_model))))
   sub$medal <- c("1st", "2nd", "3rd")[rank(-sub$value, ties.method = "first")]
+  ## White medal text by default; groups whose fill is too pale for it (read at CALL
+  ## time, NOTES s128) get dark text instead. Empty by default, so no figure moves.
+  sub$medal_col <- ifelse(as.character(sub$group) %in%
+                            getOption("coguk.medal_dark_groups", character(0)),
+                          "grey15", "white")
 
+  ## HATCHING (NOTES s128): with `coguk.ours_labels` set (display labels, read at call
+  ## time), every bar NOT in it is striped, to separate the approaches this work
+  ## designed from the ones it compares against. Unset by default: plain geom_col, so no
+  ## other figure changes.
+  ours <- getOption("coguk.ours_labels", NULL)
+  bars <- if (is.null(ours)) geom_col() else {
+    sub$hatch <- ifelse(as.character(sub$model) %in% ours, "none", "stripe")
+    ggpattern::geom_col_pattern(
+      aes(pattern = hatch), pattern_colour = NA, pattern_fill = "white",
+      pattern_alpha = 0.85, pattern_angle = 45, pattern_density = 0.2,
+      pattern_spacing = 0.025, pattern_key_scale_factor = 0.6)
+  }
   p <- ggplot(sub, aes(y = model, x = value, fill = group)) +
-    geom_col() +
-    geom_text(data = sub[!is.na(sub$medal), ],
-              aes(x = value, y = model, label = medal), inherit.aes = FALSE,
-              hjust = 1.1, size = 2.3, fontface = "bold", color = "white") +
+    bars +
+    (if (!is.null(ours)) ggpattern::scale_pattern_identity()) +
+    ## A LABEL, not text, when bars may be hatched: the medal then sits on a solid patch
+    ## of its bar's own fill, so it reads over the stripes and vanishes on a plain bar.
+    (if (is.null(ours))
+       geom_text(data = sub[!is.na(sub$medal), ],
+                 aes(x = value, y = model, label = medal, colour = medal_col),
+                 inherit.aes = FALSE,
+                 hjust = 1.1, size = 2.3, fontface = "bold")
+     else
+       geom_label(data = sub[!is.na(sub$medal), ],
+                  aes(x = value, y = model, label = medal, colour = medal_col,
+                      fill = group),
+                  inherit.aes = FALSE, hjust = 1.05, size = 2.3, fontface = "bold",
+                  label.size = 0, label.r = unit(0, "pt"),
+                  label.padding = unit(1, "pt"))) +
+    scale_colour_identity() +
     theme_paper() +
     ## Left margin so cowplot's panel label sits beside the title rather than
     ## on top of it -- these panels have no y-axis text to make room.

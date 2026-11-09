@@ -42,7 +42,22 @@
 source("R/common.R")
 suppressPackageStartupMessages(library(cowplot))
 
-RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", n, ".rds"))
+## TWO VERSIONS (NOTES s128). REVISED2_VARIANT=main (default) prunes the bar panels E-L
+## to the rungs the argument needs; =supp keeps the full roster as
+## sc2_results_revised2_supp. Rows 1-2 are identical in both. Keys, not labels, so a
+## rename cannot silently un-prune a row.
+VARIANT <- Sys.getenv("REVISED2_VARIANT", unset = "main")
+stopifnot(VARIANT %in% c("main", "supp"))
+DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (bars only)
+               "MSA_Transformer_BA2", "MSA_Transformer_XFG",
+               "where_times_which", "wxw_dirichlet",      # S×M, S×M-MCM interp.
+               "mcm",
+               "BA2_escape_LYCoV1404",
+               "esm2_esm2_t33_650M_UR50D_lr0.001_noft")   # ESM 2 (650M), untrained
+BAR_ENV <- if (VARIANT == "main") {
+  paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
+} else character(0)
+RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
 run_export <- function(script, rds, extra_env = character(0)) {
@@ -57,7 +72,7 @@ run_export <- function(script, rds, extra_env = character(0)) {
 }
 
 message("  [1/4] exporting coguk_list_aa20 panels ...")
-cg <- run_export("figures/panels_coguk_export.R", RS("coguk"))
+cg <- run_export("figures/panels_coguk_export.R", RS("coguk"), BAR_ENV)
 message("  [2/4] exporting sc2_results_aa20 panels ...")
 sc <- run_export("figures/panels_sc2_export.R", RS("sc2"))
 message("  [3/4] exporting the per-cell cutoff panel ...")
@@ -66,7 +81,7 @@ gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
 ## 2023-01-01 cutoff. Same script, so the same roster, pruning, names and colours.
 message("  [4/4] exporting the 2023-01-01 all-cells panels ...")
 ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
-                 "REVISED2_ARM=allcells_2023")
+                 c("REVISED2_ARM=allcells_2023", BAR_ENV))
 
 ## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
 ## MCM interpolations, antiGen (CV x10). The table is `figures/revised2_labels.R`;
@@ -172,26 +187,50 @@ row2 <- plot_grid(
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
 ## The MODEL TYPE key colours only these bars, so it sits directly above them rather
 ## than at the head of the figure (NOTES s118).
+## ROW HEADERS, rotated, at the left of rows 3 and 4 (NOTES s128): the two rows differ
+## in target set AND cutoff, which the panel titles alone would have to repeat four
+## times each. The header sits beside the panels only, not beside row 3's key.
+row_header <- function(txt) {
+  ggdraw() + draw_label(txt, angle = 90, fontface = "bold", size = 11)
+}
+HDR_W <- 0.045
+with_header <- function(txt, panels) {
+  plot_grid(row_header(txt), panels, nrow = 1, rel_widths = c(HDR_W, 1))
+}
 row3 <- plot_grid(
-  cg$legend,
-  plot_grid(cg$decile_all_pc, cg$decile_all_evt,
-            cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
-            rel_widths = c(1.75, 1.1, 1.1, 1.1),
-            labels = c("E", "F", "G", "H")),
-  ncol = 1, rel_heights = c(0.1, 1.45))
+  plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
+  with_header("CoG-UK escape list, 2021-01-01 cutoff",
+              plot_grid(cg$decile_all_pc, cg$decile_all_evt,
+                        cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
+                        rel_widths = c(1.75, 1.1, 1.1, 1.1),
+                        labels = c("E", "F", "G", "H"))),
+  ## The key is two lines now (model type, then designed / external; s128), and the
+  ## supplement's model types wrap to two on their own.
+  ncol = 1, rel_heights = c(if (VARIANT == "supp") 0.26 else 0.17, 1.45))
 
 ## Row 4 mirrors row 3 panel for panel; the model-type key above row 3 serves both.
-row4 <- plot_grid(ca$decile_all_pc, ca$decile_all_evt,
-                  ca$decile_dn_pc, ca$decile_dn_evt, nrow = 1,
-                  rel_widths = c(1.75, 1.1, 1.1, 1.1),
-                  labels = c("I", "J", "K", "L"))
+row4 <- with_header("All RBD cells, 2023-01-01 cutoff",
+                    plot_grid(ca$decile_all_pc, ca$decile_all_evt,
+                              ca$decile_dn_pc, ca$decile_dn_evt, nrow = 1,
+                              rel_widths = c(1.75, 1.1, 1.1, 1.1),
+                              labels = c("I", "J", "K", "L")))
 
+## The supplement is the s125 canvas exactly (rel 0.95/1.1/1.55/1.45 of 14.7 in); the
+## main figure keeps its rows 1-2 to the inch and shortens the two bar rows.
+ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
+if (VARIANT == "main") ROW_IN[3:4] <- c(3.35, 3.05)
+## Room for the taller key above row 3, so the bars do not give it up.
+ROW_IN[3] <- ROW_IN[3] + (if (VARIANT == "supp") 0.45 else 0.2)
 save_figure(
   plot_grid(row1, row2, row3, row4, ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
-            rel_heights = c(0.95, 1.1, 1.55, 1.45)),
-  getOption("revised2.fig_main", "sc2_results_revised2"),
+            ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
+            ## whichever roster rows 3-4 carry. The bar rows scale with model count:
+            ## 24 rows in the supplement, 16 in the main figure.
+            rel_heights = ROW_IN),
+  paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
+         if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
   ## NARROW. At 16in the two fixed-aspect images in row 1 floated in white space --
@@ -199,5 +238,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = 14.7)
-cat("wrote figs/sc2_results_revised2.png (+ .pdf)\n")
+  width = 11, height = sum(ROW_IN))
+cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
+                    ".png (+ .pdf)\n"))
