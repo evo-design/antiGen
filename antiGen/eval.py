@@ -350,6 +350,12 @@ def parse_args():
                              '((N + kappa*s*M)/(N_total+kappa), kappa=N_total). '
                              'Separate from --multitree-baselines so an existing '
                              'roster does not change.')
+    parser.add_argument('--mcm-baseline', action='store_true',
+                        help='add the MUTATION COUNT MATRIX alone as a rung, "mcm": '
+                             'log N[i,a], the training-window event count of each cell '
+                             '(statistical_baselines "frequency"). The N that the MCM '
+                             'interpolation blends with its factored prior. Own flag '
+                             'for the same reason as --counted-baselines (NOTES s121).')
     parser.add_argument('--substitution-seed', type=int, default=0,
                         help="Seed for fit_substitution_baseline's minibatch sampler. "
                              "NOTES s14 found it saturates by K=2, so one fit is "
@@ -1142,7 +1148,7 @@ def main():
     #
     # ITS OWN FLAG, not --multitree-baselines: the figures key rows by name and an
     # unknown model collapses into one NA group, so a roster must not grow silently.
-    if args.counted_baselines:
+    if args.counted_baselines or args.mcm_baseline:
         print("\n=== Building counted-statistic baselines ===", flush=True)
         from antiGen.statistical_baselines import fit as _cs_fit
         _cs_cache = {}
@@ -1166,9 +1172,14 @@ def main():
             return CountedStatPredictor(_cs_cfg, _cs_stats(),
                                         "mcm_interpolation").to(device)
 
-        builtin_models["site_substitution"] = _site_substitution
-        builtin_models["mcm_interpolation"] = _mcm_interpolation
-        print("  added 2: site_substitution, mcm_interpolation")
+        if args.counted_baselines:
+            builtin_models["site_substitution"] = _site_substitution
+            builtin_models["mcm_interpolation"] = _mcm_interpolation
+            print("  added 2: site_substitution, mcm_interpolation")
+        if args.mcm_baseline:
+            builtin_models["mcm"] = (lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm").to(device))
+            print("  added 1: mcm")
     # The val-selected runs as ONE rung. Registered beside the factored baselines
     # because `builtin_models` is the hook for "a model the eval builds rather than
     # loads", and that is exactly what an ensemble is -- it then goes through the same

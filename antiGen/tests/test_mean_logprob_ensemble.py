@@ -86,3 +86,30 @@ def test_members_are_registered_so_device_moves_apply():
     ens = MeanLogProbEnsemble([Toy(torch.zeros(1, 2, 3)), Toy(torch.zeros(1, 2, 3))])
     assert len(list(ens.children())) == 1 and len(ens.members) == 2
     assert any(b.numel() for b in ens.buffers()), "member buffers are not registered"
+
+
+def test_eval_range_matches_the_cached_map_rule():
+    """With eval_range, the rung equals logsoftmax/arith over the cached (range) slice.
+
+    That is the rule `ensemble_report` applies to `--dump-scores` maps, which hold only
+    the eval-range positions (NOTES s123). Outside the range the output is -inf.
+    """
+    torch.manual_seed(2)
+    a, b = torch.randn(3, 9, 5), torch.randn(3, 9, 5) * 3
+    rng = [2, 3, 4, 5]
+    ens = MeanLogProbEnsemble([Toy(a), Toy(b)], eval_range=rng)
+    out = ens(torch.zeros(3, 9, dtype=torch.long))
+
+    def ls(x):
+        s = x[:, rng, :]
+        return torch.log_softmax(s.flatten(1), dim=1).reshape(s.shape)
+    want = (ls(a) + ls(b)) / 2
+    assert torch.allclose(out[:, rng, :], want, atol=1e-6)
+    outside = [i for i in range(9) if i not in rng]
+    assert torch.isneginf(out[:, outside, :]).all()
+    # Normalising over the full sequence instead shifts each member by one constant
+    # per query, so the arith mean shifts by one constant per query: the RANKS inside
+    # the range are identical. The option makes the values match the cached maps; it
+    # was never needed for the ranking (NOTES s123).
+    full = MeanLogProbEnsemble([Toy(a), Toy(b)])(torch.zeros(3, 9, dtype=torch.long))
+    assert torch.equal(_ranks(full[:, rng, :]), _ranks(want))

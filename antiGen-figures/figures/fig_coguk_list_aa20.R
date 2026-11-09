@@ -113,7 +113,9 @@
 ## ensembling is ten FIXED-32 runs on the same ten splits, averaged the same way; see
 ## that section's Open.
 options(
-  coguk.macro_dir    = "data/evals_sc2_lists_macro_aa20",
+  ## Overridable (eval-then-override, as drop_models below): sc2_results_revised2's
+  ## panels I-L draw this same roster from the 2023-01-01 all-cells run (NOTES s123).
+  coguk.macro_dir    = getOption("coguk.macro_dir", "data/evals_sc2_lists_macro_aa20"),
   ## One colour per group, since the two say different things. The published
   ## ensemble orange for the roster mixtures, and a blue for the val-selected
   ## arms -- those ARE antiGen-family predictors, and the colour should say so.

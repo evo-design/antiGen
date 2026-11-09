@@ -37,6 +37,9 @@ options(sc2.fig_main = "scratch_revised_sc2", sc2.fig_prefix = "scratch_revised_
         ## Only the dump option is global; the LABELS are passed to the builder, so
         ## they cannot reach the published panel M this file also causes to be drawn.
         sc2.dms_spearman_csv = file.path(tempdir(), "dms_spearman.csv"))
+## sc2_results_revised2's MCM-alone rung on the cutoff series (NOTES s121). Set before
+## fig_sc2_aa20.R's option block, which reads it; off unless the caller asks.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) options(sc2.gate_rows_extra = c(mcm = "MCM"))
 source("figures/fig_sc2_aa20.R")
 
 ## BAKED TO GROBS, NOT SHIPPED AS GGPLOTS. A ggplot stores its aesthetics as
@@ -67,6 +70,7 @@ options(
     "Site x Substitution"    = "#3d7068",
     "Where x which + events" = FINETUNE_COLORS[2],
     "SxS, MCM interpolation" = "#8fb5ad",
+    "MCM"                    = "#a08c7a",
     "PSSM"                   = MODEL_TYPE_COLORS[4],
     "BLOSUM62"               = MODEL_TYPE_COLORS[2],
     "EVEscape"               = MODEL_TYPE_COLORS[3]),

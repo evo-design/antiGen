@@ -12511,3 +12511,97 @@ revised2 render does this as a side effect: `panels_sc2_export.R` sources
 `fig_sc2_aa20.R`, which writes `sc2_results_aa20.png` and the `aa20_supp_*` PNGs.
 Until those side effects go to scratch names, delete them after a revised2 render
 rather than re-rendering `fig_sc2_aa20.R`.
+
+## 121. The mutation count matrix alone, on panels C and D of sc2_results_revised2 (2026-11-08)
+
+**MCM** is the mutation count matrix by itself: log N[i, a], the number of times
+mutation a occurred at site i on the training tree (`statistical_baselines.score_map`,
+key `mcm` -> `frequency`). It is the N that S×S-MCM interp. blends with its factored
+prior. It is not the PFM, which counts residues across the training SEQUENCES
+(`counts_D_cur.tsv`, 351,410 at 2021-01-01) rather than mutation events.
+
+* **Flag.** `--mcm-baseline` on `eval.py` and `list_macro.py` adds the rung `mcm` through
+  `CountedStatPredictor`. It is separate from `--counted-baselines` so that no other
+  roster grows. Figures key rows by name, and an unknown model collapses into an NA
+  group.
+* **Scoring.** All 16 cutoffs, in both pipelines, as resume passes that add one model:
+  * panel C (per cell): `macro_series_daemon.sh` with `EXTRA_LM_ARGS=--mcm-baseline WANT=25`,
+    on `evo_gpu_priority`, 1-2 min each;
+  * panel D (per mutation): `submit_cutoff_evals.sh`, which now passes the flag and
+    requires `mcm` in `PANEL_ROWS`. Moved to `evo_gpu_priority` with a 30 min limit;
+    about 7 min each.
+
+  Every previously existing row is byte-identical in all 16 panel D CSVs (checked with
+  `diff` before staging).
+* **Figure.** `sc2.gate_rows_extra` (new, default empty) inserts rungs after
+  `mcm_interpolation` in `fig_sc2_aa20.R`'s gate roster and joins `sc2.gate_baselines`.
+  The two gate exports set it to `c(mcm = "MCM")` only under `REVISED2_LABELS`, so panel M
+  of sc2_results_aa20 and sc2_results_revised are unchanged. The line is dashed in
+  `#a08c7a`.
+
+Per cell it tracks the factored baselines and ends level with the PFM, about 0.65 at
+2024-01-01. Per mutation it starts lower (0.63-0.71 through 2021) and reaches about 0.86.
+
+## 122. Supplement: C and D against training-set size (2026-11-08)
+
+`figs/supp_gate_units.png` (`figures/figS_gate_units.R`) redraws C (per cell, left) and
+D (per mutation, right) of sc2_results_revised2 three times, with training-set size on
+the x axis instead of the cutoff date:
+
+| row | x | 2020-04-01 -> 2024-01-01 |
+|---|---|---|
+| 1 | mutation events in the training examples (whole spike) | 1,129 -> 293,748 |
+| 2 | training examples (a sequence and its descendant mutations) | 190 -> 68,342 |
+| 3 | sequences placed on the training tree (`#sequences` in counts_D_cur.tsv) | 28,622 -> 8,277,482 |
+
+The sizes come from the files the cutoff-series models train on, and are written by
+`experiments/multitree/training_size_by_cutoff.py` to
+`data/gate_units_aa20/training_size_by_cutoff.csv`. They match independent counts:
+2,934 records at 2021-01-01 (the MANIFEST), 351,410 sequences at 2021-01-01, and
+7,813,585 at 2023-01-01 (the MSA). Nothing is re-scored; each point is one of the 16
+cutoffs.
+
+`panels_gate_units_export.R` is one process per pooling (`GATE_UNITS_POOLING`), because
+the two loaders are chosen at source time. It joins the sizes on the drawer's own
+decimal-year x.
+
+**x is linear** (`GATE_UNITS_SCALE=log` for the alternative). Log spreads out the first
+six cutoffs but squeezes the last eight, where nearly all the recall gain happens, into
+a sliver: the training set grows less than 2x over those eight. On a linear axis per-cell
+recall is close to linear in mutations and in examples, and bends up against sequences.
+Per-mutation recall jumps over the first few thousand and then flattens.
+
+## 123. A val-selected ensemble rung in list_macro (2026-11-08)
+
+`list_macro.py --ensemble-dir DIR [--ensemble-name N]` adds one rung: every
+`fitness_*.pt` in DIR, combined by the published "Mean of log-probs" rule. This is a port
+of `eval.py --ensemble-dir`, for the 2023-01-01 all-cells panels (I-L) planned for
+sc2_results_revised2.
+
+**eval.py's full-eval-range precondition was stronger than needed.** A member's
+log-softmax is its logits minus ONE constant per query, whatever positions it is
+normalised over. So the arith mean is the mean logit minus one constant per query, and
+its within-query RANKS are the same under any range. `MeanLogProbEnsemble(eval_range=...)`
+normalises over the eval range anyway, so its values also equal the cached-map rule's,
+and fills every other position with -inf. A new test pins both facts. The NaN-aware case
+(gap/stop-masking members) is not handled, so list_macro refuses a non-20-letter
+alphabet.
+
+**Gate, passed.** `experiments/multitree/gate_list_ensemble.sh` (job 3653855) re-scored the
+2021 `vs10Antigen_s0..s9` members through the new path. It reproduces the published
+`ens_8a91fbbf88` list rows (`ensemble_report` over cached maps):
+
+| variant | macro | published | micro | published |
+|---|---|---|---|---|
+| list_coguk_fullpool | 0.54512072 | 0.54512071 | 0.83055240 | 0.83055240 |
+| list_coguk_unseen_fullpool | 0.50833851 | 0.50833848 | 0.71138322 | 0.71138322 |
+
+Supporting changes:
+
+* `submit_macro_allcells_aa20.sh` takes `EXTRA_LM_ARGS`.
+* `fig_coguk_list_aa20.R`'s `coguk.macro_dir` is now overridable (eval-then-override).
+
+The 2023-01-01 rows themselves wait on training. Ten val-select seeds at 256 epochs
+(job 3658552), because at 96 epochs all five finished seeds selected epoch 93-95.
+EVE and Tranception (jobs 3658555/6) were resubmitted with `--examples`; the first
+submission omitted it and died at load.

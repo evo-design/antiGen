@@ -105,7 +105,7 @@ REQUEUE_ARGS=()
 PANEL_ROWS="simple_d128_n2_lr0.0001 esm2_esm2_t12_35M_UR50D_lr0.0001_partial4
             gated_static_xfmr_pssm_lr0.0001
             where_times_which wxw_dirichlet pssm_root blosum62 EVEscape
-            site_substitution mcm_interpolation"
+            site_substitution mcm_interpolation mcm"
 
 CUTOFFS="2020-04-01 2020-07-01 2020-10-01 2021-01-01 2021-04-01 2021-07-01
          2021-10-01 2022-01-01 2022-04-01 2022-07-01 2022-10-01 2023-01-01
@@ -196,7 +196,8 @@ for D in $CUTOFFS; do
         --variant-counts-dir "$REVISED/sc2-test/counts_ba2" \
         --counts-since "$D" \
         --multitree-baselines \
-        --counted-baselines
+        --counted-baselines \
+        --mcm-baseline
     n_sub=$((n_sub + 1))
 done
 echo ""

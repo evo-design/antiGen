@@ -17,6 +17,9 @@ if (!nzchar(out)) stop("panels_gate_macro_export.R needs REVISED_PANELS_RDS")
 
 source("R/common.R")
 
+## sc2_results_revised2's MCM-alone rung on the cutoff series (NOTES s121). Set before
+## fig_sc2_aa20.R's option block, which reads it; off unless the caller asks.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) options(sc2.gate_rows_extra = c(mcm = "MCM"))
 src  <- readLines("figures/fig_sc2_aa20.R")
 drop <- grep('^source\\("figures/fig2_sc2_benchmarks\\.R"\\)', src)
 if (length(drop) != 1L) {
@@ -43,6 +46,7 @@ options(
     "Site x Substitution"    = "#3d7068",
     "Where x which + events" = FINETUNE_COLORS[2],
     "SxS, MCM interpolation" = "#8fb5ad",
+    "MCM"                    = "#a08c7a",
     "PSSM"                   = MODEL_TYPE_COLORS[4],
     "BLOSUM62"               = MODEL_TYPE_COLORS[2],
     "EVEscape"               = MODEL_TYPE_COLORS[3]),

@@ -119,6 +119,9 @@ else
 fi
 OUTDIR=${OUTDIR:-$STORE/evals_sc2_lists_macro_${TAG}_allcells}
 JOBNAME=macro_all_${TAG}
+# Extra list_macro args, e.g. EXTRA_LM_ARGS="--ensemble-dir D --ensemble-name N"
+# for a resume pass that adds one rung (NOTES s123). Paths must not contain spaces.
+read -r -a EXTRA_LM <<< "${EXTRA_LM_ARGS:-}"
 for f in "$TRAIN_EX" "$TEST_EX" "$ROOT_COUNTS"; do
     [ -f "$f" ] || { echo "missing corpus file: $f" >&2; exit 1; }
 done
@@ -159,4 +162,5 @@ exec sbatch --job-name="$JOBNAME" --partition="$PARTITION" --nice=0 \
     "${SPLIT_ARGS[@]}" \
     --mutation-list "allcells=$LIST" \
     --multitree-baselines \
-    --counted-baselines
+    --counted-baselines \
+    "${EXTRA_LM[@]}"

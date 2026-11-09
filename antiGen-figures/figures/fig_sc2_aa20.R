@@ -114,7 +114,10 @@ options(
 
   ## --- panel M ---
   sc2.gate_loader = "by_name",
-  sc2.gate_rows = c(
+  ## `sc2.gate_rows_extra` (default none) is inserted after `mcm_interpolation`, so a
+  ## caller can add a rung without this arm's own panel M changing. sc2_results_revised2
+  ## adds the MCM alone that way (NOTES s121).
+  sc2.gate_rows = local({ r <- c(
     "simple_d128_n2_lr0.0001"                   = "antiGen",
     "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4" = "ESM-2 35M, partial FT",
     ## The published panel's headline, restored. It is a trained checkpoint, not a
@@ -138,8 +141,10 @@ options(
     "mcm_interpolation"                         = "SxS, MCM interpolation",
     "pssm_root"                                 = "PSSM",
     "blosum62"                                  = "BLOSUM62",
-    "EVEscape"                                  = "EVEscape"
-  ),
+    "EVEscape"                                  = "EVEscape")
+    x <- getOption("sc2.gate_rows_extra", character(0))
+    i <- match("mcm_interpolation", names(r))
+    c(r[seq_len(i)], x, r[-seq_len(i)]) }),
   ## Directory names are dates here, not `cutoff_<years>`. The x axis stays "years
   ## into the pandemic" so the two arms' panel M can be read against each other.
   ## THE ORIGIN IS THE DRAWER'S OWN `PANDEMIC_START`, not a second one: this wrapper
@@ -162,7 +167,8 @@ options(
   sc2.gate_xlim_hi = NA,
   ## Drawn dashed: the rungs that are not antiGen-derived.
   sc2.gate_baselines = c("PSSM", "BLOSUM62", "EVEscape", "Where x which",
-                         "Site x Substitution", "SxS, MCM interpolation"),
+                         "Site x Substitution", "SxS, MCM interpolation",
+                         unname(getOption("sc2.gate_rows_extra", character(0)))),
   ## In `sc2.gate_rows` order, which is the factor order the loader pins.
   ## IN `sc2.gate_rows` ORDER. The by-name loader pins `model` as a factor in that
   ## order and `scale_color_manual` matches an unnamed vector to the levels

@@ -1019,19 +1019,45 @@ class MeanLogProbEnsemble(torch.nn.Module):
 
     A ONE-member ensemble is therefore a no-op on ranks, which is the gate:
     ``test_one_member_is_a_no_op`` pins it.
+
+    **The first precondition is stronger than it needs to be** (NOTES s123). A member's
+    log-softmax is its logits minus ONE constant per query, whichever positions it is
+    normalised over, so the arith mean is the mean logit minus one constant per query
+    and its within-query ranks are the same under either range. What differs is only
+    the values. ``eval_range`` makes the values match the cached maps too: each member
+    is log-softmaxed over those positions only -- exactly the (eval range x residues)
+    slice a ``--dump-scores`` map holds -- and every position outside is ``-inf``.
+    Every consumer slices to the eval range before ranking (`compute_hit_rate`), so
+    those cells are never read; ``-inf`` rather than 0 so that a consumer which forgot
+    to slice would see them rank last instead of silently mid-table. It does NOT lift
+    the second precondition: a member that NaN-masks cells would need a NaN-aware
+    logsumexp, and `list_macro` refuses that case.
     """
 
-    def __init__(self, members):
+    def __init__(self, members, eval_range=None):
         super().__init__()
         if not members:
             raise ValueError("MeanLogProbEnsemble needs at least one member")
         self.members = torch.nn.ModuleList(members)
+        self.eval_range = None if eval_range is None else list(eval_range)
+        # The gap/stop legitimacy flags are a property of the members; the ensemble
+        # emits a cell legitimately only if every member does.
+        self.OUTPUTS_LEGITIMATE_GAP = all(
+            getattr(m, "OUTPUTS_LEGITIMATE_GAP", False) for m in members)
+        self.OUTPUTS_LEGITIMATE_STOP = all(
+            getattr(m, "OUTPUTS_LEGITIMATE_STOP", False) for m in members)
 
     def forward(self, aa_batch):
         acc = None
         for m in self.members:
             lg = m(aa_batch).float()
-            ls = torch.log_softmax(lg.flatten(1), dim=1).reshape(lg.shape)
+            if self.eval_range is None:
+                ls = torch.log_softmax(lg.flatten(1), dim=1).reshape(lg.shape)
+            else:
+                sub = lg[:, self.eval_range, :]
+                ls = torch.full_like(lg, float('-inf'))
+                ls[:, self.eval_range, :] = torch.log_softmax(
+                    sub.flatten(1), dim=1).reshape(sub.shape)
             acc = ls if acc is None else acc + ls
         return acc / len(self.members)
 

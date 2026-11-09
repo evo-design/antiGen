@@ -62,7 +62,7 @@ from antiGen.config import (AlphabetConfig, CodonConfig, LEGACY_AAS, ModelConfig
 from antiGen.eval import (MutationDataset, config_label, dataset_of_train_args,
                           discover_checkpoints, peek_checkpoint_meta)
 from antiGen import eval_utils as eu
-from antiGen.eval_utils import (CountedStatPredictor, RBD_RANGE,
+from antiGen.eval_utils import (CountedStatPredictor, MeanLogProbEnsemble, RBD_RANGE,
                                 build_model_gap_stop_mask,
                                 compute_hit_rate, fit_substitution_baseline,
                                 load_baselines, load_checkpoint,
@@ -318,6 +318,17 @@ def main():
                          'from --multitree-baselines so an existing roster does not '
                          'change: the figures key rows by name and an unknown model '
                          'collapses into an NA group (NOTES s-note).')
+    ap.add_argument('--ensemble-dir', default=None, metavar='DIR',
+                    help='add one rung: every fitness_*.pt in DIR combined by the '
+                         'published "Mean of log-probs" rule (ensemble_rules '
+                         'logsoftmax/arith), each member normalised over the EVAL '
+                         'RANGE as the cached-map rule does (NOTES s123). Port of '
+                         'eval.py --ensemble-dir, which instead needs the full range.')
+    ap.add_argument('--ensemble-name', default='antigen_valsel',
+                    help='row name for --ensemble-dir')
+    ap.add_argument('--mcm-baseline', action='store_true',
+                    help='add the mutation count matrix alone, "mcm": log N[i,a] '
+                         '(statistical_baselines "frequency"). NOTES s121.')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--skip-baselines', action='store_true',
                     help='Score only the checkpoints. The CSV baselines are fixed maps '
@@ -561,8 +572,8 @@ def main():
             # no-checkpoint case: it supplies its own models.
             msg = (f"No checkpoints match --dataset {args.dataset} "
                    f"({len(groups)} group(s) discovered, all filtered out).")
-            if args.multitree_baselines:
-                print(msg + " Continuing: --multitree-baselines supplies its own models.")
+            if args.multitree_baselines or args.ensemble_dir or args.counted_baselines:
+                print(msg + " Continuing: another flag supplies its own models.")
             else:
                 raise SystemExit(msg)
 
@@ -597,7 +608,7 @@ def main():
             candidates.append((name, None))
         print(f"  added {len(builtin_models)}: {', '.join(builtin_models)}")
 
-    if args.counted_baselines:
+    if args.counted_baselines or args.mcm_baseline:
         print("\n=== Building counted-statistic baselines ===", flush=True)
         from antiGen.statistical_baselines import fit as _cs_fit
         _cs_cache = {}
@@ -612,16 +623,49 @@ def main():
 
         _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
                               alphabet=AlphabetConfig(amino_acids=allowed_aas))
-        counted_models = {
-            "site_substitution": lambda: CountedStatPredictor(
-                _cs_cfg, _cs_stats(), "site_substitution").to(device),
-            "mcm_interpolation": lambda: CountedStatPredictor(
-                _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
-        }
+        counted_models = {}
+        if args.counted_baselines:
+            counted_models.update({
+                "site_substitution": lambda: CountedStatPredictor(
+                    _cs_cfg, _cs_stats(), "site_substitution").to(device),
+                "mcm_interpolation": lambda: CountedStatPredictor(
+                    _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
+            })
+        if args.mcm_baseline:
+            counted_models["mcm"] = (lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm").to(device))
         builtin_models.update(counted_models)
         for _n in counted_models:
             candidates.append((_n, None))
         print(f"  added {len(counted_models)}: {', '.join(counted_models)}")
+
+    if args.ensemble_dir:
+        ens_paths = sorted(glob.glob(os.path.join(args.ensemble_dir, "fitness_*.pt")))
+        if not ens_paths:
+            raise SystemExit(f"--ensemble-dir {args.ensemble_dir} has no fitness_*.pt")
+        if gap_idx is not None or stop_idx is not None:
+            # A member that NaN-masks gap/stop would need a NaN-aware logsumexp to
+            # match the cached rule's union_min; not needed for aa20, so refused.
+            raise SystemExit("--ensemble-dir is implemented for the 20-letter alphabet "
+                             "only (no gap/stop columns); see NOTES s123")
+
+        def _ensemble():
+            mems = []
+            for ep in ens_paths:
+                eck, ecfg = load_checkpoint(ep, map_location=device)
+                if ecfg.seq_len != seq_len:
+                    raise SystemExit(f"{ep}: seq_len {ecfg.seq_len} != {seq_len}")
+                em = create_model(ecfg, device)
+                em.load_state_dict(eck['model_state_dict'], strict=False)
+                em.eval()
+                mems.append(em)
+                print(f"    member {os.path.basename(ep)}", flush=True)
+            return MeanLogProbEnsemble(mems, eval_range=eval_range).to(device)
+
+        builtin_models[args.ensemble_name] = _ensemble
+        candidates.append((args.ensemble_name, None))
+        print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
+              f"from {args.ensemble_dir}, normalised over the eval range")
 
     by_model = read_done(args.output_dir)
     skipped = []
