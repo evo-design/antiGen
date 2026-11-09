@@ -12450,3 +12450,15 @@ Three details:
   and `element_text` do not merge, so the key text is blanked first and then set.
 * **Size.** The canvas is 10.5 in tall (was 10). Row 2 gets 1.1 of the height and a small
   spacer keeps the strip off the E-H titles.
+
+## 118. sc2_results_revised2: each key above the row it serves (2026-11-08)
+
+The two keys now sit directly above the panels they describe:
+
+* The C/D line key (s117) moved from under the two panels to above them.
+* The model-type key moved from the head of the figure to above E-H, the only panels
+  it colours.
+
+Each row is now a `plot_grid` of key and panels, with rel_heights `c(0.1, 1)` for row 2
+and `c(0.1, 1.45)` for row 3. The figure's rel_heights are `c(0.95, 1.1, 1.55)`, and the
+canvas is unchanged at 11 x 10.5 in.

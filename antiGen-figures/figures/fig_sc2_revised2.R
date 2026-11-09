@@ -141,7 +141,7 @@ row1 <- plot_grid(recall_cartoon, case_study, nrow = 1,
                   rel_widths = c(1, 1), labels = c("A", "B"))
 ## PER CELL ON THE LEFT, per mutation on the right -- the direction row 3 also reads,
 ## so the contrast runs one way everywhere in the figure.
-## THE KEY GOES UNDER C AND D, not over their lines (NOTES s117). Inside the panel it
+## THE KEY GOES OUTSIDE C AND D, not over their lines (NOTES s117). Inside the panel it
 ## sat on the lower-right corner, where the dashed baselines run. Both panels draw the
 ## same nine lines in the same colours, so one strip serves both; the in-panel copies
 ## are removed from the baked grobs (in ggplot2 >= 3.5 an inside legend is its own
@@ -153,21 +153,28 @@ strip_inside_legend <- function(g) {
   g$grobs[hit] <- list(ggplot2::zeroGrob())
   g
 }
+## ABOVE the panels it serves (NOTES s118), so each key reads before its row.
 row2 <- plot_grid(
+  gm$gate_legend,
   plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
             nrow = 1, rel_widths = c(1, 1), labels = c("C", "D")),
-  gm$gate_legend, NULL, ncol = 1, rel_heights = c(1, 0.1, 0.03))
+  ncol = 1, rel_heights = c(0.1, 1))
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
-row3 <- plot_grid(cg$decile_all_pc, cg$decile_all_evt,
-                  cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
-                  rel_widths = c(1.75, 1.1, 1.1, 1.1),
-                  labels = c("E", "F", "G", "H"))
+## The MODEL TYPE key colours only these bars, so it sits directly above them rather
+## than at the head of the figure (NOTES s118).
+row3 <- plot_grid(
+  cg$legend,
+  plot_grid(cg$decile_all_pc, cg$decile_all_evt,
+            cg$decile_dn_pc, cg$decile_dn_evt, nrow = 1,
+            rel_widths = c(1.75, 1.1, 1.1, 1.1),
+            labels = c("E", "F", "G", "H")),
+  ncol = 1, rel_heights = c(0.1, 1.45))
 
 save_figure(
-  plot_grid(cg$legend, row1, row2, row3, ncol = 1,
+  plot_grid(row1, row2, row3, ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
-            rel_heights = c(0.12, 0.95, 1.1, 1.45)),
+            rel_heights = c(0.95, 1.1, 1.55)),
   getOption("revised2.fig_main", "sc2_results_revised2"),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
   ## than a wide bar panel and a narrow curve, which is why its rel_widths are equal.
