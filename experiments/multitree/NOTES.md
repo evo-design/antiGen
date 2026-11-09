@@ -12862,3 +12862,30 @@ row with the rotated header "Date-matched baselines". The supplement version has
   40 px in E, 39 px in I and 40 px in M.
 * **M's stripe pitch matches E-L's.** ggpattern's spacing is relative to the plot, and M's
   sub-plots are about a sixth as tall, so M uses `pattern_spacing = 0.30` against E-L's 0.07.
+
+## 132. Panel B in the style of the H3N2 case study (2026-11-09)
+
+At the PI's request, panel B of sc2_results_revised2 (`draw_path_panel.py`) now follows the
+H3N2 J.2 -> K panel on `av-multitree`: `experiments/multitree/draw_path_panel_h3n2.py`,
+drawn as panel G of that branch's `figs/fig4_endemic.png`.
+
+* **Structures.** Light-blue body (`#bdd7f2`). A site newly changed at a state is red and
+  LABELLED ON THE GLYPH, with a leader to its patch, using their left/right column routing
+  with a minimum gap. A site changed at an earlier state and still changed is slate grey.
+  Arrows between states are filled black wedges, and the mutations are no longer on the
+  arrows. The renderer is our own `render_rbd_surface` at its default shading, which
+  matches theirs (`render_surface`: ambient 0.54, specular 0.13, outline `#5b7794`).
+* **Chart.** antiGen PERCENTILE among all RBD substitutions, 0-100. The top decile is a
+  shaded right tail behind a dashed bound, labelled in bold. Each step is a stem and dot
+  coloured by the transition that made it (their stage palette), with the name in bold at
+  the right and `(rank)` in italics under a "(Rank)" header.
+* **Adapted to this path.**
+  * **Reversions.** The H3N2 path has none; this one has two, V483D -> D483V and
+    R346T -> T346R. Their steps keep a HOLLOW dot, with a key entry "reverts later". A
+    site back at its BA.2.86 residue is unmarked on the glyph, so the reversions are
+    visible only in the chart.
+  * **Key.** "Step into: JN.1 / JN.1.11.1 / KP.3": "... substitution" three times ran
+    into the top-decile label at this width. It is laid out by measured text width.
+  * **Arrows.** Low on the glyph row (16% of its height) so they clear the on-glyph labels.
+  * **No chain key.** Their HA1 / HA2 / other-protomers key has no RBD analogue.
+* **Canvas.** Unchanged at 5.5 x 2.45 in, drawn at 1:1 into its slot (s119).

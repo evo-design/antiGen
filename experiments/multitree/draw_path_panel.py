@@ -37,7 +37,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import FancyArrowPatch, Rectangle
+from matplotlib.patches import ArrowStyle, FancyArrowPatch, Rectangle
+import matplotlib.patheffects as pe
 from matplotlib import font_manager
 
 ## ARIAL, to match the R figures (NOTES s127). matplotlib does not read fontconfig, so
@@ -65,26 +66,20 @@ import render_rbd_surface as rs
 ## rescaled: the fonts below are the printed point sizes.
 W_IN, H_IN = 5.5, 2.45
 
-## SAMPLED FROM style.png rather than matched by eye. Its body is a paler, cooler blue
-## than the one here was, its red is softer, and its second accent is a pale peach
-## rather than a mid orange.
-BODY = "#e5f3fc"
-## SURFACE vs INK, because one value cannot do both jobs. style.png's second accent is
-## a pale peach, which is right ON the glyph -- it sits against a pale blue body and
-## reads as a raised patch -- and unreadable as 8pt text on white. The dark accent is
-## legible either way, so only the pale one needs a second value.
-## ONE WARM FAMILY. style.png's dark accent is a red at hue ~1 deg; its light blobs
-## sampled at hue ~24 deg, and an ink darkened from them drifts to orange -- which,
-## beside the blue body and the red, made three colour families. The light accent is
-## now a PINK on the red's own hue, so the panel is blue plus one red family.
-SURF_NET, SURF_REVERT = "#d5413e", "#f5c6c4"
-NET = "#c9413e"       # a site whose change is still there in KP.3
-REVERT = "#e3908c"    # a site that changes and changes back
-BAND = "#dce8f4"
+## THE av-multitree H3N2 PANEL'S STYLE (draw_path_panel_h3n2.py on that branch; NOTES
+## s132), adapted to this path. Light-blue body, red for a site newly changed at a state,
+## slate grey for one carried over from an earlier state; filled black arrows between
+## states; the claim drawn as antiGen PERCENTILE with the top decile a shaded right tail.
+BODY = "#bdd7f2"
+NET = "#c0392b"        # a site changed at this state, on the glyph
+GRAY_SITE = "#5f666c"  # a site changed at an EARLIER state, still changed here
+BAND = "#eef2f7"
 TEXT = "#1a1a1a"
 MUTED = "#6b6b6b"
-ARROW = "#8c8c8c"
-RULE = "#b4b4b4"
+ARROW = "#1a1a1a"
+TD_COL = "#1a1a1a"
+## The chart's rows are coloured by the transition that made them, as in the H3N2 panel.
+STAGE_COL = ["#3d6fb4", "#e3892f", "#8c5bbe"]
 
 
 def load_steps(path):
@@ -143,18 +138,26 @@ def main():
     if len(buckets) != len(states) - 1:
         raise SystemExit(f"{len(states)} states need {len(states)-1} transitions")
     npool = int(rows[0]["n_candidates"])
+    for i, b in enumerate(buckets):
+        for r in b:
+            r["stage"] = i
 
-    # A site is marked while its current residue differs from the one BA.2.86 had, so
-    # a reverted site goes dark again rather than staying lit for the rest of the row.
+    # Per glyph: which sites differ from BA.2.86 there, and which of those are NEW at this
+    # state. New ones red and labelled; older ones grey. A site that has changed back is
+    # unmarked -- the glyph shows the state, and the reversion is the chart's to show.
     first_from = {}
     for r in rows:
         first_from.setdefault(r["pos"], r["from_aa"])
-    marks, cur = [set()], {}
+    glyph_colors, glyph_new, cur, marked = [{}], [[]], {}, set()
     for b in buckets:
         for r in b:
             cur[r["pos"]] = r["to_aa"]
-        marks.append({p for p, a in cur.items() if a != first_from[p]})
-    revert_sites = {r["pos"] for r in rows if r["reverts"]}
+        now = {p for p, aa in cur.items() if aa != first_from[p]}
+        new = [r for r in b if r["pos"] in now and r["pos"] not in marked]
+        gc = {p: GRAY_SITE for p in now & marked}
+        gc.update({r["pos"]: NET for r in new})
+        glyph_colors.append(gc); glyph_new.append(new)
+        marked |= now
 
     xyz, rad, resi = rs.read_chain(args.pdb, args.chain)
     xyz = rs.aim(rs.orient(xyz, resi), rad, resi, {r["pos"] for r in rows})
@@ -163,122 +166,111 @@ def main():
     bg = fig.add_axes([0, 0, 1, 1]); bg.set_xlim(0, W_IN); bg.set_ylim(0, H_IN)
     bg.axis("off")
 
-    # --- the lineage -----------------------------------------------------------
+    # --- the lineage ------------------------------------------------------------
     n = len(states)
-    ## The lineage takes the top half and the full width: glyphs at the render's own
-    ## aspect (380 x 640), the arrows sharing what is left between them.
-    gh, gy = 0.98, 1.22                       # glyph height and its bottom, inches
+    gh, gy = 0.92, 1.30
     gw = gh * 380 / 640
-    margin = 0.18
-    gap = (W_IN - 2 * margin - n * gw) / (n - 1)
-    x0 = margin
-    lefts = [x0 + i * (gw + gap) for i in range(n)]
-
+    span_l, span_r = 0.55, W_IN - 0.35
+    gap = (span_r - span_l - n * gw) / (n - 1)
+    lefts = [span_l + i * (gw + gap) for i in range(n)]
     for i, (lf, st) in enumerate(zip(lefts, states)):
-        ## MEASURED OFF style.png, then corrected by looking. Its body luminance runs
-        ## 104..246, a min/max of 0.42, and `ambient = 0.42` reproduces that RANGE --
-        ## but not its DISTRIBUTION: style.png is light nearly everywhere (p25 is
-        ## #c0cad6) with only a few per cent dark, where 0.42 here put a broad charcoal
-        ## band down every glyph. The darkest pixel is not the thing to match. Ambient
-        ## 0.56 with more `smooth` lifts the crevices and gentles the normals that
-        ## produced them, keeping lobe definition without the band.
-        ##
-        ## What style.png has no trace of is a SPECULAR highlight -- its brightest body
-        ## pixel is barely above the base colour -- which is the real difference from
-        ## this renderer's default and the thing that was reading as glossy. Its
-        ## silhouette is a neutral grey, not the blue this used.
-        ##
-        ## `color_smooth` is dropped so a highlighted site keeps a crisp edge and reads
-        ## as a discrete blob sitting on the surface, which is how style.png shows them.
-        img, _ = rs.render(xyz, rad, resi,
-                           {p: (SURF_REVERT if p in revert_sites else SURF_NET)
-                            for p in marks[i]},
-                           BODY, size=(380, 640),
-                           smooth=0.0190, ambient=0.82, specular=0.0, rim=0.0,
-                           depth_cue=0.05, color_smooth=0.30,
-                           occlusion=0.30, occlusion_scale=0.35,
-                           outline="#7f868d", outline_px=2.0)
+        img, pts = rs.render(xyz, rad, resi, glyph_colors[i], BODY, size=(380, 640))
         axg = fig.add_axes([lf / W_IN, gy / H_IN, gw / W_IN, gh / H_IN])
-        axg.imshow(np.clip(img, 0, 1)); axg.axis("off")
+        axg.imshow(np.clip(img, 0, 1)); axg.axis("off"); axg.set_autoscale_on(False)
         bg.text(lf + gw / 2, gy + gh + 0.03, st, ha="center", va="bottom",
-                fontsize=9.5, fontweight="bold", color=TEXT)
+                fontsize=9, fontweight="bold", color=TEXT)
+        # Labels for this state's NEW sites, routed to a column either side of the glyph
+        # and pushed apart to a minimum gap, each with a leader back to its patch -- the
+        # H3N2 panel's routing, scaled to this glyph.
+        new = [r for r in glyph_new[i] if r["pos"] in pts]
+        if not new:
+            continue
+        Wimg = img.shape[1]; cx = Wimg / 2
+        if len(new) >= 3:
+            thr = float(np.median([pts[r["pos"]][0] for r in new]))
+            side_of = lambda r: -1 if pts[r["pos"]][0] <= thr else 1
+        else:
+            side_of = lambda r: -1 if pts[r["pos"]][0] < cx else 1
+        for side in (-1, 1):
+            grp = sorted((r for r in new if side_of(r) == side), key=lambda r: pts[r["pos"]][1])
+            lys = [pts[r["pos"]][1] for r in grp]
+            for k in range(1, len(lys)):
+                lys[k] = max(lys[k], lys[k - 1] + 70)
+            lx = cx + side * 0.62 * Wimg
+            for r, ly in zip(grp, lys):
+                px, py = pts[r["pos"]]
+                t = axg.annotate(r["mutation_1based"], xy=(px, py), xytext=(lx, ly),
+                                 ha="right" if side < 0 else "left", va="center",
+                                 fontsize=6.5, color=NET, annotation_clip=False,
+                                 arrowprops=dict(arrowstyle="-", color=NET, lw=0.6,
+                                                 shrinkA=1, shrinkB=4))
+                t.set_path_effects([pe.withStroke(linewidth=2.0, foreground="white")])
+    arr_style = ArrowStyle("simple", head_length=0.70, head_width=0.52, tail_width=0.09)
+    for i in range(n - 1):
+        a0, a1 = lefts[i] + gw + 0.30, lefts[i + 1] - 0.30
+        ay = gy + 0.16 * gh      # low, under the on-glyph labels
+        bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle=arr_style,
+                                     mutation_scale=9, linewidth=0, facecolor=ARROW,
+                                     edgecolor="none"))
 
-    for i, b in enumerate(buckets):
-        a0, a1 = lefts[i] + gw + 0.05, lefts[i + 1] - 0.05
-        cx, ay = (a0 + a1) / 2, gy + 0.22
-        bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle="-|>",
-                                     mutation_scale=10, linewidth=1.1, color=ARROW))
-        # Names sit directly over their own arrow; the ranks live in the chart below.
-        for j, r in enumerate(reversed(b)):
-            bg.text(cx, ay + 0.09 + j * 0.175, r["mutation_1based"],
-                    ha="center", va="bottom", fontsize=8.8, fontweight="bold",
-                    color=REVERT if r["reverts"] else NET)
-
-    # --- the ranks -------------------------------------------------------------
-    ## Seven rows in the bottom half: 0.11 in apart, which 7.5 pt text fits.
-    ax_l, ax_r, ax_t, ax_b = 1.40, 5.30, 1.08, 0.42
+    # --- the percentile chart -----------------------------------------------------
+    ax_l, ax_r = 0.55, 4.25          # 0..100 percentile; names + ranks to its right
     ax = fig.add_axes([ax_l / W_IN, 0.0, (ax_r - ax_l) / W_IN, 1.0])
-    ax.set_xlim(0, npool * 1.02); ax.set_ylim(0, H_IN)
-    ax.patch.set_alpha(0)
-    ax.axis("off")
+    ax.set_xlim(0, 100); ax.set_ylim(0, H_IN); ax.patch.set_alpha(0); ax.axis("off")
+    pct = lambda rk: 100.0 * (1.0 - rk / npool)
+    dec = 100.0 * (1.0 - args.decile)
+    y_hi, y_lo = 1.02, 0.42
+    axis_y = 0.33
+    band_top = y_hi + 0.06
+    for t in range(20, int(dec), 20):
+        ax.plot([t, t], [axis_y, band_top], color="#e9edf1", linewidth=0.6, zorder=0.3)
+    ax.add_patch(Rectangle((dec, axis_y), 100 - dec, band_top - axis_y,
+                           facecolor=BAND, edgecolor="none", zorder=0.4))
+    ax.plot([dec, dec], [axis_y, band_top], color=TD_COL, linewidth=0.8,
+            linestyle=(0, (2.2, 2.8)), zorder=1.4)
+    ax.text((dec + 100) / 2, band_top + 0.02, "Top decile", ha="center", va="bottom",
+            fontsize=7, fontweight="bold", color=TD_COL)
+    ax.plot([0, 100], [axis_y, axis_y], color="#555555", linewidth=0.7, zorder=2)
+    for t in range(0, 101, 20):
+        ax.plot([t, t], [axis_y - 0.04, axis_y], color="#555555", linewidth=0.7, zorder=2)
+        ax.text(t, axis_y - 0.07, f"{t}", ha="center", va="top", fontsize=6.5, color=MUTED)
+    ax.text(50, axis_y - 0.20, "antiGen percentile (among all RBD substitutions)",
+            ha="center", va="top", fontsize=7.5, color=TEXT)
 
     flat = [r for b in buckets for r in b]
-    ys = np.linspace(ax_t, ax_b, len(flat))
-    cut = max(1.0, npool * args.decile)
+    ys = np.linspace(y_hi, y_lo, len(flat))
+    name_x, rank_x = ax_r + 0.42, ax_r + 0.46      # in inches, on the background axes
+    bg.text(rank_x + 0.18, y_hi + 0.10, "(Rank)", ha="center", va="bottom",
+            fontsize=6, style="italic", color=MUTED)
+    for r, yy in zip(flat, ys):
+        col = STAGE_COL[r["stage"]]
+        px = pct(r["rank"])
+        ax.plot([0, px], [yy, yy], color=col, lw=1.2, alpha=0.5, zorder=3,
+                solid_capstyle="round")
+        # Hollow for a site that changes back later on the path; filled otherwise.
+        ax.scatter([px], [yy], s=22, zorder=5, linewidths=1.0,
+                   facecolors="white" if r["reverts"] else col,
+                   edgecolors=col)
+        bg.text(name_x, yy, r["mutation_1based"], ha="right", va="center",
+                fontsize=7, fontweight="bold", color=col)
+        bg.text(rank_x, yy, f"({r['rank']:,})", ha="left", va="center",
+                fontsize=6.5, style="italic", color=MUTED)
 
-    ax.add_patch(Rectangle((0, ax_b - 0.07), cut, (ax_t - ax_b) + 0.14,
-                           facecolor=BAND, edgecolor="none", zorder=0))
-
-    axis_y = ax_b - 0.11
-    ax.plot([0, npool], [axis_y, axis_y], color="#555555", linewidth=0.9, zorder=2)
-    for t in (0, 1000, 2000, 3000, npool):
-        ax.plot([t, t], [axis_y - 0.035, axis_y], color="#555555", linewidth=0.9,
-                zorder=2)
-        ax.text(t, axis_y - 0.06, "1" if t == 0 else f"{t:,}", ha="center", va="top",
-                fontsize=7, color=MUTED)
-    ax.text(npool / 2, axis_y - 0.19, "antiGen rank", ha="center", va="top",
-            fontsize=8.5, color=TEXT)
-
-    for r, y in zip(flat, ys):
-        col = REVERT if r["reverts"] else NET
-        ax.plot([0, r["rank"]], [y, y], color=col, linewidth=1.3, zorder=2,
-                alpha=0.55 if r["reverts"] else 0.9)
-        ax.scatter([r["rank"]], [y], s=26, zorder=3, linewidths=1.2,
-                   facecolors="white" if r["reverts"] else col, edgecolors=col)
-        ax.text(-npool * 0.020, y, r["mutation_1based"], ha="right", va="center",
-                fontsize=7.5, fontweight="bold", color=TEXT)
-        ax.text(r["rank"] + npool * 0.022, y, f"{r['rank']:,}", ha="left", va="center",
-                fontsize=7.3, color=TEXT)
-
-    # A linear axis leaves most of its width empty, which is the message and also the
-    # only place a key fits without crowding anything.
-    ## "top decile" joins the key as a swatch: there is no row above the chart for it
-    ## to sit in at this height.
-    ky, kdy = ys[1], 0.17
-    for i, (face, lab) in enumerate(((NET, "still changed in KP.3"),
-                                     ("white", "reverts along the way"))):
-        col = NET if i == 0 else REVERT
-        ax.scatter([npool * 0.47], [ky - i * kdy], s=26, zorder=3, linewidths=1.2,
-                   facecolors=face, edgecolors=col)
-        ax.text(npool * 0.50, ky - i * kdy, lab, ha="left", va="center",
-                fontsize=7.5, color=TEXT)
-    ax.add_patch(Rectangle((npool * 0.455, ky - 2 * kdy - 0.045), npool * 0.03, 0.09,
-                           facecolor=BAND, edgecolor="none", zorder=0))
-    ax.text(npool * 0.50, ky - 2 * kdy, "top decile", ha="left", va="center",
-            fontsize=7.5, color=TEXT)
-
-    # The binding: one bracket per transition, named for the state it produces.
-    k = 0
-    for b, st in zip(buckets, states[1:]):
-        top, bot = ys[k], ys[k + len(b) - 1]
-        bx, e = 0.80, 0.04
-        for xx, yy in (((bx, bx), (top + e, bot - e)),
-                       ((bx, bx + 0.06), (top + e, top + e)),
-                       ((bx, bx + 0.06), (bot - e, bot - e))):
-            bg.plot(xx, yy, color=RULE, linewidth=0.9, zorder=1)
-        bg.text(bx - 0.06, (top + bot) / 2, st, ha="right", va="center",
-                fontsize=7.3, color=MUTED)
-        k += len(b)
+    # Key: the three transitions, then the hollow-dot meaning, one line above the chart,
+    # laid out by MEASURED text width and kept left of the top-decile label.
+    ky = band_top + 0.10
+    items = [(STAGE_COL[i], states[i + 1], False) for i in range(n - 1)]
+    items.append((MUTED, "reverts later", True))
+    rend = fig.canvas.get_renderer()
+    ## "Step into" names what a colour means once, instead of "... substitution" x3,
+    ## which ran into the top-decile label at this width.
+    lead = bg.text(0.55, ky, "Step into:", ha="left", va="center", fontsize=6.5, color=MUTED)
+    x_in = 0.55 + lead.get_window_extent(rend).width / fig.dpi + 0.10
+    for col, txt, hollow in items:
+        bg.scatter([x_in + 0.04], [ky], s=16, linewidths=0.9, zorder=3,
+                   facecolors="white" if hollow else col, edgecolors=col)
+        tt = bg.text(x_in + 0.10, ky, txt, ha="left", va="center", fontsize=6.5, color=TEXT)
+        x_in += 0.10 + tt.get_window_extent(rend).width / fig.dpi + 0.22
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     # Full canvas, not bbox_inches="tight": the panel box has a fixed aspect, and
@@ -289,7 +281,7 @@ def main():
         print(f"  -> {st:<10s} " + ", ".join(
             f"{r['mutation_1based']} {r['rank']:,}{'*' if r['reverts'] else ''}"
             for r in b))
-    print(f"  (* site reverts later; top decile = rank <= {int(round(cut))})")
+    print(f"  (* site reverts later; top decile = rank <= {int(round(npool * args.decile))})")
 
 
 if __name__ == "__main__":
