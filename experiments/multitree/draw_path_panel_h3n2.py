@@ -47,9 +47,10 @@ from matplotlib.patches import ArrowStyle, FancyArrowPatch, Rectangle
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_surface as rs
 
-W_IN, H_IN = 9.6, 8.3   # condensed canvas for fig-4 panel G
+W_IN, H_IN = 9.6, 8.7   # condensed canvas for fig-4 panel G (+0.4 top strip for the chain key)
 
 BODY = "#bdd7f2"      # HA1 body (chain A): a light blue
+FADED_KEY = "#cdd1d6"  # the other two protomers as they render (faded grey, semi-transparent)
 HA2_BODY = "#f0dd9b"  # HA2 body (chain B): a warm gold -- a different HUE, so the two chains
                       # read as two chains, not one chain under shading
 NET = "#c0392b"       # an HA1 site changed on the path and resolved on the glyph
@@ -255,13 +256,22 @@ def main():
         bg.text(lf + gw / 2, gy + gh + 0.05, lab, ha="center", va="bottom",
                 fontsize=15, fontweight="bold", color=TEXT)
 
-    # Chain key in the empty margin left of the first glyph: HA1 (head) above HA2 (stem),
-    # matching where each chain sits on the structure.
-    for k, (col, text) in enumerate([(BODY, "HA1"), (HA2_BODY, "HA2")]):
-        ky = gy + gh / 2 + 0.17 - k * 0.34
-        bg.add_patch(Rectangle((0.42, ky - 0.09), 0.18, 0.18, facecolor=col,
+    # Chain key: one horizontal row above the structures (over the state titles), centred
+    # on the glyph row. HA1 (head) and HA2 (stem) of the lit protomer, then the faded grey
+    # of the other two trimer protomers. Labels are measured first so the whole row centres.
+    keys = [(BODY, "HA1"), (HA2_BODY, "HA2"), (FADED_KEY, "Other protomers")]
+    sw, pad, gap_k = 0.17, 0.08, 0.32
+    ky = gy + gh + 0.58
+    rend = fig.canvas.get_renderer()
+    texts = [bg.text(0, ky, t, ha="left", va="center", fontsize=13, color=TEXT) for _, t in keys]
+    widths = [t.get_window_extent(rend).width / fig.dpi for t in texts]
+    total = sum(sw + pad + w for w in widths) + gap_k * (len(keys) - 1)
+    kx = (gspan_l + gspan_r) / 2 - total / 2
+    for (col, _), t, w in zip(keys, texts, widths):
+        bg.add_patch(Rectangle((kx, ky - sw / 2), sw, sw, facecolor=col,
                                edgecolor="#8a96a3", linewidth=0.6))
-        bg.text(0.70, ky, text, ha="left", va="center", fontsize=13, color=TEXT)
+        t.set_position((kx + sw + pad, ky))
+        kx += sw + pad + w + gap_k
 
     # A clean filled wedge between states -- straight now, and centred on the glyph row
     # (the substitution labels live on the structures, not over the arrow).
@@ -310,8 +320,11 @@ def main():
     for t in ticks:
         ax.plot([t, t], [axis_y - 0.08, axis_y], color="#555555", linewidth=1.2, zorder=2)
         ax.text(t, axis_y - 0.22, f"{t}", ha="center", va="top", fontsize=15, color=MUTED)
-    ax.text(50, axis_y - 0.74, "antiGen percentile  (among all HA substitutions)",
-            ha="center", va="top", fontsize=20, color=TEXT)
+    # Axis title: placed after the rank labels are drawn (below), so it can centre on the
+    # panel's whole width -- axis left edge to the rank labels' right edge -- rather than
+    # on the 0-100 axis alone, which reads as off-centre next to the right-hand labels.
+    xtitle = ax.text(50, axis_y - 0.74, "antiGen percentile  (among all HA substitutions)",
+                     ha="center", va="top", fontsize=20, color=TEXT)
 
     y_lo, y_hi = ax_b + 0.12, ax_t - 0.05
 
@@ -323,6 +336,7 @@ def main():
     rh = ax.text(rank_x + 3.5, y_hi + 0.17, "(Rank)", ha="center", va="bottom",
                  fontsize=12.5, style="italic", color=MUTED)
     rh.set_path_effects([pe.withStroke(linewidth=3.0, foreground="white")])
+    rank_texts = []
     for r, yy in zip(flat, ys2):
         col = STAGE_COL[r["child_subclade"]]
         px = pct(r["rank"])
@@ -337,6 +351,13 @@ def main():
         tr = ax.text(rank_x, yy, f"({r['rank']:,})", ha="left", va="center",
                      fontsize=15, style="italic", color=MUTED, zorder=6)
         tr.set_path_effects([pe.withStroke(linewidth=3.2, foreground="white")])
+        rank_texts.append(tr)
+
+    rend = fig.canvas.get_renderer()
+    right_in = max(t.get_window_extent(rend).x1 for t in rank_texts) / fig.dpi
+    left_in = ax.transData.transform((0, axis_y))[0] / fig.dpi
+    mid = ax.transData.inverted().transform(((left_in + right_in) / 2 * fig.dpi, 0))[0]
+    xtitle.set_x(mid)
 
     # Legend: the three stages + the sampled background. The stems now span the full
     # width, so the key sits in the gap between the structures and the scatter (2x2).

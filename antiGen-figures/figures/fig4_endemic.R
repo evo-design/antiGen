@@ -57,9 +57,22 @@ ac_block <- plot_grid(ac_cap, ac_body, nrow = 1, rel_widths = c(0.045, 1))
 ## Right column: the case-study title is the column's header (aligned with the virus
 ## titles on the left), and the blown-up cartoon fills the body below it -- its "G"
 ## marker then lands in line with A/B/C. One figure-wide "Endemic viruses" title spans all.
-right_col <- plot_grid(sub_title("H3N2 J.2 → K case study"), Grow,
-                       ncol = 1, rel_heights = c(0.16, 2.08))
-body      <- plot_grid(ac_block, right_col, nrow = 1, rel_widths = c(1.95, 1))
+## The cartoon PNG carries empty canvas on its left and top; crop it to its ink (plus a
+## hair of padding) so the case study fills the column instead of floating in white.
+trim_white <- function(img, pad = 12) {
+  ink  <- apply(img[, , 1:3, drop = FALSE], c(1, 2), min) < 0.98
+  rows <- range(which(rowSums(ink) > 0)); cols <- range(which(colSums(ink) > 0))
+  rows <- c(max(1, rows[1] - pad), min(dim(img)[1], rows[2] + pad))
+  cols <- c(max(1, cols[1] - pad), min(dim(img)[2], cols[2] + pad))
+  img[rows[1]:rows[2], cols[1]:cols[2], , drop = FALSE]
+}
+Grow <- plot_grid(ggdraw() + draw_grob(grid::rasterGrob(trim_white(caseimg), interpolate = TRUE)),
+                  labels = "G", label_x = 0.01, label_y = 0.99)
+## The case-study title sits just above its cartoon (a short spacer keeps it below the
+## virus-title line), and the column is a little wider so the cartoon grows to fill it.
+right_col <- plot_grid(ggdraw(), sub_title("H3N2 J.2 → K case study"), Grow,
+                       ncol = 1, rel_heights = c(0.10, 0.12, 2.08))
+body      <- plot_grid(ac_block, right_col, nrow = 1, rel_widths = c(1.95, 1.12))
 fig4      <- plot_grid(fig_title("Endemic viruses"), body, ncol = 1, rel_heights = c(0.05, 1))
 
 save_figure(fig4, "fig4_endemic", width = 13, height = 5.6)
