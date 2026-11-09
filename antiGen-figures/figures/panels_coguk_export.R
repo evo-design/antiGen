@@ -141,8 +141,11 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
     ml <- levels(df$model)
     head_ <- intersect(c(ENSEMBLE_LABELS, GATE_RUNG_LABEL), ml)
     stat_ <- intersect(ml, STAT_LABELS)
+    ## Codon-B62 mixture directly under the statistical models (user, s129): it is the
+    ## fitted "which" term those factorisations are built on, and one of ours.
+    cb62_ <- intersect(ml, unname(MODEL_LABEL[intersect("substitution", names(MODEL_LABEL))]))
     df$model <- factor(as.character(df$model),
-                       levels = c(head_, stat_, setdiff(ml, c(head_, stat_))))
+                       levels = c(head_, stat_, cb62_, setdiff(ml, c(head_, stat_, cb62_))))
     df
   }
   GROUP_COLORS[[STAT]] <- "#a9c9e3"

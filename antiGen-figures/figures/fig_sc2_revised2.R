@@ -53,7 +53,10 @@ DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (b
                "where_times_which", "wxw_dirichlet",      # S×M, S×M-MCM interp.
                "mcm",
                "BA2_escape_LYCoV1404",
-               "esm2_esm2_t33_650M_UR50D_lr0.001_noft")   # ESM 2 (650M), untrained
+               "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), untrained
+               ## Second pass (s129):
+               "pssm_root_position",                      # PFM Conservation
+               "Omicron_BA1_bind", "Omicron_BA2_bind")    # the two DMS (bind)
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
 } else character(0)
@@ -197,6 +200,15 @@ HDR_W <- 0.045
 with_header <- function(txt, panels) {
   plot_grid(row_header(txt), panels, nrow = 1, rel_widths = c(HDR_W, 1))
 }
+## The supplement is the s125 canvas exactly (rel 0.95/1.1/1.55/1.45 of 14.7 in); the
+## main figure keeps its rows 1-2 to the inch and shortens the two bar rows.
+ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
+if (VARIANT == "main") ROW_IN[3:4] <- c(2.95, 2.70)   # 14 bars in E-H, 13 in I-L
+## Room for the taller key above row 3, so the bars do not give it up.
+ROW_IN[3] <- ROW_IN[3] + (if (VARIANT == "supp") 0.45 else 0.2)
+## The key above row 3 in INCHES: as a fraction of the row it shrank with the roster
+## and clipped its own swatches (s129).
+LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40
 row3 <- plot_grid(
   plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1)),
   with_header("CoG-UK escape list, 2021-01-01 cutoff",
@@ -206,7 +218,7 @@ row3 <- plot_grid(
                         labels = c("E", "F", "G", "H"))),
   ## The key is two lines now (model type, then designed / external; s128), and the
   ## supplement's model types wrap to two on their own.
-  ncol = 1, rel_heights = c(if (VARIANT == "supp") 0.26 else 0.17, 1.45))
+  ncol = 1, rel_heights = c(LEG_IN, ROW_IN[3] - LEG_IN))
 
 ## Row 4 mirrors row 3 panel for panel; the model-type key above row 3 serves both.
 row4 <- with_header("All RBD cells, 2023-01-01 cutoff",
@@ -215,12 +227,6 @@ row4 <- with_header("All RBD cells, 2023-01-01 cutoff",
                               rel_widths = c(1.75, 1.1, 1.1, 1.1),
                               labels = c("I", "J", "K", "L")))
 
-## The supplement is the s125 canvas exactly (rel 0.95/1.1/1.55/1.45 of 14.7 in); the
-## main figure keeps its rows 1-2 to the inch and shortens the two bar rows.
-ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
-if (VARIANT == "main") ROW_IN[3:4] <- c(3.35, 3.05)
-## Room for the taller key above row 3, so the bars do not give it up.
-ROW_IN[3] <- ROW_IN[3] + (if (VARIANT == "supp") 0.45 else 0.2)
 save_figure(
   plot_grid(row1, row2, row3, row4, ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image

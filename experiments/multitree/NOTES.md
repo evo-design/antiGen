@@ -12812,3 +12812,16 @@ ends. A stroked stripe border (`pattern_colour`) is drawn half outside the bar's
 which put a stub past every bar end. Stripes are now fill only (`pattern_colour = NA`,
 `pattern_fill = "black"`), with density 0.06 for the same visual weight. The key's
 squares keep a thin border, so the plain one stays visible on white.
+
+## 129. sc2_results_revised2: Codon-B62 under the statistical models; a thinner main roster (2026-11-09)
+
+* **Codon-B62 mixture** (`substitution`) is now drawn directly under the statistical
+  models, in both versions. `regroup()` places it after them when it re-levels `model`.
+  It keeps its type (grey) and stays plain (ours).
+* **The main figure drops three more rungs**, appended to `DROP_MAIN`:
+  `pssm_root_position` (PFM Conservation), `Omicron_BA1_bind`, `Omicron_BA2_bind`. That
+  leaves 14 bars in E-H and 13 in I-L until Tranception lands. The supplement is
+  unchanged. The main bar rows are 2.95 / 2.70 in.
+* **The key above row 3 is a fixed height in inches** (`LEG_IN`: 0.40 main, 0.75 supp). As
+  a fraction of the row it shrank with the roster and clipped its own swatches.
+  `ROW_IN` is now computed before the rows that use it.
