@@ -176,17 +176,14 @@ legend_grob <- extract_legend(
 ## are drawn by hand in the bars' own stripe geometry -- ggpattern's legend key draws
 ## its pattern at a different scale and did not look like the bars it labels.
 if (!is.null(getOption("coguk.ours_labels"))) {
+  ## As in the reference: an outlined white square, with one diagonal for "external".
   swatch <- function(hatched) {
-    g <- list(grid::rectGrob(gp = grid::gpar(fill = "grey45", col = NA)))
-    if (hatched) {
-      at <- seq(-1, 1, by = 0.28)
-      g <- c(g, list(grid::segmentsGrob(x0 = at, y0 = 0, x1 = at + 1, y1 = 1,
-                                        gp = grid::gpar(col = grDevices::adjustcolor("white", 0.85),
-                                                        lwd = 1.6, lineend = "butt"))))
-    }
+    g <- list(grid::rectGrob(gp = grid::gpar(fill = "white", col = "grey15", lwd = 0.8)))
+    if (hatched)
+      g <- c(g, list(grid::segmentsGrob(x0 = 0, y0 = 0, x1 = 1, y1 = 1,
+                                        gp = grid::gpar(col = "black", lwd = 0.9))))
     grid::gTree(children = do.call(grid::gList, g),
-                vp = grid::viewport(width = unit(0.8, "lines"), height = unit(0.8, "lines"),
-                                    clip = "on"))
+                vp = grid::viewport(width = unit(0.8, "lines"), height = unit(0.8, "lines")))
   }
   key_item <- function(hatched, txt) {
     cowplot::plot_grid(cowplot::ggdraw() + cowplot::draw_grob(swatch(hatched)),

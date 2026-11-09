@@ -1145,10 +1145,13 @@ bar_panel <- function(df, metric, xlab, title, labels_on_y = TRUE,
   ours <- getOption("coguk.ours_labels", NULL)
   bars <- if (is.null(ours)) geom_col() else {
     sub$hatch <- ifelse(as.character(sub$model) %in% ours, "none", "stripe")
+    ## SPARSE THIN BLACK LINES on outlined bars, after the reference style the user
+    ## supplied (inspo.png): dense white stripes read as noise (s128 first version).
     ggpattern::geom_col_pattern(
-      aes(pattern = hatch), pattern_colour = NA, pattern_fill = "white",
-      pattern_alpha = 0.85, pattern_angle = 45, pattern_density = 0.2,
-      pattern_spacing = 0.025, pattern_key_scale_factor = 0.6)
+      aes(pattern = hatch), colour = "grey15", linewidth = 0.2,
+      pattern_colour = "black", pattern_fill = "black", pattern_linewidth = 0.12,
+      pattern_angle = 45, pattern_density = 0.008,
+      pattern_spacing = 0.07, pattern_key_scale_factor = 0.6)
   }
   p <- ggplot(sub, aes(y = model, x = value, fill = group)) +
     bars +

@@ -12792,3 +12792,17 @@ models, Codon-B62 mixture (`substitution`), MCM.
   spacing 0.025, density 0.2, white at 0.85.
 * **Install.** `r-ggpattern` 1.3.1 into `antigen-figs` from conda-forge with
   `--freeze-installed`. The dry run showed only NEW packages; ggplot2 is still 4.0.3.
+
+### s128 addendum: quieter hatching, after a reference figure
+
+The white stripes (spacing 0.025, density 0.2) read as noise. The user supplied a
+reference, `inspo.png` at the repo root (not committed), and the hatching now follows it:
+
+* **Lines.** Sparse, thin and black: `pattern_colour = pattern_fill = "black"`,
+  `pattern_linewidth = 0.12`, `pattern_density = 0.008`, `pattern_spacing = 0.07`, 45 deg.
+* **Outlines.** Every bar has a thin dark outline (`colour = "grey15"`,
+  `linewidth = 0.2`); without an edge, sparse lines on pale bars float.
+* **Key.** An outlined white square for "Designed in this work", the same square with one
+  diagonal for "External".
+
+Medals keep their solid patch (s128), so they read over the lines.
