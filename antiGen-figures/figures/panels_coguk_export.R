@@ -286,16 +286,18 @@ saveRDS(list(
   bg_dn        = if (have_bg) as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN) +
                            ggtitle("Query adaptability, de novo escape mutations")),
   ## The background row in the four-panel grammar of E-L (NOTES s138): one export per
-  ## arm x pooling, so each carries the all / de novo pair of ONE cell family, sharing
-  ## one x range. "list" is the COG-UK escape list; "rbd" every hosted RBD cell. Only the
+  ## arm x pooling, so each carries the all / de novo pair of ONE cell family. Each
+  ## panel takes its OWN x range, fitted to its bars and intervals (user, s142): the de
+  ## novo lifts run several times the all-cells ones, and a shared axis flattened the
+  ## latter. "list" is the COG-UK escape list; "rbd" every hosted RBD cell. Only the
   ## per-cell all-cells panel leads its row, so only it carries the model names.
-  bg_list_all  = if (have_bg) as_grob(bg_bar_top(BG_MAIN[1], BG_POOL == "per cell", BG_MAIN) +
+  bg_list_all  = if (have_bg) as_grob(bg_bar_top(BG_MAIN[1], BG_POOL == "per cell", BG_MAIN[1]) +
                            ggtitle(paste0("All escape, ", BG_POOL))),
-  bg_list_dn   = if (have_bg) as_grob(bg_bar_top(BG_MAIN[2], FALSE, BG_MAIN) +
+  bg_list_dn   = if (have_bg) as_grob(bg_bar_top(BG_MAIN[2], FALSE, BG_MAIN[2]) +
                            ggtitle(paste0("De novo escape, ", BG_POOL))),
-  bg_rbd_all   = if (have_bg) as_grob(bg_bar_top(BG_SUPP[1], BG_POOL == "per cell", BG_SUPP) +
+  bg_rbd_all   = if (have_bg) as_grob(bg_bar_top(BG_SUPP[1], BG_POOL == "per cell", BG_SUPP[1]) +
                            ggtitle(paste0("All RBD, ", BG_POOL))),
-  bg_rbd_dn    = if (have_bg) as_grob(bg_bar_top(BG_SUPP[2], FALSE, BG_SUPP) +
+  bg_rbd_dn    = if (have_bg) as_grob(bg_bar_top(BG_SUPP[2], FALSE, BG_SUPP[2]) +
                            ggtitle(paste0("De novo RBD, ", BG_POOL))),
   bg_n_cells   = if (have_bg) tapply(bg_df$n_cells, as.character(bg_df$metric), max),
   legend       = legend_grob,

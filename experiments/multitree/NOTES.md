@@ -13068,3 +13068,11 @@ maps and must reproduce their rows. It then scores the three mean rules with
 antiGen base +5.5 / +26.1. **The ESM-2 35M partial FT is -22.5 pp on `rbd_all`**: it
 ranks a cell LOWER on the genotypes that hosted it than on the BA.2 root. At 2021 it was
 positive. Not chased.
+
+## 142. supp_query_adapt: one x range per panel (2026-11-09)
+
+On request, the x axes were tightened. Each panel had shared `bg_range_for` with its
+all/de novo partner, so the all-cells panels inherited de novo's 0-40 when their own
+bars end near 12. Each `bg_bar_top` call now passes its own metric alone, so every
+panel's range covers its own bars and 95% intervals, plus the drawer's 5% padding.
+Only this supplement's panels change.
