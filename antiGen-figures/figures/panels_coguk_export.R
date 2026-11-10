@@ -171,8 +171,15 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
     ## Codon-B62 mixture directly under the statistical models (user, s129): it is the
     ## fitted "which" term those factorisations are built on, and one of ours.
     cb62_ <- intersect(ml, unname(MODEL_LABEL[intersect("substitution", names(MODEL_LABEL))]))
-    df$model <- factor(as.character(df$model),
-                       levels = c(head_, stat_, cb62_, setdiff(ml, c(head_, stat_, cb62_))))
+    ## FULL ROSTER ORDER (user, s144): the blue bars, then the finetunes (brown), then
+    ## the mean rules (orange), then MCM as the first green bar, directly above
+    ## Codon-B62 mixture. Empty vectors outside the full roster, so main is unchanged.
+    ft_  <- intersect(ml, unname(MODEL_LABEL[intersect(FT_KEYS, names(MODEL_LABEL))]))
+    if (!FULL) ft_ <- character(0)
+    ens_ <- intersect(ml, unname(MEAN_RULES))
+    mcm_ <- intersect(ml, getOption("coguk.mcm_label", "MCM"))
+    front <- c(head_, stat_, ft_, ens_, mcm_, cb62_)
+    df$model <- factor(as.character(df$model), levels = c(front, setdiff(ml, front)))
     df
   }
   GROUP_COLORS[[STAT]] <- "#a9c9e3"

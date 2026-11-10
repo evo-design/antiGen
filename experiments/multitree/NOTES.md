@@ -13083,3 +13083,11 @@ On request, `sc2_results_revised2_supp` draws base antiGen (`simple_d128_n2_lr0.
 beside the CV x10 bar, in the antiGen type and unhatched, labelled "antiGen (base)" as
 on panel M. It is dropped only when `REVISED2_FULL` is unset, so the main figure is
 unchanged. Bar order: CV x10, base, then the gate.
+
+## 144. Full-roster bar order (2026-11-09)
+
+On request, `sc2_results_revised2_supp` orders its bars as: the antiGen bars and the
+statistical models (blue), then the antiGen Finetunes (brown), then the three mean rules
+(orange), then MCM as the first green bar directly above Codon-B62 mixture, then the
+rest as before. Set in `regroup` in `panels_coguk_export.R`; the finetune and mean-rule
+blocks are empty outside the full roster, and the main figure does not draw MCM.
