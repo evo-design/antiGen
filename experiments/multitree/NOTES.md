@@ -12977,3 +12977,64 @@ of 6M0J, the SARS-CoV-2 spike receptor-binding domain alone: residues 333-526, W
 sequence, crystallised with ACE2 (chain A, not drawn). All four glyphs are that one
 reference structure, with the sites each state changes coloured on it, not
 variant-specific models. That belongs in the caption.
+
+## 138. Query adaptability for E-L: supp_query_adapt (2026-11-09, IN PROGRESS)
+
+sc2_results_revised carried two "query adaptability" panels (background lift, s33/s66);
+revised2 dropped them. `figures/figS_query_adapt.R` brings the measure back as a
+supplement in revised2's grammar: one panel per E-L, same roster (main by default,
+`REVISED2_VARIANT=supp` for the full one), names, colours, hatching and row headers.
+Rows: "All RBD, 2023 cutoff" (`rbd_all` / `rbd_unseen`) and "Escape, 2021 cutoff"
+(`coguk_all` / `coguk_unseen`), each per cell and per mutation (host-weighted re-pool,
+s110). Medals are drawn above the whiskers (`bg_bar_top` in `panels_coguk_export.R`).
+
+**The 2021 arm** is `data/evals_sc2_background_aa20`, which lacked two drawn rungs.
+`submit_bg_aa20_topup.sh` (job 3690491, 13 min) scored `mcm` and
+`BloomNeher_2023-10-01` into a side directory, never the published one, gated on a
+byte-identical rebuilt `backbone_queries.csv` and an identical CoVFit map. Both are
+query-blind and come out at exactly 0 on all four cell sets. Their 16 summary / 2,424
+per-cell rows were appended, and the event-weighted re-pool redone (its `--weight none`
+gate passes).
+
+**The 2023 arm** is new: `submit_bg_2023.sh` (job 3690487, gpu_batch). Same contrast
+(host vs the BA.2-root reference, `--min-controls 1`), on the shared test corpus split at
+2023-01-01, with E-H's own models: `ckpt_stage_bg_2023-01-01` (the union of the two
+staging dirs the 2023 list_macro run read, plus Tranception) and `ens_vs10_2023` built
+from its members. 7,302 background genotypes, 730 hosted cells. The cell set is the hosted
+cells, so it is smaller than E-H's 4,020.
+
+`background_discrimination.py` gained list_macro's `--pool-examples` (the fit sees
+53,916 + 54,988 = 108,904 training examples, exactly E-H's run), `--mcm-baseline` and
+`--ensemble-dir/--ensemble-name`. Defaults are unchanged.
+
+**Also.** Tranception at 2023-01-01 (job 3682935) was resume-scored into the E-H run
+(job 3690489) and restaged; main and supp revised2 re-rendered with it (all RBD, per
+cell, 0.257). The main-figure pruning list moved to `figures/revised2_roster.R`, and
+`relabel_grob` / `grob_text` to `revised2_labels.R`, so that both figures share them.
+
+Open: render once job 3690487 lands. That needs the summary staged to
+`data/evals_sc2_background_aa20_2023-01-01`, the `_eventwtd` re-pool, and a `.gitignore`
+allow-list entry for both.
+
+## 139. C-H on the whole spike: the jobs (2026-11-09, IN PROGRESS)
+
+A supplement of panels C-H scored over all 1,273 spike positions. One pipeline covers
+all six panels: list_macro `--eval-range full` over every spike cell
+(`ref/all_spike_cells_aa20_incl_ref.csv`, 25,460 = 1,273 x 20, wild-type letters BA.2 as
+in the RBD list). With the complete list, macro is the per-cell number (C, E, G) and
+micro the per-mutation number (D, F, H) -- eval.py's quantity -- so D needs no second
+sweep. `experiments/multitree/submit_fullspike.sh` submits one job per cutoff (16,
+gpu_batch, 12 h, resumable). The 2023-01-01 job carries E-H's whole roster and the
+ensemble. `submit_macro_allcells_aa20.sh` gained `RANGE=default|full`; full-range jobs are
+named `*_fullspike` so `macro_series_daemon.sh` cannot mistake them for RBD chunks.
+
+The DMS maps and EVEscape are defined on the RBD only: off it they have no candidates,
+but those targets still count against them (s29), so they are not like-for-like there.
+
+Jobs 3690507-8 and 3690637-53. Their 2-day asks sat PENDING, so the limit is now 12 h.
+
+## 140. sc2_results_revised2_supp is the bar rows alone (2026-11-09)
+
+On request, the supplement version drops rows 1-2 and panel M and keeps only E-L on the
+full roster, relettered A-H (`BAR_LETTERS` in `fig_sc2_revised2.R`). The main figure
+keeps E-L.

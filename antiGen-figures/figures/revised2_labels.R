@@ -37,3 +37,26 @@ REVISED2_LABELS <- c(
 
 ## Anything still matching this after the rename is a label the table missed.
 REVISED2_STALE <- "\\bPSSM\\b|Where [x×] which|Site [x×] Substitution|interpolation|val x10|Substitution matrix"
+
+## The whole-label rename over a BAKED grob tree (bar panels, keys), and the text a
+## grob tree still carries, for the REVISED2_STALE check. Shared by
+## fig_sc2_revised2.R and figS_query_adapt.R (NOTES s138).
+relabel_grob <- function(g, map = REVISED2_LABELS) {
+  if (is.null(g)) return(g)
+  if (!is.null(g$label) && is.character(g$label)) {
+    hit <- g$label %in% names(map)
+    g$label[hit] <- unname(map[g$label[hit]])
+  }
+  if (!is.null(g$grobs))
+    g$grobs <- lapply(g$grobs, relabel_grob, map = map)
+  if (!is.null(g$children)) {
+    nm <- names(g$children)
+    g$children <- do.call(grid::gList, lapply(g$children, relabel_grob, map = map))
+    names(g$children) <- nm
+    if (!is.null(g$childrenOrder)) g$childrenOrder <- nm
+  }
+  g
+}
+grob_text <- function(g) c(if (is.character(g$label)) g$label,
+                           unlist(lapply(g$grobs, grob_text)),
+                           unlist(lapply(g$children, grob_text)))

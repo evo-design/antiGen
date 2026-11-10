@@ -73,6 +73,7 @@ from antiGen.eval import (config_label, dataset_of_train_args, discover_checkpoi
 from antiGen.eval_utils import (CountedStatPredictor, RBD_RANGE,
                                 build_model_gap_stop_mask,
                                 fit_substitution_baseline, load_baselines,
+                                MeanLogProbEnsemble,
                                 load_checkpoint, positional_marginal_counts,
                                 where_times_which_dirichlet,
                                 WhereTimesWhichPredictor)
@@ -364,6 +365,20 @@ def main():
     ap.add_argument('--counted-baselines', action='store_true',
                     help='add site_substitution and mcm_interpolation '
                          '(antiGen/statistical_baselines.py)')
+    ap.add_argument('--mcm-baseline', action='store_true',
+                    help='add the mutation count matrix alone, "mcm": log N[i,a], as '
+                         'list_macro.py --mcm-baseline (NOTES s121)')
+    ap.add_argument('--pool-examples', action='store_true',
+                    help="fit the factored/counted baselines on --train-examples PLUS "
+                         "the training-window records of --backbone-examples, as "
+                         "list_macro.py --pool-examples does. Matters only with "
+                         "--split-date, where the shared test corpus carries pre-cutoff "
+                         "branches that belong to the training window (NOTES s138).")
+    ap.add_argument('--ensemble-dir', default=None,
+                    help="score the MeanLogProbEnsemble of every fitness_*.pt in this "
+                         "directory as one rung, as list_macro.py --ensemble-dir does "
+                         "(NOTES s123)")
+    ap.add_argument('--ensemble-name', default='ens_dir')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
@@ -397,12 +412,25 @@ def main():
     # The full examples file is only needed to FIT the factored baselines; loading it
     # costs ~19 GB, so it is loaded only when they are asked for.
     training_examples = None
-    if args.multitree_baselines:
+    if args.pool_examples and not args.backbone_examples:
+        raise SystemExit("--pool-examples pools --train-examples with "
+                         "--backbone-examples; it needs the latter")
+    if args.multitree_baselines or args.counted_baselines or args.mcm_baseline:
         all_examples = load_examples(examples_files[0], allowed_aas, variant,
                                      split_date=args.split_date)
         training_examples = [e for e in all_examples if e.is_training]
         if "".join(allowed_aas[i] for i in training_examples[0].aa_idx.tolist()) != examples_root:
             raise SystemExit("the root example parsed two ways disagree")
+        if args.pool_examples:
+            # list_macro.py's semantics (NOTES s111): pool both files, THEN split on
+            # is_training, so the shared test corpus's pre-cutoff branches count as
+            # training -- the fit E-H's own run used.
+            n0 = len(training_examples)
+            training_examples += [e for e in load_examples(
+                args.backbone_examples, allowed_aas, variant, split_date=args.split_date)
+                if e.is_training]
+            print(f"  --pool-examples: {n0} training examples from the train file + "
+                  f"{len(training_examples) - n0} from the backbone file")
     print(f"Sequence length {seq_len}; eval range {len(eval_range)} positions "
           f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)")
 
@@ -511,7 +539,7 @@ def main():
     # The counted-statistic siblings (antiGen/statistical_baselines.py). Its own flag,
     # so an existing roster does not grow silently -- background_contrast.py globs
     # scores_*.npz and scores whatever it finds.
-    if args.counted_baselines:
+    if args.counted_baselines or args.mcm_baseline:
         print("\n=== Building counted-statistic baselines ===", flush=True)
         from antiGen.statistical_baselines import fit as _cs_fit
         _cs_cache = {}
@@ -526,16 +554,49 @@ def main():
 
         _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
                               alphabet=AlphabetConfig(amino_acids=allowed_aas))
-        _counted = {
-            "site_substitution": lambda: CountedStatPredictor(
-                _cs_cfg, _cs_stats(), "site_substitution").to(device),
-            "mcm_interpolation": lambda: CountedStatPredictor(
-                _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
-        }
+        _counted = {}
+        if args.counted_baselines:
+            _counted.update({
+                "site_substitution": lambda: CountedStatPredictor(
+                    _cs_cfg, _cs_stats(), "site_substitution").to(device),
+                "mcm_interpolation": lambda: CountedStatPredictor(
+                    _cs_cfg, _cs_stats(), "mcm_interpolation").to(device),
+            })
+        if args.mcm_baseline:
+            _counted["mcm"] = (lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm").to(device))
         builtin_models.update(_counted)
         for name in _counted:
             candidates.append((name, None))
         print(f"  added {len(_counted)}: {', '.join(_counted)}")
+
+    # One rung from a directory of members, the rule list_macro.py --ensemble-dir
+    # builds (NOTES s123): mean of log-probs, each member normalised over the eval range.
+    if args.ensemble_dir:
+        ens_paths = sorted(glob.glob(os.path.join(args.ensemble_dir, "fitness_*.pt")))
+        if not ens_paths:
+            raise SystemExit(f"--ensemble-dir {args.ensemble_dir} has no fitness_*.pt")
+        if gap_idx is not None or stop_idx is not None:
+            raise SystemExit("--ensemble-dir is implemented for the 20-letter alphabet "
+                             "only (no gap/stop columns); see NOTES s123")
+
+        def _ensemble():
+            mems = []
+            for ep in ens_paths:
+                eck, ecfg = load_checkpoint(ep, map_location=device)
+                if ecfg.seq_len != seq_len:
+                    raise SystemExit(f"{ep}: seq_len {ecfg.seq_len} != {seq_len}")
+                em = create_model(ecfg, device)
+                em.load_state_dict(eck['model_state_dict'], strict=False)
+                em.eval()
+                mems.append(em)
+                print(f"    member {os.path.basename(ep)}", flush=True)
+            return MeanLogProbEnsemble(mems, eval_range=eval_range).to(device)
+
+        builtin_models[args.ensemble_name] = _ensemble
+        candidates.append((args.ensemble_name, None))
+        print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
+              f"from {args.ensemble_dir}")
 
     skipped, scored = [], []
 

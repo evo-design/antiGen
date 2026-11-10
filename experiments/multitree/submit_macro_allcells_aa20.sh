@@ -118,7 +118,13 @@ else
     TAG=aa20_$CUTOFF
 fi
 OUTDIR=${OUTDIR:-$STORE/evals_sc2_lists_macro_${TAG}_allcells}
-JOBNAME=macro_all_${TAG}
+# RANGE: "default" is the RBD (331-531); "full" scores all 1273 spike positions and
+# wants a full-spike LIST (ref/all_spike_cells_aa20_incl_ref.csv, NOTES s139).
+RANGE=${RANGE:-default}
+[ "$RANGE" = default ] || [ "$RANGE" = full ] || { echo "RANGE must be default|full" >&2; exit 1; }
+# The full-spike jobs get their own names so macro_series_daemon.sh, which matches
+# macro_all_aa20_<D>, never mistakes one for an RBD chunk.
+JOBNAME=${JOBNAME:-macro_all_${TAG}$([ "$RANGE" = full ] && echo _fullspike)}
 # Extra list_macro args, e.g. EXTRA_LM_ARGS="--ensemble-dir D --ensemble-name N"
 # for a resume pass that adds one rung (NOTES s123). Paths must not contain spaces.
 read -r -a EXTRA_LM <<< "${EXTRA_LM_ARGS:-}"
@@ -141,7 +147,7 @@ if printf '%s\n' "$QUEUED" | grep -qx "$JOBNAME"; then
 fi
 
 echo "cutoff    = ${CUTOFF:-none, the 2021 arm}"
-echo "cell list = $LIST ($n_cells cells)"
+echo "cell list = $LIST ($n_cells cells), range = $RANGE"
 echo "ckpts     = $CKPTS ($(ls "$CKPTS"/fitness_*.pt 2>/dev/null | wc -l) checkpoint(s))"
 echo "outdir    = $OUTDIR"
 
@@ -153,7 +159,7 @@ exec sbatch --job-name="$JOBNAME" --partition="$PARTITION" --nice=0 \
     --exclude="$EXCLUDE" \
     --time="$TIME" --export=ALL \
     examples/slurm/eval_sc2_list_macro.sh \
-    default \
+    "$RANGE" \
     --alphabet $ALPHABET \
     --train-examples "$TRAIN_EX" \
     --test-examples  "$TEST_EX" \

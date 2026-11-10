@@ -40,6 +40,16 @@ if (identical(ARM, "allcells_2023")) {
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }
+## THE BACKGROUND ROW, for supp_query_adapt (NOTES s138). REVISED2_BG_DIR points the
+## drawer at a background run -- either arm, either pooling: a cell-weighted
+## `background_summary.csv` or its event-weighted re-pool -- and REVISED2_BG_POOL names
+## which, for the titles. Unset, nothing here changes.
+BG_DIR_ENV <- Sys.getenv("REVISED2_BG_DIR", unset = "")
+BG_POOL <- Sys.getenv("REVISED2_BG_POOL", unset = "per cell")
+if (nzchar(BG_DIR_ENV)) {
+  stopifnot(dir.exists(BG_DIR_ENV), BG_POOL %in% c("per cell", "per mutation"))
+  options(coguk.bg_dir = BG_DIR_ENV)
+}
 
 options(coguk.fig_main = "scratch_revised_coguk",
         coguk.fig_supp = "scratch_revised_coguk_supp",
@@ -158,6 +168,7 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
                                 unname(MODEL_LABEL[intersect(OURS_KEYS, names(MODEL_LABEL))])))
   recall_q10_df <- regroup(recall_q10_df)
   summary_df    <- regroup(summary_df)
+  if (have_bg) bg_df <- regroup(bg_df)
   GROUP_COLORS[[HYBRID]] <- GATE_BLUE
   ## The gate may be pruned (main revised2, s128); if it is drawn, it must be the hybrid.
   stopifnot(!any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"),
@@ -207,6 +218,14 @@ if (!is.null(getOption("coguk.ours_labels"))) {
 ## "object not found" at render, long after the panel looked fine. `ggplotGrob`
 ## evaluates everything here, where the drawer's globals are still in scope.
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
+## The drawer's `bg_bar` adds its whiskers AFTER the medals, so they cross the medal
+## text. For the supp_query_adapt panels the medal layers go back on top (NOTES s138).
+bg_bar_top <- function(...) {
+  p <- bg_bar(...)
+  med <- vapply(p$layers, function(l) inherits(l$geom, c("GeomLabel", "GeomText")), TRUE)
+  p$layers <- c(p$layers[!med], p$layers[med])
+  p
+}
 
 saveRDS(list(
   ## TITLES SET HERE, not in the drawer. `ggtitle()` on the built plot replaces the
@@ -254,6 +273,19 @@ saveRDS(list(
   ## it "all" would be wrong about what is plotted rather than merely repetitive.
   bg_dn        = if (have_bg) as_grob(bg_bar(BG_MAIN[2], FALSE, BG_MAIN) +
                            ggtitle("Query adaptability, de novo escape mutations")),
+  ## The background row in the four-panel grammar of E-L (NOTES s138): one export per
+  ## arm x pooling, so each carries the all / de novo pair of ONE cell family, sharing
+  ## one x range. "list" is the COG-UK escape list; "rbd" every hosted RBD cell. Only the
+  ## per-cell all-cells panel leads its row, so only it carries the model names.
+  bg_list_all  = if (have_bg) as_grob(bg_bar_top(BG_MAIN[1], BG_POOL == "per cell", BG_MAIN) +
+                           ggtitle(paste0("All escape, ", BG_POOL))),
+  bg_list_dn   = if (have_bg) as_grob(bg_bar_top(BG_MAIN[2], FALSE, BG_MAIN) +
+                           ggtitle(paste0("De novo escape, ", BG_POOL))),
+  bg_rbd_all   = if (have_bg) as_grob(bg_bar_top(BG_SUPP[1], BG_POOL == "per cell", BG_SUPP) +
+                           ggtitle(paste0("All RBD, ", BG_POOL))),
+  bg_rbd_dn    = if (have_bg) as_grob(bg_bar_top(BG_SUPP[2], FALSE, BG_SUPP) +
+                           ggtitle(paste0("De novo RBD, ", BG_POOL))),
+  bg_n_cells   = if (have_bg) tapply(bg_df$n_cells, as.character(bg_df$metric), max),
   legend       = legend_grob,
   decile_names = RECALL_MAIN,
   decile_names_evt = RECALL_SUPP,

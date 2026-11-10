@@ -48,17 +48,8 @@ suppressPackageStartupMessages(library(cowplot))
 ## rename cannot silently un-prune a row.
 VARIANT <- Sys.getenv("REVISED2_VARIANT", unset = "main")
 stopifnot(VARIANT %in% c("main", "supp"))
-DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (bars only)
-               "MSA_Transformer_BA2", "MSA_Transformer_XFG",
-               "where_times_which", "wxw_dirichlet",      # S×M, S×M-MCM interp.
-               "mcm",
-               "BA2_escape_LYCoV1404",
-               "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), untrained
-               ## Second pass (s129):
-               "pssm_root_position",                      # PFM Conservation
-               "Omicron_BA1_bind", "Omicron_BA2_bind",    # the two DMS (bind)
-               ## Third pass (s133):
-               "substitution")                            # Codon-B62 mixture
+## The main figure's pruning, shared with supp_query_adapt (NOTES s138).
+source("figures/revised2_roster.R")
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
 } else character(0)
@@ -103,22 +94,6 @@ ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
 ##    passes.
 ## The check after the walk covers every panel, whichever mechanism renamed it.
 source("figures/revised2_labels.R")
-relabel_grob <- function(g, map = REVISED2_LABELS) {
-  if (is.null(g)) return(g)
-  if (!is.null(g$label) && is.character(g$label)) {
-    hit <- g$label %in% names(map)
-    g$label[hit] <- unname(map[g$label[hit]])
-  }
-  if (!is.null(g$grobs))
-    g$grobs <- lapply(g$grobs, relabel_grob, map = map)
-  if (!is.null(g$children)) {
-    nm <- names(g$children)
-    g$children <- do.call(grid::gList, lapply(g$children, relabel_grob, map = map))
-    names(g$children) <- nm
-    if (!is.null(g$childrenOrder)) g$childrenOrder <- nm
-  }
-  g
-}
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", "legend"))
   cg[[k]] <- relabel_grob(cg[[k]])
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
@@ -126,9 +101,6 @@ for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
 ## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
 ## somewhere the walk misses, or carries a label the table does not list would still
 ## show an old name, and that is an error.
-grob_text <- function(g) c(if (is.character(g$label)) g$label,
-                           unlist(lapply(g$grobs, grob_text)),
-                           unlist(lapply(g$children, grob_text)))
 left <- grep(REVISED2_STALE,
              unlist(lapply(c(gm[c("gate_macro", "gate_legend")], sc["gate_pm"],
                              cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
@@ -218,7 +190,10 @@ bar_block <- function(x, letters) {
   plot_grid(x$decile_all_pc, x$decile_all_evt, x$decile_dn_pc, x$decile_dn_evt, nrow = 1,
             rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters)
 }
-row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H")))
+## THE SUPPLEMENT IS THE BAR ROWS ALONE (user, s140): E-L on the full roster, relettered
+## A-H. Rows 1-2 are the main figure's and are not repeated there.
+BAR_LETTERS <- if (VARIANT == "supp") LETTERS[1:8] else LETTERS[5:12]
+row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, BAR_LETTERS[1:4]))
 ## The model-type / Ours-Previous key serves E-L, so it goes UNDER I-L, followed by a
 ## gap before panel M (or the end of the figure).
 ## In the MAIN figure the key goes at the very bottom, under M, which it also colours
@@ -226,9 +201,9 @@ row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, c("E", "F", "G", "H"))
 GAP_IN <- 0.25
 key_row <- plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1))
 row4 <- if (VARIANT == "main") {
-  with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L")))
+  with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8]))
 } else {
-  plot_grid(with_header("Escape, 2021 cutoff", bar_block(cg, c("I", "J", "K", "L"))),
+  plot_grid(with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8])),
             key_row, NULL, ncol = 1, rel_heights = c(PANEL_IN[["esc"]], LEG_IN, GAP_IN))
 }
 
@@ -299,15 +274,15 @@ row5 <- plot_grid(NULL, NULL,
 M_IN <- 1.05
 
 save_figure(
-  plot_grid(plotlist = c(list(row1, row2, row3, row4),
-                         if (VARIANT == "main") list(row5, key_row)),
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, row2, row3, row4, row5, key_row)
+                       else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
             ## panels in row 1 are fixed-aspect and need the least.
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN, M_IN, LEG_IN) else ROW_IN),
+            rel_heights = if (VARIANT == "main") c(ROW_IN, M_IN, LEG_IN) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -317,6 +292,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = sum(ROW_IN) + if (VARIANT == "main") M_IN + LEG_IN else 0)
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + M_IN + LEG_IN else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
