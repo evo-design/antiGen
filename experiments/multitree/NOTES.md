@@ -13105,3 +13105,10 @@ under `REVISED2_FULL`; every other figure keeps the drawer's palette.
 On request, the purples are desaturated. Finetunes #491584 -> #4c3371 (hsl 265, 38%,
 32%); mean rules #7332bd -> #7e60a9 (hsl 265, 30%, 52%). The light-over-dark step that
 echoes the gate is unchanged.
+
+## 147. The full-roster purples moved to indigo (2026-11-10)
+
+On request ("too purple"), both colours move halfway in hue between antiGen's blues and
+the s146 purples. Finetunes #4c3371 -> #292a7a (hsl 239, 50%, 32%); mean rules #7e60a9
+-> #4a55b5 (hsl 234, 42%, 50%). The straight HSL midpoint inherits antiGen blue's 97%
+saturation and comes out vivid (#191b7f / #2739b8), so saturation is kept moderate.

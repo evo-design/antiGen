@@ -194,12 +194,13 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   summary_df    <- regroup(summary_df)
   if (have_bg) bg_df <- regroup(bg_df)
   GROUP_COLORS[[HYBRID]] <- GATE_BLUE
-  ## FULL ROSTER PALETTE (user, s145): the finetunes in a dark purple at antiGen blue's
-  ## depth, the mean rules in a lighter purple, stepped up the way the gate's blue is
-  ## from antiGen's. Replaces the inherited brown (#443333) and orange (#bc6c25).
+  ## FULL ROSTER PALETTE (user, s145-s147): indigos, halfway in hue between antiGen's
+  ## blues and the s146 purples, at moderate saturation. The finetunes are dark, at
+  ## antiGen blue's depth; the mean rules are lighter, stepped up the way the gate's
+  ## blue is from antiGen's. Replaces the inherited brown (#443333) and orange (#bc6c25).
   if (FULL) {
-    GROUP_COLORS[["antiGen Finetunes"]] <- "#4c3371"
-    GROUP_COLORS[["Ensembles"]]         <- "#7e60a9"
+    GROUP_COLORS[["antiGen Finetunes"]] <- "#292a7a"
+    GROUP_COLORS[["Ensembles"]]         <- "#4a55b5"
   }
   ## The gate may be pruned (main revised2, s128); if it is drawn, it must be the hybrid.
   stopifnot(!any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"),
