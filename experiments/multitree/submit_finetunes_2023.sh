@@ -10,8 +10,10 @@
 #
 # THE COST IS THE CORPUS. 2023-01-01 trains on 53,916 records against 2021's 2,934. The
 # 35M partial FT took 21 min at 2021 and 6h40m at 2023 (19x). Scaling the 2021 times
-# by 19 gives the time limits below. 650M full FT (6h41m at 2021) projects to ~5
-# days. antiGen-train has no resume, so each limit carries headroom.
+# by 19 gives the time limits below. 650M full FT is the outlier: MEASURED at
+# 7h55m per epoch at 2023, so ~10.5 days for 32. Its first 8-day job was cancelled
+# and resubmitted at 13 days (gpu_batch MaxTime is 14; NOTES s148).
+# antiGen-train has no resume, so each limit carries headroom.
 #
 # gpu_batch (CLAUDE.md), GPUCACE excluded (NOTES s125).
 set -euo pipefail
@@ -35,7 +37,7 @@ JOBS="esm2_35m_frozen|train_esm2_frozen.sh|1-00:00:00|
 esm2_35m_full|train_esm2_full.sh|2-00:00:00|
 esm2_650m_frozen|train_esm2_650m_frozen.sh|4-00:00:00|
 esm2_650m_partial|train_esm2_650m_partial.sh|5-00:00:00|
-esm2_650m_full|train_esm2_650m_full.sh|8-00:00:00|
+esm2_650m_full|train_esm2_650m_full.sh|13-00:00:00|
 eve|train_eve.sh|2-00:00:00|--max-seqs 351410
 tranception|train_tranception.sh|3-00:00:00|--max-seqs 351410"
 

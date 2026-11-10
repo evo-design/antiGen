@@ -13112,3 +13112,27 @@ On request ("too purple"), both colours move halfway in hue between antiGen's bl
 the s146 purples. Finetunes #4c3371 -> #292a7a (hsl 239, 50%, 32%); mean rules #7e60a9
 -> #4a55b5 (hsl 234, 42%, 50%). The straight HSL midpoint inherits antiGen blue's 97%
 saturation and comes out vivid (#191b7f / #2739b8), so saturation is kept moderate.
+
+## 148. Whole-spike runs landed; 650M full FT resubmitted at 13 days (2026-11-10)
+
+**Whole spike (s139).** All 16 cutoffs COMPLETED, 7-56 min each. There are 25 models
+per cutoff and 30 at 2023-01-01, which carries E-H's roster (ens_vs10_2023, Tranception,
+EVE, both untrained ESM-2). No `[skip]`. Base antiGen vs PFM, per cell: 0.278 vs 0.186
+at 2020-04-01; 0.567 vs 0.542 at 2023-01-01; 0.683 vs 0.651 at 2024-01-01. The figure
+plumbing is not built yet.
+
+**2023 finetunes (s141).** Done: ESM-2 35M frozen (3h55m) and EVE (3h55m). The ESM-2
+650M full FT ran 7h55m per epoch (13,479 batches at batch size 4), so 32 epochs take
+~10.5 days, past its 8-day limit. A user cannot raise a running job's limit ("Access
+denied"), and antiGen-train saves only at the end. It was cancelled (3690767, ~8 h
+lost, no checkpoint written) and resubmitted unchanged at 13 days as 3705388. The
+recipe was kept, so the bar stays comparable to 2021. The other 650M arms (~1.6-1.9 h
+per epoch) fit their limits.
+
+## 149. Main revised2: the all-RBD bars before the cutoff series (2026-11-10)
+
+On request, rows 2 and 3 of the main `sc2_results_revised2` swap. Now: A-B (cartoons),
+C-F (all RBD, 2023 cutoff, bars), G-H (the cutoff series and its key), I-L (escape,
+2021 cutoff, bars), M, then the model-type key. `BAR_LETTERS` gives C-F / I-L in main.
+The series panels are lettered G-H, and row heights follow their rows. The supplement
+is unchanged (A-H, bar rows only).
