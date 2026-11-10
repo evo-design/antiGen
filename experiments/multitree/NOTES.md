@@ -13091,3 +13091,11 @@ statistical models (blue), then the antiGen Finetunes (brown), then the three me
 (orange), then MCM as the first green bar directly above Codon-B62 mixture, then the
 rest as before. Set in `regroup` in `panels_coguk_export.R`; the finetune and mean-rule
 blocks are empty outside the full roster, and the main figure does not draw MCM.
+
+## 145. Full-roster palette: purples for the finetunes and the mean rules (2026-11-09)
+
+On request, `sc2_results_revised2_supp` recolours the antiGen Finetunes from brown
+(#443333) to a dark purple, #491584 (hsl 268, 72%, 30%, about antiGen blue's
+lightness). The three mean rules go from orange (#bc6c25) to a lighter purple, #7332bd
+(hsl 268, 58%, 47%), stepped up the way GATE_BLUE is from ANTIGEN_BLUE. Applied only
+under `REVISED2_FULL`; every other figure keeps the drawer's palette.
