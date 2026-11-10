@@ -13076,3 +13076,10 @@ all/de novo partner, so the all-cells panels inherited de novo's 0-40 when their
 bars end near 12. Each `bg_bar_top` call now passes its own metric alone, so every
 panel's range covers its own bars and 95% intervals, plus the drawer's 5% padding.
 Only this supplement's panels change.
+
+## 143. Base antiGen on the full-roster supplement (2026-11-09)
+
+On request, `sc2_results_revised2_supp` draws base antiGen (`simple_d128_n2_lr0.0001`)
+beside the CV x10 bar, in the antiGen type and unhatched, labelled "antiGen (base)" as
+on panel M. It is dropped only when `REVISED2_FULL` is unset, so the main figure is
+unchanged. Bar order: CV x10, base, then the gate.

@@ -94,7 +94,8 @@ options(coguk.fig_main = "scratch_revised_coguk",
         ## `sc2.gate_rows` rather than from this list.
         coguk.drop_models = c(
           "CoVFit", "pyr0",                       # the published defaults
-          "simple_d128_n2_lr0.0001",              # antiGen, kept only on panel H
+          ## Base antiGen: kept only on panel H, except in the full roster (user, s143).
+          if (!FULL) "simple_d128_n2_lr0.0001",
           if (!FULL) FT_KEYS,
           ## The MAIN sc2_results_revised2 prunes further (NOTES s128); its supplement
           ## copy passes nothing here and keeps the full roster.
@@ -147,7 +148,12 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   STAT_KEYS <- c("where_times_which", "site_substitution",
                  "wxw_dirichlet", "mcm_interpolation")
   STAT_LABELS <- unname(MODEL_LABEL[intersect(STAT_KEYS, names(MODEL_LABEL))])
+  ## Base antiGen, drawn in the full roster only (s143), is named so it cannot be read
+  ## as the CV bar above it -- panel M's "antiGen (base)".
+  BASE_LABEL <- "antiGen (base)"
+  BASE_RAW <- unname(MODEL_LABEL["simple_d128_n2_lr0.0001"])
   regroup <- function(df) {
+    levels(df$model)[levels(df$model) == BASE_RAW] <- BASE_LABEL
     g <- as.character(df$group)
     g[as.character(df$model) %in% CV_LABEL] <- "antiGen"
     g[as.character(df$model) %in% GATE_RUNG_LABEL] <- HYBRID
@@ -160,7 +166,7 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
     ## coguk.top_model first), so the statistical rungs move to just after the antiGen
     ## bars -- the CV bar and, where drawn, the gate -- keeping their own relative order.
     ml <- levels(df$model)
-    head_ <- intersect(c(CV_LABEL, GATE_RUNG_LABEL), ml)
+    head_ <- intersect(c(CV_LABEL, BASE_LABEL, GATE_RUNG_LABEL), ml)
     stat_ <- intersect(ml, STAT_LABELS)
     ## Codon-B62 mixture directly under the statistical models (user, s129): it is the
     ## fitted "which" term those factorisations are built on, and one of ours.
@@ -175,7 +181,7 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   ## other bar hatched. By key, mapped to the drawer's display labels.
   OURS_KEYS <- c("simple_d128_n2_lr0.0001", "gated_static_xfmr_pssm_lr0.0001",
                  STAT_KEYS, "substitution", "mcm", FT_KEYS)
-  options(coguk.ours_labels = c(ENSEMBLE_LABELS,
+  options(coguk.ours_labels = c(ENSEMBLE_LABELS, BASE_LABEL,
                                 unname(MODEL_LABEL[intersect(OURS_KEYS, names(MODEL_LABEL))])))
   recall_q10_df <- regroup(recall_q10_df)
   summary_df    <- regroup(summary_df)
