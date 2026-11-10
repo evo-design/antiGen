@@ -198,8 +198,8 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   ## depth, the mean rules in a lighter purple, stepped up the way the gate's blue is
   ## from antiGen's. Replaces the inherited brown (#443333) and orange (#bc6c25).
   if (FULL) {
-    GROUP_COLORS[["antiGen Finetunes"]] <- "#491584"
-    GROUP_COLORS[["Ensembles"]]         <- "#7332bd"
+    GROUP_COLORS[["antiGen Finetunes"]] <- "#4c3371"
+    GROUP_COLORS[["Ensembles"]]         <- "#7e60a9"
   }
   ## The gate may be pruned (main revised2, s128); if it is drawn, it must be the hybrid.
   stopifnot(!any(as.character(recall_q10_df$group) %in% "Val-selected (10x)"),

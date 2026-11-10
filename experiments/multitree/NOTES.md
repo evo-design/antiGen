@@ -13099,3 +13099,9 @@ On request, `sc2_results_revised2_supp` recolours the antiGen Finetunes from bro
 lightness). The three mean rules go from orange (#bc6c25) to a lighter purple, #7332bd
 (hsl 268, 58%, 47%), stepped up the way GATE_BLUE is from ANTIGEN_BLUE. Applied only
 under `REVISED2_FULL`; every other figure keeps the drawer's palette.
+
+## 146. The s145 purples, muted (2026-11-09)
+
+On request, the purples are desaturated. Finetunes #491584 -> #4c3371 (hsl 265, 38%,
+32%); mean rules #7332bd -> #7e60a9 (hsl 265, 30%, 52%). The light-over-dark step that
+echoes the gate is unchanged.
