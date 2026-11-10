@@ -13136,3 +13136,11 @@ C-F (all RBD, 2023 cutoff, bars), G-H (the cutoff series and its key), I-L (esca
 2021 cutoff, bars), M, then the model-type key. `BAR_LETTERS` gives C-F / I-L in main.
 The series panels are lettered G-H, and row heights follow their rows. The supplement
 is unchanged (A-H, bar rows only).
+
+## 150. Main revised2: the cutoff series moved to the bottom row (2026-11-10)
+
+User request. `sc2_results_revised2` now reads: A-B cartoons; C-F all-RBD bars (2023
+cutoff); G-J escape bars (2021 cutoff, I-L before); K the fixed-date baselines (M
+before); the model-type key; a 0.25 in gap; L-M the cutoff series (G-H before), with
+its own line key under them. Canvas height grows by that gap. The supplement is
+unchanged (still the bar rows alone, A-H).
