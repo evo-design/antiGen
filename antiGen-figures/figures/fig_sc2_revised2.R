@@ -52,7 +52,7 @@ stopifnot(VARIANT %in% c("main", "supp"))
 source("figures/revised2_roster.R")
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
-} else character(0)
+} else "REVISED2_FULL=1"   # finetunes + the three mean rules (NOTES s141)
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
@@ -183,7 +183,9 @@ with_header <- function(txt, panels) {
 ## (I-L). Heights are per BAR-PANEL block, in inches, and follow their content.
 ROW_IN <- c(0.95, 1.1, 1.55, 1.45) * 14.7 / 5.05
 LEG_IN <- if (VARIANT == "supp") 0.75 else 0.40   # the key, fixed (s129)
-PANEL_IN <- if (VARIANT == "supp") c(rbd = 4.23, esc = 4.21) else c(rbd = 2.52, esc = 2.57)
+## The supplement carries 36 bars per row once the finetunes and mean rules are in
+## (NOTES s141): ~0.165 in a bar, as at 25 bars in 4.2 in.
+PANEL_IN <- if (VARIANT == "supp") c(rbd = 6.0, esc = 6.0) else c(rbd = 2.52, esc = 2.57)
 ROW_IN[3] <- PANEL_IN[["rbd"]]
 ROW_IN[4] <- PANEL_IN[["esc"]] + if (VARIANT == "supp") LEG_IN + 0.25 else 0.15
 bar_block <- function(x, letters) {

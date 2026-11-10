@@ -48,9 +48,26 @@ BG_DIR_ENV <- Sys.getenv("REVISED2_BG_DIR", unset = "")
 BG_POOL <- Sys.getenv("REVISED2_BG_POOL", unset = "per cell")
 if (nzchar(BG_DIR_ENV)) {
   stopifnot(dir.exists(BG_DIR_ENV), BG_POOL %in% c("per cell", "per mutation"))
-  options(coguk.bg_dir = BG_DIR_ENV)
+  ## The background runs label their curated list `coguk` whichever arm the recall
+  ## rows come from; the all-RBD cell sets are `rbd_*` in both.
+  options(coguk.bg_dir = BG_DIR_ENV, coguk.bg_list = "coguk")
 }
 
+## THE FULL ROSTER (NOTES s141): REVISED2_FULL=1, set by sc2_results_revised2's supp
+## variant, keeps the antiGen Finetunes (brown) and adds the three static mean rules
+## over the nine-member family (orange) beside the CV bar. The rule ids hash the rule
+## and its member NAMES, so the 2021 and 2023 rules share them.
+FULL <- nzchar(Sys.getenv("REVISED2_FULL"))
+CV_LABEL <- "antiGen (val x10)"
+MEAN_RULES <- c(ens_7c8cf5c991 = "Mean of ranks", ens_7fa79cecaa = "Mean of log-probs",
+                ens_7530180874 = "Mean of z-scores")
+FT_KEYS <- c("eve_ft_lr0.0001", "tranception_ft_both_lr0.0001",
+             "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+             "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+             "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+             "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+             "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
+             "esm2_esm2_t33_650M_UR50D_lr1e-05_full")
 options(coguk.fig_main = "scratch_revised_coguk",
         coguk.fig_supp = "scratch_revised_coguk_supp",
         coguk.title_suffix = "",
@@ -59,15 +76,15 @@ options(coguk.fig_main = "scratch_revised_coguk",
         ## ORANGE (the three plain mean rules) and the hybrid blend go; the one
         ## val-selected rule that stays is antiGen's own, so `coguk.ensemble`
         ## names it alone.
-        coguk.ensemble        = ENS_ID,
+        coguk.ensemble        = c(ENS_ID, if (FULL) names(MEAN_RULES)),
         ## Both of these are needed BECAUSE the selection is a subset: each default
         ## is guarded on `nrow(ensemble_figure_rows.tsv) == length(ENSEMBLE)`, so
         ## naming one of five rules silently falls back to "Ensemble 8a91fb" in the
         ## orange Ensembles group -- the very group this figure is pruning.
-        coguk.ensemble_labels = "antiGen (val x10)",
+        coguk.ensemble_labels = c(CV_LABEL, if (FULL) unname(MEAN_RULES)),
         ## ...and it is the rung the others are read against, so it goes on top.
         coguk.top_model = "antiGen (val x10)",
-        coguk.ensemble_groups = "Val-selected (10x)",
+        coguk.ensemble_groups = c("Val-selected (10x)", if (FULL) rep("Ensembles", 3)),
         ## ...and it is drawn in antiGen's DARK BLUE rather than the val-selected
         ## cyan, because with the base antiGen rung dropped it is now the only
         ## antiGen line on these panels and should read as one.
@@ -78,13 +95,7 @@ options(coguk.fig_main = "scratch_revised_coguk",
         coguk.drop_models = c(
           "CoVFit", "pyr0",                       # the published defaults
           "simple_d128_n2_lr0.0001",              # antiGen, kept only on panel H
-          "eve_ft_lr0.0001", "tranception_ft_both_lr0.0001",
-          "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
-          "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
-          "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
-          "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
-          "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
-          "esm2_esm2_t33_650M_UR50D_lr1e-05_full",
+          if (!FULL) FT_KEYS,
           ## The MAIN sc2_results_revised2 prunes further (NOTES s128); its supplement
           ## copy passes nothing here and keeps the full roster.
           strsplit(Sys.getenv("REVISED2_DROP"), ",", fixed = TRUE)[[1]]))
@@ -138,18 +149,18 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   STAT_LABELS <- unname(MODEL_LABEL[intersect(STAT_KEYS, names(MODEL_LABEL))])
   regroup <- function(df) {
     g <- as.character(df$group)
-    g[as.character(df$model) %in% ENSEMBLE_LABELS] <- "antiGen"
+    g[as.character(df$model) %in% CV_LABEL] <- "antiGen"
     g[as.character(df$model) %in% GATE_RUNG_LABEL] <- HYBRID
     g[as.character(df$model) %in% STAT_LABELS] <- STAT
     lev <- c("antiGen", HYBRID, STAT,
              setdiff(levels(df$group), c("antiGen", unique(as.character(df$group[
-               as.character(df$model) %in% ENSEMBLE_LABELS])))))
+               as.character(df$model) %in% CV_LABEL])))))
     df$group <- factor(g, levels = unique(lev))
     ## BAR ORDER: the drawer orders bars by the `model` factor's levels (after putting
     ## coguk.top_model first), so the statistical rungs move to just after the antiGen
     ## bars -- the CV bar and, where drawn, the gate -- keeping their own relative order.
     ml <- levels(df$model)
-    head_ <- intersect(c(ENSEMBLE_LABELS, GATE_RUNG_LABEL), ml)
+    head_ <- intersect(c(CV_LABEL, GATE_RUNG_LABEL), ml)
     stat_ <- intersect(ml, STAT_LABELS)
     ## Codon-B62 mixture directly under the statistical models (user, s129): it is the
     ## fitted "which" term those factorisations are built on, and one of ours.
@@ -163,7 +174,7 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   ## OURS vs NOT (NOTES s128): the approaches this work designed are drawn plain, every
   ## other bar hatched. By key, mapped to the drawer's display labels.
   OURS_KEYS <- c("simple_d128_n2_lr0.0001", "gated_static_xfmr_pssm_lr0.0001",
-                 STAT_KEYS, "substitution", "mcm")
+                 STAT_KEYS, "substitution", "mcm", FT_KEYS)
   options(coguk.ours_labels = c(ENSEMBLE_LABELS,
                                 unname(MODEL_LABEL[intersect(OURS_KEYS, names(MODEL_LABEL))])))
   recall_q10_df <- regroup(recall_q10_df)
@@ -224,7 +235,8 @@ bg_bar_top <- function(...) {
   p <- bg_bar(...)
   med <- vapply(p$layers, function(l) inherits(l$geom, c("GeomLabel", "GeomText")), TRUE)
   p$layers <- c(p$layers[!med], p$layers[med])
-  p
+  ## The drawer's "Top-decile lift, host - control (pp)" is wider than these panels.
+  p + ggplot2::labs(x = "Top-decile lift (pp)")
 }
 
 saveRDS(list(

@@ -42,6 +42,8 @@ evals_*/
 !antiGen-figures/data/evals_sc2_lists_macro_aa20/
 !antiGen-figures/data/evals_sc2_lists_varrecall_aa20/
 !antiGen-figures/data/evals_sc2_background_aa20/
+!antiGen-figures/data/evals_sc2_background_aa20_2023-01-01/
+!antiGen-figures/data/evals_sc2_background_aa20_2023-01-01_eventwtd/
 # sc2_results_revised2 panels I-L (NOTES s125).
 !antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells/
 # supp_fixed_split: one list run per baseline cutoff (NOTES s126).

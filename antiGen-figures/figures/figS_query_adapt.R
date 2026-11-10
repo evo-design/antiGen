@@ -40,9 +40,13 @@ RS <- function(n) file.path(tempdir(), paste0("query_adapt_", VARIANT, "_", n, "
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
 run_export <- function(rds, extra_env) {
+  ## system2 pastes env as `NAME=value cmd` into a shell, so values are quoted ("per cell").
+  env <- c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1", BAR_ENV, extra_env)
+  env <- sub("^([^=]+)=(.*)$", "\\1", env)
+  env <- paste0(env, "=", shQuote(sub("^[^=]+=", "", c(paste0("REVISED_PANELS_RDS=", rds),
+                "REVISED2_LABELS=1", BAR_ENV, extra_env))))
   st <- system2(RSCRIPT, "figures/panels_coguk_export.R",
-                env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1",
-                        BAR_ENV, extra_env),
+                env = env,
                 stdout = TRUE, stderr = TRUE)
   if (!file.exists(rds)) {
     stop("panels_coguk_export.R produced no panels. Its output was:\n",

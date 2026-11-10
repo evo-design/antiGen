@@ -13038,3 +13038,33 @@ Jobs 3690507-8 and 3690637-53. Their 2-day asks sat PENDING, so the limit is now
 On request, the supplement version drops rows 1-2 and panel M and keeps only E-L on the
 full roster, relettered A-H (`BAR_LETTERS` in `fig_sc2_revised2.R`). The main figure
 keeps E-L.
+
+## 141. Finetunes and ensembles back on sc2_results_revised2_supp (2026-11-09, IN PROGRESS)
+
+On request, the full-roster supplement draws the antiGen Finetunes (brown) and the three
+static mean rules over the nine-member family (orange, s49) again. `REVISED2_FULL=1`,
+passed by the supp variant only, makes `panels_coguk_export.R` keep the eight finetune
+keys and add `ens_7c8cf5c991` / `ens_7fa79cecaa` / `ens_7530180874` beside the CV bar.
+The main figure is unchanged. Rule ids hash the rule and its member NAMES, so 2021 and
+2023 share them. Only the CV bar now joins "antiGen" (`CV_LABEL`); the mean rules keep
+their own group. Finetunes and ensembles are drawn plain (ours), since all of them are
+antiGen-trained. Supp bar rows are 6.0 in each, for 36 bars.
+
+**2021 (E-H of the supp)** already had everything and draws complete.
+
+**2023 (A-D)** had only the 35M partial FT. `submit_finetunes_2023.sh` trains the other
+seven at 2023-01-01 with the 2021 recipes unchanged (EVE/Tranception on the 2023 MSA
+capped at 351,410 sequences, like their frozen rungs), into `ckpt_stage_ft_2023-01-01`:
+jobs 3690763-69, gpu_batch. The corpus is 19x 2021's (35M partial: 21 min -> 6h40m), so
+the 650M arms project to 2-5 days. antiGen-train cannot resume, so the time limits carry
+headroom. When all seven land, `finish_ft_2023.sh` scores them into E-H's own run and
+dumps the nine members' maps. Base antiGen and the 35M partial FT are re-run for their
+maps and must reproduce their rows. It then scores the three mean rules with
+`ensemble_report.py`; `stage_allcells_2023.sh` now merges those rows.
+
+**s138 follow-up.** Job 3690487 completed (43m39s, 240 rows). The 2023 arm is staged in
+`data/evals_sc2_background_aa20_2023-01-01{,_eventwtd}` (allow-listed). Per-cell lift on
+`rbd_all` / `rbd_unseen`: CV x10 +8.1 / +27.6 pp, Tranception frozen +8.9 / +18.6,
+antiGen base +5.5 / +26.1. **The ESM-2 35M partial FT is -22.5 pp on `rbd_all`**: it
+ranks a cell LOWER on the genotypes that hosted it than on the BA.2 root. At 2021 it was
+positive. Not chased.

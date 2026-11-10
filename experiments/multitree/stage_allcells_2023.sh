@@ -9,15 +9,25 @@ set -euo pipefail
 S=/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro_aa20_2023-01-01_allcells_pooled
 D=/home/ivan.specht/antiGen/antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells
 ENS=${ENS:-ens_vs10_2023}
+# The three mean rules over the nine-member family (NOTES s141), once finish_ft_2023.sh
+# has written them; absent until then, and the figure draws those bars empty.
+REPORT=${REPORT:-/large_storage/hielab/ispecht/fitness-inference/ensembles9_aa20_2023-01-01/report/list_macro_summary_ensemble.csv}
 mkdir -p "$D"
-python3 - "$S/list_macro_summary.csv" "$D" "$ENS" <<'PY'
+python3 - "$S/list_macro_summary.csv" "$D" "$ENS" "$REPORT" <<'PY'
 import csv, sys
-src, out, ens = sys.argv[1:]
+import os
+src, out, ens, report = sys.argv[1:]
 rows = list(csv.DictReader(open(src))); hdr = list(rows[0].keys())
 e = [r for r in rows if r["model"] == ens]
 o = [r for r in rows if r["model"] != ens]
 if not e:
     sys.exit(f"no {ens} row in {src}")
+means = []
+if os.path.exists(report):
+    means = [{k: r.get(k, "") for k in hdr} for r in csv.DictReader(open(report))
+             if r["model"].startswith("ens_") and r["model"] != ens]
+    print(f"mean rules from {report}: {sorted({r['model'] for r in means})}")
+e += means
 for name, part in (("list_macro_summary_aa20.csv", o), ("list_macro_summary_ensemble.csv", e)):
     w = csv.DictWriter(open(f"{out}/{name}", "w", newline=""), fieldnames=hdr)
     w.writeheader(); w.writerows(part)
