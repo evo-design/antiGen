@@ -13205,3 +13205,39 @@ colours, hatching and order as the main figure.
 
 Undrawn: the antiGen / PFM gate (0.570 / 0.908 on all cells) and base antiGen
 (0.567 / 0.889; de novo 0.504 / 0.645).
+
+## 153. The DMS supplement on sc2_results_revised2's C-J roster (2026-11-10)
+
+`antiGen-figures/figures/figS_dms_revised2.R` -> `figs/supp_dms_revised2.png`. The quantity
+of aa20_supp_dms (Spearman of each model's map at the BA.2 variant root against the BA.2
+expression / binding DMS, RBD cells, wild type masked, beside the position-only
+rank-mean control), drawn for the C-J roster with C-J's names, model types, colours and
+Ours / Previous hatching. `figs/supp_dms.png` (the published 22-letter corpus, Pearson,
+four transformations) is untouched; it is written by fig2_sc2_benchmarks.R's defaults.
+
+* antiGen (CV x10) is the 2021-01-01 ensemble (ens_8a91fbbf88, G-J's arm): the root and
+  the DMS are BA.2.
+* Two rungs had no root map: the PFM (pssm_root) and the codon table. Both were dumped
+  from `list_score_maps_aa20` with `dump_variant_root_predictions.py` (2021 test corpus,
+  query 4110) into `data/sc2_aa20_extra/`. The same dump of `site_substitution`
+  reproduced the existing `data/sc2_aa20` file byte for byte. The PFM is used as raw
+  counts (exp() would overflow them into ties); Spearman needs only their ranks.
+* BA.2 DMS (expression) is the Expression panel's own target, so it appears on Binding
+  only; its Expression slot is marked "(target)".
+* **Gate:** the script's numbers equal the drawer's own `dms_spearman` table (the
+  take_log == FALSE rows) for all 42 shared values (11 models x 2 targets x 2 series),
+  worst difference 0.
+
+| model | expression rho | binding rho |
+|---|---|---|
+| antiGen (CV x10) | 0.270 | 0.247 |
+| S×S | 0.291 | 0.255 |
+| S×S-MCM interp. | 0.298 | 0.262 |
+| PFM (new) | 0.195 | 0.196 |
+| EVEscape | 0.362 | 0.082 |
+| BLOSUM62 | 0.280 | 0.293 |
+| Codon table (new) | 0.077 | 0.091 |
+
+Position-only controls exceed the prediction for antiGen, S×S, S×S-MCM interp. and the
+PFM on both targets (as in the earlier panel-G addendum "the counted rungs on panel G": the signal is
+largely positional).
