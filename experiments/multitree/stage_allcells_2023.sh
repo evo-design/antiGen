@@ -6,8 +6,8 @@
 # data/evals_sc2_lists_macro_aa20/ has. So the val-selected ensemble row is split out
 # of the run's one summary into its own file, and the figure-rows TSV names it.
 set -euo pipefail
-S=/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro_aa20_2023-01-01_allcells_pooled
-D=/home/ivan.specht/antiGen/antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells
+S=${S:-/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro_aa20_2023-01-01_allcells_pooled}
+D=${D:-/home/ivan.specht/antiGen/antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells}
 ENS=${ENS:-ens_vs10_2023}
 # The three mean rules over the nine-member family (NOTES s141), once finish_ft_2023.sh
 # has written them; absent until then, and the figure draws those bars empty.

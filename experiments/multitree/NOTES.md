@@ -13144,3 +13144,64 @@ cutoff); G-J escape bars (2021 cutoff, I-L before); K the fixed-date baselines (
 before); the model-type key; a 0.25 in gap; L-M the cutoff series (G-H before), with
 its own line key under them. Canvas height grows by that gap. The supplement is
 unchanged (still the bar rows alone, A-H).
+
+## 151. CoVFit asked each query, for panel K (2026-11-10; scoring queued)
+
+**Why.** Panel K's CoVFit arm (0.064 per cell, 0.112 per mutation at 2024-10-01) is
+below chance. Its map is one static table from the single mutants of XFG (fold 0,
+`eval_covfit.sh --variant XFG`, 26,734 sequences, 22 min), applied to every query.
+Ranking the 247 COG-UK RBD cells in it: 24% fall in its bottom decile, 8% in its top.
+Its ten lowest sites include 456, 486, 493, 455, 452 and 484 -- sites where XFG already
+carries an adaptive residue (F456L, F486P, Q493E, L455S, L452W, A484K), so moving away
+from it reads as deleterious. 25 listed cells are XFG's own residues and score at the
+query's level (68th percentile), so they can never reach the top decile. Single
+mutants barely move CoVFit (80% of RBD deltas within +-0.007 of 0.885), and 83% of the
+map's variance is between sites. XFG also post-dates the 2024-10-01 cutoff.
+
+**What.** `antiGen/baselines/covfit_perquery.py` (`select` / `fasta` / `build`) and
+`list_macro.py --query-maps NAME=NPZ`, a rung whose map is looked up per scored query
+by genotype; a query without a map is an error. Driven by
+`experiments/multitree/submit_covfit_perquery.sh` (STAGE=gate|score|eval). 364 distinct
+query genotypes (all 364 scored examples) x (201 RBD sites x 19 + 1) = 1.39M CLI
+sequences, fold 0 (the XFG map's fold, so the background is the only change), 16
+chunks on gpu_batch (array 3706983).
+
+**Gate, passed.** The XFG map copied to every query and scored through `--query-maps`
+reproduces the published CoVFit row exactly (worst difference 0.0; job 3706972).
+
+**Input caveat.** The 20-letter sc2 corpus has no gap state; deletions are imputed
+(site 483 reads V in 98% of test genotypes although BA.2.86/JN.1 carry V483del), and
+no gapped sc2 build exists. CoVFit sees the queries as encoded, without deletions.
+
+Results: pending.
+
+## 152. supp_fullspike: C-F and L-M of sc2_results_revised2 on the whole spike (2026-11-10)
+
+`figures/figS_fullspike.R` -> `figs/supp_fullspike.png`. Row 1 "Whole spike, 2023
+cutoff", A-D (all / de novo x per cell / per mutation), then the model-type key; row 2
+E-F the cutoff series (per cell, per mutation) with the line key. Same exports, names,
+colours, hatching and order as the main figure.
+
+* Data: the s139 runs (`submit_fullspike.sh`), staged by
+  `experiments/multitree/stage_fullspike.sh` into `data/gating_macro_aa20_fullspike/<D>/`
+  (lines) and `data/evals_sc2_lists_macro_aa20_2023-01-01_fullspike/` (bars;
+  `stage_allcells_2023.sh` now takes S/D overrides). With every cell listed, E is the
+  macro column and F the micro column of the same run (`REVISED2_GATE_COL`).
+* `panels_coguk_export.R` gained the arm `REVISED2_ARM=fullspike_2023`;
+  `panels_gate_macro_export.R` takes `REVISED2_GATE_DIR/COL/TITLE/YLAB/DROP`. Unset,
+  every published panel is unchanged.
+* **Dropped beyond the main roster:** the RBD-only maps (BA.1 and BA.2 expression DMS,
+  EVEscape). Off the RBD their non-RBD targets count against them (s29), so their
+  numbers would measure coverage. The script refuses to render if one is still drawn.
+
+2023-01-01, q = 0.1, CV x10 against the next drawn bar:
+
+| panel | cells / events | antiGen (CV x10) | next drawn |
+|---|---|---|---|
+| A all, per cell | 4,466 / 57,319 | 0.576 | PFM 0.542 |
+| B all, per mutation | 4,466 / 57,319 | 0.909 | PFM 0.887 |
+| C de novo, per cell | 263 / 591 | 0.518 | S×S 0.502 |
+| D de novo, per mutation | 263 / 591 | 0.682 | S×S 0.626 |
+
+Undrawn: the antiGen / PFM gate (0.570 / 0.908 on all cells) and base antiGen
+(0.567 / 0.889; de novo 0.504 / 0.645).

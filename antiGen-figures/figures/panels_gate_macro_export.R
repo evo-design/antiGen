@@ -28,10 +28,15 @@ if (length(drop) != 1L) {
 }
 eval(parse(text = paste(src[-drop], collapse = "\n")))
 
+## OVERRIDES for supp_fullspike (NOTES s152): another gating dir (the whole-spike
+## runs), the `micro` column (per mutation: with every cell listed it is the same
+## quantity as eval.py's hit rate), a title, a y label and extra lines to drop. Unset,
+## the published panel is unchanged.
+GATE_ENV <- function(k, d) { v <- Sys.getenv(k, unset = ""); if (nzchar(v)) v else d }
 options(
-  sc2.gating_dir         = "data/gating_macro_aa20",
+  sc2.gating_dir         = GATE_ENV("REVISED2_GATE_DIR", "data/gating_macro_aa20"),
   sc2.gate_loader        = "by_macro",
-  sc2.gate_macro_col     = "macro",
+  sc2.gate_macro_col     = GATE_ENV("REVISED2_GATE_COL", "macro"),
   ## The common pool, matching the event-weighted panel. `_fullpool` is the other pool
   ## and is NOT what the published panel scores.
   sc2.gate_macro_variant = "list_allcells",
@@ -50,7 +55,8 @@ options(
     "PSSM"                   = MODEL_TYPE_COLORS[4],
     "BLOSUM62"               = MODEL_TYPE_COLORS[2],
     "EVEscape"               = MODEL_TYPE_COLORS[3]),
-  sc2.gate_drop_main = "ESM-2 35M, partial FT",
+  sc2.gate_drop_main = c("ESM-2 35M, partial FT",
+                         strsplit(Sys.getenv("REVISED2_GATE_DROP"), ",", fixed = TRUE)[[1]]),
   ## Every save_figure() in the drawer goes to a scratch name; the caller deletes them.
   sc2.fig_main   = "scratch_gatemacro",
   sc2.fig_prefix = "scratch_gatemacro_",
@@ -68,8 +74,9 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
 as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
 
 gm_plot <- make_gate_plot(gate_recall, "recall",
-                          "Top decile recall, all RBD cells (per cell)",
-                          "P(cell in top decile)",
+                          GATE_ENV("REVISED2_GATE_TITLE",
+                                   "Top decile recall, all RBD cells (per cell)"),
+                          GATE_ENV("REVISED2_GATE_YLAB", "P(cell in top decile)"),
                           SUPP = FALSE, show_legend = TRUE)
 
 saveRDS(list(

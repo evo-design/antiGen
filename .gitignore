@@ -46,6 +46,7 @@ evals_*/
 !antiGen-figures/data/evals_sc2_background_aa20_2023-01-01_eventwtd/
 # sc2_results_revised2 panels I-L (NOTES s125).
 !antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells/
+!antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_fullspike/
 # supp_fixed_split: one list run per baseline cutoff (NOTES s126).
 !antiGen-figures/data/evals_fixedsplit_*/
 # The background contrast (the list figures' K-L). Small summary CSVs, not the

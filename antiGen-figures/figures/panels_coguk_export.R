@@ -37,6 +37,15 @@ if (identical(ARM, "allcells_2023")) {
   ENS_ID <- "ens_vs10_2023"
   T4 <- c(all_pc = "All RBD, per cell", all_evt = "All RBD, per mutation",
           dn_pc = "De novo RBD, per cell", dn_evt = "De novo RBD, per mutation")
+} else if (identical(ARM, "fullspike_2023")) {
+  ## The same question on the WHOLE SPIKE (supp_fullspike, NOTES s152): every spike
+  ## cell listed, --eval-range full, the 2023-01-01 roster.
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2023-01-01_fullspike",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2023"
+  T4 <- c(all_pc = "Whole spike, per cell", all_evt = "Whole spike, per mutation",
+          dn_pc = "De novo spike, per cell", dn_evt = "De novo spike, per mutation")
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }

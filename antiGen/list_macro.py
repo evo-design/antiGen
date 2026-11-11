@@ -340,6 +340,11 @@ def main():
                          'eval.py --ensemble-dir, which instead needs the full range.')
     ap.add_argument('--ensemble-name', default='antigen_valsel',
                     help='row name for --ensemble-dir')
+    ap.add_argument('--query-maps', action='append', default=[], metavar='NAME=NPZ',
+                    help='a precomputed PER-QUERY map rung (NOTES s151): an NPZ with '
+                         '`aa` (Nq, L) int8 genotypes, `eval_range` and `scores` '
+                         '(Nq, R, E). Each scored query is looked up by genotype; a '
+                         'query the NPZ lacks is an error, not a skip.')
     ap.add_argument('--mcm-baseline', action='store_true',
                     help='add the mutation count matrix alone, "mcm": log N[i,a] '
                          '(statistical_baselines "frequency"). NOTES s121.')
@@ -681,6 +686,26 @@ def main():
         print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
               f"from {args.ensemble_dir}, normalised over the eval range")
 
+    # ── Per-query precomputed maps (NOTES s151) ──────────────────────────────
+    # A baseline that must be asked each query, scored outside this process (CoVFit's
+    # CLI). Every scored query must have its own map -- checked here, before any pass.
+    query_maps = {}
+    for item in args.query_maps:
+        qname, qpath = item.split('=', 1)
+        z = np.load(qpath)
+        if z['eval_range'].tolist() != list(eval_range):
+            raise SystemExit(f"{qpath}: eval range differs from this run's")
+        key = {bytes(g): i for i, g in enumerate(z['aa'].astype(np.int8))}
+        rows = [key.get(bytes(e.aa_idx.to(torch.int8).numpy())) for e in scored]
+        if any(r is None for r in rows):
+            raise SystemExit(f"{qpath}: {sum(r is None for r in rows)} of {len(scored)} "
+                             f"scored queries have no map")
+        full = torch.full((len(scored), seq_len, E), float('nan'))
+        full[:, eval_range, :] = torch.from_numpy(z['scores'][np.array(rows)]).float()
+        query_maps[qname] = full
+        print(f"  per-query rung '{qname}': {len(set(rows))} maps for {len(scored)} "
+              f"scored queries ({qpath})")
+
     by_model = read_done(args.output_dir)
     skipped = []
     if by_model:
@@ -777,6 +802,33 @@ def main():
         del bp
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    # ── Per-query maps: the loader is unshuffled, so batch rows are `scored` in order.
+    for name, full in query_maps.items():
+        if _resume_skip(name):
+            print(f"[resume-skip] {name}")
+            continue
+        print(f"\n=== Per-query baseline: {name} ===", flush=True)
+        sink, finish = _sink_for(name)
+        _off = [0]
+
+        def _qfn(aa, full=full, off=_off):
+            out = full[off[0]:off[0] + aa.shape[0]].to(aa.device)
+            off[0] += aa.shape[0]
+            return out
+        try:
+            acc = cell_pass(_qfn, loader, variants, device, eval_range, qtiles,
+                            sink=sink, common_pool=common_pool)
+        except BaseException:
+            finish(ok=False)
+            raise
+        if _off[0] != len(scored):
+            raise SystemExit(f"{name}: consumed {_off[0]} of {len(scored)} query maps")
+        if name in by_model:
+            _verify_against_row(name, acc)
+        finish()
+        if name not in by_model:
+            record(name, acc)
 
     # ── Models ──────────────────────────────────────────────────────────────
     for prefix, path in candidates:
