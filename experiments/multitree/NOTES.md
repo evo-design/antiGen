@@ -13173,7 +13173,24 @@ reproduces the published CoVFit row exactly (worst difference 0.0; job 3706972).
 (site 483 reads V in 98% of test genotypes although BA.2.86/JN.1 carry V483del), and
 no gapped sc2 build exists. CoVFit sees the queries as encoded, without deletions.
 
-Results: pending.
+**Results** (array 3706983, 16 x ~66 min; eval 3721521, 44 s; 36 new rows appended to
+`evals_fixedsplit_2024-10-01`, nothing else changed). COG-UK list, common pool, q = 0.1,
+78 cells / 456 events:
+
+| rung | per cell | per mutation |
+|---|---|---|
+| CoVFit, static XFG map | 0.064 | 0.112 |
+| **CoVFit_query, each query's own background** | **0.171** | **0.215** |
+| antiGen (base) | 0.902 | 0.976 |
+| PFM | 0.885 | 0.976 |
+
+Asking each query lifts CoVFit from below chance to above it (chance 0.10): the static
+background was a real handicap. It remains far below antiGen, the PFM, EVEscape
+(0.473 / 0.549) and Bloom & Neher (0.667 / 0.748). Per-query deltas are as small as the
+XFG map's (1/50/99%: -0.022 / -0.0003 / +0.007).
+
+**Panel K now draws `CoVFit_query`**, still labelled "CoVFit". `supp_fixed_split` still
+draws the static map; not changed here. Folds 1-4 were not run (FOLDS knob).
 
 ## 152. supp_fullspike: C-F and L-M of sc2_results_revised2 on the whole spike (2026-11-10)
 

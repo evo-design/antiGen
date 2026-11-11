@@ -221,7 +221,9 @@ row4 <- if (VARIANT == "main") {
 FS_ARMS <- list(
   list(date = "2022-01-01", raw = "pyr0",                  label = "PyR0"),
   list(date = "2023-10-01", raw = "BloomNeher_2023-10-01", label = "Bloom & Neher"),
-  list(date = "2024-10-01", raw = "CoVFit",                label = "CoVFit"))
+  ## CoVFit asked EACH QUERY on its own background (NOTES s151), not the static XFG map
+  ## (`CoVFit`, 0.064 / 0.112), whose background put the escape hotspots at the bottom.
+  list(date = "2024-10-01", raw = "CoVFit_query",          label = "CoVFit"))
 fs_panel <- function(arm, col, pool_name, first) {
   f <- file.path("data", paste0("evals_fixedsplit_", arm$date), "list_macro_summary.csv")
   d <- read.csv(f)
