@@ -13222,10 +13222,11 @@ four transformations) is untouched; it is written by fig2_sc2_benchmarks.R's def
   query 4110) into `data/sc2_aa20_extra/`. The same dump of `site_substitution`
   reproduced the existing `data/sc2_aa20` file byte for byte. The PFM is used as raw
   counts (exp() would overflow them into ties); Spearman needs only their ranks.
-* BA.2 DMS (expression) is the Expression panel's own target, so it appears on Binding
-  only; its Expression slot is marked "(target)".
+* BA.2 DMS (expression), on C-J's roster, is left out of this figure (user): it is the
+  Expression panel's own target. 12 models.
 * **Gate:** the script's numbers equal the drawer's own `dms_spearman` table (the
-  take_log == FALSE rows) for all 42 shared values (11 models x 2 targets x 2 series),
+  take_log == FALSE rows) for all 42 values it shared before BA.2 DMS was removed (11 models x 2 targets x 2
+  series),
   worst difference 0.
 
 | model | expression rho | binding rho |

@@ -15,8 +15,8 @@
 ## and were dumped from the score cache (data/sc2_aa20_extra/): the PFM (training
 ## counts, scored as the eval ranks them) and the codon table.
 ##
-## BA.2 DMS (expression) is the Expression panel's own target, so it is drawn on
-## Binding only.
+## BA.2 DMS (expression), on C-J's roster, is left out here (user, s153): it is the
+## Expression panel's own target.
 ## ---------------------------------------------------------------------------
 source("R/common.R")
 suppressPackageStartupMessages({ library(dplyr); library(cowplot) })
@@ -33,7 +33,6 @@ ROSTER <- tibble::tribble(
   "eve_frozen",                           "EVE",                     "Pandemic Data in Training Window",   FALSE, "data/sc2_aa20",
   "tranception_frozen_both",              "Tranception",             "Pandemic Data in Training Window",   FALSE, "data/sc2_aa20",
   "Omicron_BA1_expr",                     "BA.1 DMS (expression)",   "Deep Mutational Scans",              FALSE, "baselines",
-  "Omicron_BA2_expr",                     "BA.2 DMS (expression)",   "Deep Mutational Scans",              FALSE, "baselines",
   "EVEscape",                             "EVEscape",                "Pre-Pandemic Data Only",             FALSE, "baselines",
   "esm2_esm2_t12_35M_UR50D_lr0.001_noft", "ESM 2 (35M), untrained",  "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
   "blosum62",                             "BLOSUM62",                "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
@@ -84,7 +83,6 @@ for (i in seq_len(nrow(ROSTER))) {
   ctl <- rank_mean_rows(m)
   for (tg in c("Expression", "Binding")) {
     y <- if (tg == "Expression") expr else bind
-    if (tg == "Expression" && r$key == "Omicron_BA2_expr") next   # its own target
     rows[[length(rows) + 1]] <- tibble::tibble(
       key = r$key, label = r$label, group = r$group, ours = r$ours, target = tg,
       series = c("Prediction", "Position only"),
@@ -116,10 +114,6 @@ panel <- function(tg, show_x = TRUE) {
                                 pattern_angle = 45, pattern_density = 0.06,
                                 pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
     ggpattern::scale_pattern_identity() +
-    ## The empty slot on Expression is that panel's own target; say so.
-    (if (tg == "Expression")
-       annotate("text", x = "BA.2 DMS (expression)", y = 0.02, label = "(target)",
-                vjust = 0, size = 3, colour = "grey40")) +
     scale_fill_manual(values = FILLS, guide = "none") +
     scale_x_discrete(drop = FALSE) +
     labs(title = tg, x = NULL, y = quote(rho)) +
