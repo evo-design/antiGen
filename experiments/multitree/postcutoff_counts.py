@@ -29,7 +29,11 @@ AA = "ACDEFGHIKLMNPQRSTVWY"
 W = "/home/ivan.specht/antiGen-data-revised/work"
 T = "/home/ivan.specht/antiGen-data-revised/output/sc2-test"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/large_storage/hielab/ispecht/fitness-inference/postcutoff_counts"
-CUTS = [20210101, 20230101]
+import glob as _g
+# Every cutoff counts_ba2 carries (24, ascending); each sequence goes to ONE bucket m =
+# the number of cutoffs it is at or after, and M_D is the suffix sum -- the C++'s scheme.
+CUTS = sorted(int(f.rsplit("_", 1)[1][:10].replace("-", ""))
+              for f in _g.glob(f"{T}/counts_ba2/counts_*.tsv"))
 L = 1273
 
 
@@ -82,18 +86,20 @@ for line in p.stdout:
 p.wait()
 print(f"prepared: {len(dates)} sequences; unplaced {sum(s not in node_of for s in dates)}", flush=True)
 
-# ---- BA.2 root: the node whose subtree's sequence totals match counts_ba2 at every cutoff
-ba2_files = {c: f"{T}/counts_ba2/counts_{c // 10000}-{c // 100 % 100:02d}-{c % 100:02d}.tsv" for c in CUTS}
-want = {c: read_counts(f)[0] for c, f in ba2_files.items()}
-n_first = read_counts(f"{T}/counts_ba2/counts_2020-04-01.tsv")[0]
-sub = collections.Counter()          # node -> sequences placed in its subtree, by bucket
-per_node = collections.defaultdict(lambda: [0, 0, 0])   # all dated>=2020-04-01, >=2021, >=2023
-for s, n in node_of.items():
-    d = dates.get(s)
+# ---- BA.2 root: the node whose subtree's per-cutoff sequence totals match counts_ba2
+lab = lambda c: f"{c // 10000}-{c // 100 % 100:02d}-{c % 100:02d}"
+ba2_files = {c: f"{T}/counts_ba2/counts_{lab(c)}.tsv" for c in CUTS}
+want = [read_counts(ba2_files[c])[0] for c in CUTS]
+import bisect
+per_node = collections.defaultdict(lambda: [0] * len(CUTS))
+for s_, n in node_of.items():
+    d = dates.get(s_)
     if d is None:
         continue
+    m = bisect.bisect_right(CUTS, d)          # cutoffs at or before d = cutoffs d is >= of
     b = per_node[n]
-    b[0] += d >= 20200401; b[1] += d >= CUTS[0]; b[2] += d >= CUTS[1]
+    for k in range(m):
+        b[k] += 1
 children = collections.defaultdict(list)
 for v, u in parent.items():
     children[u].append(v)
@@ -102,14 +108,15 @@ while stack:
     v = stack.pop(); order.append(v); stack.extend(children[v])
 tot = {}
 for v in reversed(order):
-    a = list(per_node.get(v, (0, 0, 0)))
+    a = list(per_node.get(v, [0] * len(CUTS)))
     for c in children[v]:
-        t = tot[c]; a[0] += t[0]; a[1] += t[1]; a[2] += t[2]
+        t = tot[c]
+        for k in range(len(CUTS)):
+            a[k] += t[k]
     tot[v] = a
-cand = [v for v, a in tot.items() if a[0] == n_first and a[1] == want[CUTS[0]] and a[2] == want[CUTS[1]]]
-print(f"BA.2 root candidates matching counts_ba2 totals: {cand[:5]} ({len(cand)})", flush=True)
+cand = [v for v, a in tot.items() if a == want]
+print(f"BA.2 root candidates matching all {len(CUTS)} counts_ba2 totals: {cand[:5]} ({len(cand)})", flush=True)
 assert cand, "no node reproduces the counts_ba2 sequence totals"
-# the top-most candidate (a chain of single-child nodes would all match)
 depth = {}
 for v in order:
     depth[v] = 0 if parent[v] == -1 else depth[parent[v]] + 1
@@ -120,65 +127,67 @@ while stack:
     v = stack.pop(); inside.add(v); stack.extend(children[v])
 print(f"BA.2 root: node {root}; {len(inside)} nodes in its subtree", flush=True)
 
-# ---- pass 2: residue counts
+# ---- pass 2: residue counts, one bucket per (inside BA.2, m)
 lut = np.full(256, 255, np.uint8)
 for i, a in enumerate(AA):
     lut[ord(a)] = i
-M = {k: np.zeros((L, 20), np.int64) for k in ("all", "ba2_2021", "ba2_2023", "all_2021", "all_2023")}
-NS = collections.Counter()
+NB = len(CUTS) + 1
+B = np.zeros((2, NB, L, 20), np.int64)
+NSB = np.zeros((2, NB), np.int64)
 
 
 def flush(buf, keys):
     arr = lut[np.frombuffer(b"".join(buf), np.uint8).reshape(len(buf), L)]
-    for key in set(k for ks in keys for k in ks):
-        sel = np.array([key in ks for ks in keys])
-        a = arr[sel]
+    keys = np.array(keys)
+    for key in np.unique(keys):
+        a = arr[keys == key]
+        ins, m = divmod(int(key), NB)
         for i in range(20):
-            M[key][:, i] += (a == i).sum(0)
+            B[ins, m, :, i] += (a == i).sum(0)
 
 
-buf, keys = [], []
+buf, keys, n_seen = [], [], 0
 with open(f"{W}/prepared_all.tsv", "rb") as f:
     for line in f:
         if line.startswith(b"#"):
             continue
-        s, d, q = line.rstrip(b"\n").split(b"\t")
-        s = s.decode()
-        n = node_of.get(s)
+        s_, d, q = line.rstrip(b"\n").split(b"\t")
+        n = node_of.get(s_.decode())
         if n is None:
             continue
-        dc = date_code(d.decode())
-        ks = ["all"]
-        if dc >= CUTS[0]: ks.append("all_2021")
-        if dc >= CUTS[1]: ks.append("all_2023")
-        if n in inside:
-            if dc >= CUTS[0]: ks.append("ba2_2021")
-            if dc >= CUTS[1]: ks.append("ba2_2023")
-        for k in ks:
-            NS[k] += 1
-        assert len(q) == L, (s, len(q))
-        buf.append(q); keys.append(ks)
+        m = bisect.bisect_right(CUTS, date_code(d.decode()))
+        ins = int(n in inside)
+        assert len(q) == L, (s_, len(q))
+        NSB[ins, m] += 1
+        buf.append(q); keys.append(ins * NB + m); n_seen += 1
         if len(buf) == 50000:
             flush(buf, keys); buf, keys = [], []
-            if NS["all"] % 1000000 == 0:
-                print(f"  {NS['all']} sequences", flush=True)
+            if n_seen % 1000000 == 0:
+                print(f"  {n_seen} sequences", flush=True)
 if buf:
     flush(buf, keys)
-print({k: v for k, v in NS.items()}, flush=True)
 
-for key, path in (("all", f"{T}/counts_all_cur.tsv"), ("ba2_2021", ba2_files[CUTS[0]]),
-                  ("ba2_2023", ba2_files[CUTS[1]])):
-    n, ref = read_counts(path)
-    assert NS[key] == n, (key, NS[key], n)
-    diff = int(np.abs(M[key] - ref).max())
-    assert diff == 0, (key, diff)
-    print(f"GATE OK: {key} reproduces {path.split('/')[-1]} ({n} sequences) exactly")
+
+def M_at(k, ins=(0, 1)):   # sequences dated >= CUTS[k]: buckets m > k
+    return sum(B[i, k + 1:].sum(0) for i in ins), int(sum(NSB[i, k + 1:].sum() for i in ins))
+
+
+allM, alln = B.sum((0, 1)), int(NSB.sum())
+n, ref = read_counts(f"{T}/counts_all_cur.tsv")
+assert alln == n and int(np.abs(allM - ref).max()) == 0, ("all", alln, n)
+print(f"GATE OK: all sequences reproduce counts_all_cur.tsv ({n}) exactly")
+for k, c in enumerate(CUTS):
+    m_, n_ = M_at(k, ins=(1,))
+    n, ref = read_counts(ba2_files[c])
+    assert n_ == n and int(np.abs(m_ - ref).max()) == 0, (lab(c), n_, n)
+print(f"GATE OK: the BA.2 subtree reproduces all {len(CUTS)} counts_ba2 matrices exactly")
 
 import os
 os.makedirs(OUT, exist_ok=True)
-for key, lab in (("all_2021", "2021-01-01"), ("all_2023", "2023-01-01")):
-    with open(f"{OUT}/counts_all_lineages_{lab}.tsv", "w") as f:
-        f.write(f"#sequences\t{NS[key]}\n#sites\t{L}\n#site\t" + "\t".join(AA) + "\n")
+for k, c in enumerate(CUTS):
+    m_, n_ = M_at(k)
+    with open(f"{OUT}/counts_all_lineages_{lab(c)}.tsv", "w") as f:
+        f.write(f"#sequences\t{n_}\n#sites\t{L}\n#site\t" + "\t".join(AA) + "\n")
         for i in range(L):
-            f.write(f"{i + 1}\t" + "\t".join(str(x) for x in M[key][i]) + "\n")
-    print(f"wrote {OUT}/counts_all_lineages_{lab}.tsv ({NS[key]} sequences)")
+            f.write(f"{i + 1}\t" + "\t".join(str(x) for x in m_[i]) + "\n")
+    print(f"wrote counts_all_lineages_{lab(c)}.tsv ({n_} sequences)")

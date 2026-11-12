@@ -23,7 +23,10 @@ run_export <- function(script, rds, extra_env = character(0)) {
   readRDS(rds)
 }
 
-DROP <- paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
+## The 2021 version also draws the antiGen / PFM gate (user), which the main roster drops.
+FIG_ARM <- Sys.getenv("FIG_ARM", unset = "2023")
+DROP_HERE <- if (FIG_ARM == "2021") setdiff(DROP_MAIN, "gated_static_xfmr_pssm_lr0.0001") else DROP_MAIN
+DROP <- paste0("REVISED2_DROP=", paste(DROP_HERE, collapse = ","))
 message("  [1/1] codon-distance-1, >= 100 post-cutoff sequences ...")
 ## FIG_ARM=2021 draws the same thing for all RBD cells at the 2021-01-01 cutoff.
 FIG_ARM <- Sys.getenv("FIG_ARM", unset = "2023")
@@ -52,7 +55,7 @@ bar_row <- function(x, hdr, letters) {
                       nrow = 1, rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters),
             nrow = 1, rel_widths = c(HDR_W, 1))
 }
-RBD_IN <- 2.52 + 0.2; LEG_IN <- 0.40
+RBD_IN <- 2.52 + 0.2; LEG_IN <- if (FIG_ARM == "2021") 0.75 else 0.40   # 2021 key wraps (gate type)
 key_row <- plot_grid(NULL, ca$legend, nrow = 1, rel_widths = c(HDR_W, 1))
 save_figure(plot_grid(bar_row(ca, paste0("1 nt, \u2265100 seqs, ", FIG_ARM), LETTERS[1:4]), key_row,
                       ncol = 1, rel_heights = c(RBD_IN, LEG_IN)),

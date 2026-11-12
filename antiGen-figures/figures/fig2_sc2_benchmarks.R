@@ -1406,7 +1406,14 @@ make_gate_plot <- function(df, col_name, title, ylab, SUPP = FALSE,
     ggtitle(title) +
     theme_paper()
 
-  if (!is.na(xlim_hi)) p <- p + xlim(c(NA, xlim_hi))
+  ## Opt-in (NOTES s162): breaks at these decimal-year cutoffs, labelled "Apr 2020".
+  ## Unset, the published axis is unchanged.
+  xb <- getOption("sc2.gate_xbreaks", NULL)
+  if (!is.null(xb)) {
+    p <- p + scale_x_continuous(
+      breaks = xb, labels = paste(month.abb[round((xb %% 1) * 12) + 1], floor(xb)),
+      limits = if (is.na(xlim_hi)) NULL else c(NA, xlim_hi))
+  } else if (!is.na(xlim_hi)) p <- p + xlim(c(NA, xlim_hi))
   if (!show_legend) return(p + theme(legend.position = "none"))
 
   if (SUPP) {

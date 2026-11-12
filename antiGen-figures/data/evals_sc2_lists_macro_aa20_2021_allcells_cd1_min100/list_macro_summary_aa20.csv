@@ -31,6 +31,8 @@ esm2_esm2_t12_35M_UR50D_lr0.001_noft,list_allcells_fullpool,0.10,0.10160267,0.11
 esm2_esm2_t12_35M_UR50D_lr0.001_noft,list_allcells_unseen_fullpool,0.10,0.08653657,0.11246366,90,5504
 eve_frozen,list_allcells_fullpool,0.10,0.41566030,0.58748202,364,39615
 eve_frozen,list_allcells_unseen_fullpool,0.10,0.18295513,0.16293605,90,5504
+gated_static_xfmr_pssm_lr0.0001,list_allcells_fullpool,0.10,0.54999639,0.71777357,364,39615
+gated_static_xfmr_pssm_lr0.0001,list_allcells_unseen_fullpool,0.10,0.36989519,0.38081395,90,5504
 mcm_interpolation,list_allcells_fullpool,0.10,0.43475086,0.58748707,364,39615
 mcm_interpolation,list_allcells_unseen_fullpool,0.10,0.34370974,0.35846657,90,5504
 pssm_root,list_allcells_fullpool,0.10,0.53966669,0.72979471,364,39615

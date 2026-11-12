@@ -37,6 +37,8 @@ options(
   sc2.gating_dir         = GATE_ENV("REVISED2_GATE_DIR", "data/gating_macro_aa20"),
   sc2.gate_loader        = "by_macro",
   sc2.gate_macro_col     = GATE_ENV("REVISED2_GATE_COL", "macro"),
+  sc2.gate_xbreaks       = if (nzchar(Sys.getenv("REVISED2_GATE_XBREAKS")))
+    as.numeric(strsplit(Sys.getenv("REVISED2_GATE_XBREAKS"), ",", fixed = TRUE)[[1]]),
   ## The common pool, matching the event-weighted panel. `_fullpool` is the other pool
   ## and is NOT what the published panel scores.
   sc2.gate_macro_variant = "list_allcells",

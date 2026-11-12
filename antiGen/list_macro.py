@@ -372,6 +372,9 @@ def main():
                          'W * mean-log-prob(--mix-dir) + W2 * (--mix-dir2) + W3.. * each '
                          '--mix-baseline in order, every component normalised per query '
                          'over the eval range as ens_vs10_2023 is. Repeatable.')
+    ap.add_argument('--seen-min-count', type=int, default=1,
+                    help='training-window sequence count at which a cell counts as seen '
+                         '(default 1: unseen = de novo). NOTES s162 uses 100.')
     ap.add_argument('--cd1-variants', action='store_true',
                     help='add list_<l>_cd1_fullpool and list_<l>_unseen_cd1_fullpool: pool '
                          'and targets restricted, per query, to substitutions one nucleotide '
@@ -581,7 +584,13 @@ def main():
         pssm_root, _pssm_variant = load_pssms(os.path.join(args.data_dir, "pssms"), variant, E)
     else:
         raise SystemExit("--root-counts, or a --data-dir carrying pssms/root.csv.")
-    seen_mask = pssm_root > 0
+    # A cell is "seen" from --seen-min-count training-window sequences up (default 1:
+    # the published de novo convention, pssm_root == 0). NOTES s162 sets 100, so the
+    # `unseen` variants become "rare in training" (< 100 sequences).
+    seen_mask = pssm_root >= args.seen_min_count
+    if args.seen_min_count != 1:
+        print(f"seen = training-window count >= {args.seen_min_count}: the `unseen` "
+              f"variants are cells seen in fewer than {args.seen_min_count} sequences")
     reach1 = None
     if args.cd1_variants:
         from antiGen.models.codon_fitness_predictor import build_codon_lookup

@@ -13686,3 +13686,102 @@ sequences dated >= 2021-01-01, counted over ALL lineages.
 Not drawn, but present in the run: Bloom & Neher (BloomNeher_2023-10-01) scores 0.525 / 0.673
 and 0.611 / 0.749. It is fit on data through 2023-10, so at a 2021 cutoff it is not out
 of sample, and the drawer's roster leaves it out.
+
+**supp_cd1_min100_2021 + the antiGen / PFM gate** (user). gated_static_xfmr_pssm_lr0.0001
+(2021 checkpoint from ckpt_stage_aa20) was added to `evals_cd1_2021/ckpt` and scored by
+resume (job 3732903, 1.5 min; the 26 models already scored were skipped). The figure
+keeps it in this version only: DROP_MAIN minus the gate. Its key gets 0.75 in, because
+the extra model type wraps it to two rows. Gate: all cells 0.550 / 0.718 (1st per cell,
+2nd per mutation after PFM 0.730); de novo 0.370 / 0.381. antiGen CV x10 is 0.447 / 0.480;
+EVEscape is 0.370 / 0.429 (it edges the gate per cell, 0.37001 against 0.36990).
+
+## 162. supp_cd1_min100_2021's de novo panels (C, D) swept over cutoffs (2026-11-12)
+
+User request, overnight: the quantity of supp_cd1_min100_2021 C/D swept over train/test
+cutoffs, like sc2_results_revised2 L/M, from the earliest cutoff to the last one with
+enough de novo cells to discriminate models (2023-01-01 is too late: 1 cell).
+
+Quantity at cutoff D: top-decile recall (q = 0.1) of each query's one-nucleotide pool
+restricted to de novo cells (pssm_root == 0 over D's training window), scoring target
+cells that are de novo, one nucleotide away, AND seen in >= 100 sequences (all lineages)
+dated >= D. Per cell (macro) and per mutation (micro). Fixed top-q rule (s161).
+
+* Corpus and roster: panel L's per-cutoff series (`submit_macro_allcells_aa20.sh
+  CUTOFF=D`: the sc2-D train split, the shared test file with --split-date D
+  --pool-examples, substitution seed 0, the 4,020-cell incl_ref list, checkpoints
+  `cutoff_stage_aa20/D`), plus --mcm-baseline --cd1-variants, into
+  `STORE/evals_cd1_series/D`. Only the single antiGen model, the gate, ESM-2 35M and
+  BLOSUM62 were trained per cutoff, so the antiGen line is the SINGLE model (as in L/M),
+  not CV x10. At 2021-01-01 this corpus differs from supp_cd1_min100_2021's 2021-arm
+  corpus (sc2-2021 train/test), so that point need not equal it.
+* Masks: postcutoff_counts.py extended to every cutoff (all-lineage PFM of sequences
+  dated >= D), each gated against counts_ba2 at all 24 dates.
+* **Stopping rule, fixed BEFORE any model's result is read.** It is computed from cell
+  and event counts only, which are model-independent. A cutoff is drawn only if its scored
+  set has >= 30 cells AND >= 300 events. The series runs from 2020-04-01 to the last
+  cutoff D such that every cutoff up to D passes.
+
+**Second arm (user): rare in training instead of de novo.** The same eval, with cells
+seen in FEWER THAN 100 training-window sequences in place of de novo cells. Each query's
+pool is its one-nucleotide cells with training count < 100, and the scored targets are
+those cells seen in >= 100 sequences dated >= D. Implemented as `list_macro.py
+--seen-min-count 100`: "seen" is training count >= N, default 1 = the published de
+novo convention, unchanged; the unseen variants then mean count < 100. The run goes to
+`STORE/evals_cd1_series_rare100/<D>` through `run_cd1_series_rare100.sh` (the de novo
+driver's twin). Same stopping rule, applied to this arm's own counts and fixed now,
+before any result: >= 30 cells and >= 300 events.
+
+**Results.** Both drivers completed all 11 cutoffs (2020-04-01 .. 2022-10-01; 22 runs,
+gpu_batch). `stage_cd1_series.py` checks each cutoff by comparing the unmasked per-cell
+rows with the run's own summary. The worst difference over all 22 runs is 1.0e-5.
+
+Scored set per cutoff (model-independent), with the stopping rule applied:
+
+| cutoff | de novo cells / events | <100-training cells / events |
+|---|---|---|
+| 2020-04-01 | 254 / 23,376 | 311 / 33,791 |
+| 2020-07-01 | 178 / 12,925 | 306 / 31,735 |
+| 2020-10-01 | 138 / 8,455 | 300 / 29,413 |
+| 2021-01-01 | 90 / 5,504 | 284 / 24,631 |
+| 2021-04-01 | 47 / 2,652 | 242 / 18,058 |
+| 2021-07-01 | 31 / 1,725 | 203 / 13,222 |
+| 2021-10-01 | 24 / 1,449 (fails: stop) | 142 / 8,424 |
+| 2022-01-01 | 9 / 529 | 74 / 4,110 |
+| 2022-04-01 | 3 / 135 | 58 / 2,697 |
+| 2022-07-01 | 3 / 135 | 44 / 1,896 |
+| 2022-10-01 | 1 / 15 | 33 / 1,199 |
+
+So the de novo arm is drawn from 2020-04-01 to 2021-07-01 (6 cutoffs), and the
+<100-training arm at all 11. At 2021-01-01 the de novo set is the same 90 cells and
+5,504 events as s160. The gate scores exactly s160's 0.370/0.381 there, because it is
+the same checkpoint on the same cells. The single antiGen model scores 0.402/0.436
+against s160's CV x10 0.470/0.609.
+
+Per cell / per mutation at q = 0.1 (antiGen = simple_d128_n2 single model; gate =
+gated_static_xfmr_pssm; the best non-antiGen line is named):
+
+| cutoff | antiGen | gate | best other |
+|---|---|---|---|
+| de novo 2020-04-01 | 0.288 / 0.353 | 0.280 / 0.348 | wxw_dirichlet 0.510 / 0.674 |
+| de novo 2020-10-01 | 0.320 / 0.341 | 0.305 / 0.358 | wxw_dirichlet 0.520 / 0.548 |
+| de novo 2021-01-01 | 0.402 / 0.436 | 0.370 / 0.381 | wxw_dirichlet 0.544 / 0.606 |
+| de novo 2021-04-01 | 0.639 / 0.709 | 0.669 / 0.709 | mcm_interpolation 0.620 / 0.704 |
+| de novo 2021-07-01 | 0.693 / 0.743 | 0.664 / 0.796 | wxw_dirichlet 0.700 / 0.746 |
+| <100 2020-04-01 | 0.289 / 0.363 | 0.284 / 0.361 | wxw_dirichlet 0.486 / 0.685 |
+| <100 2021-01-01 | 0.439 / 0.552 | 0.472 / 0.604 | mcm 0.524 / 0.667 |
+| <100 2021-07-01 | 0.555 / 0.686 | 0.540 / 0.663 | mcm 0.561 / 0.615 |
+| <100 2022-01-01 | 0.507 / 0.556 | 0.508 / 0.570 | wxw_dirichlet 0.550 / 0.683 |
+| <100 2022-10-01 | 0.648 / 0.760 | 0.731 / 0.831 | mcm 0.578 / 0.567 |
+
+Reading: through 2020 the statistical baselines (S x S / S x M with MCM interpolation,
+MCM) lead by about 0.2, with antiGen near EVEscape. antiGen climbs steeply from
+2021-01-01 and ties the leaders from 2021-04-01, which is roughly when Alpha-era data
+enters training. In the <100 arm it leads or ties from mid-2021, except at 2022-01-01,
+and the gate is top at the last two cutoffs. As in s160, Bloom & Neher is not drawn,
+because it is fit through 2023-10 and so is not out of sample.
+
+Figure: `figures/figS_cd1_series.R` -> `figs/supp_cd1_series.png`. Data:
+`data/gating_cd1_dn_min100/`, `data/gating_cd1_rare100_min100/`. Drawer change:
+`make_gate_plot` takes an opt-in `sc2.gate_xbreaks` option, set through
+`REVISED2_GATE_XBREAKS` in panels_gate_macro_export.R. It puts breaks at decimal-year
+cutoffs labelled "Apr 2020". Unset, every published axis is unchanged.
