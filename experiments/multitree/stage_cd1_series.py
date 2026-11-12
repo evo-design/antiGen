@@ -42,7 +42,8 @@ OUT = ("/home/ivan.specht/antiGen/antiGen-figures/data/gating_cd1_"
 VAR = "list_allcells_unseen_cd1_fullpool"
 CUTS = sys.argv[1:] or ["2020-04-01", "2020-07-01", "2020-10-01", "2021-01-01", "2021-04-01",
                         "2021-07-01", "2021-10-01", "2022-01-01", "2022-04-01", "2022-07-01",
-                        "2022-10-01"]
+                        "2022-10-01", "2023-01-01", "2023-04-01", "2023-07-01", "2023-10-01",
+                        "2024-01-01"]
 
 table, passing, stopped = [], [], None
 for d in CUTS:
