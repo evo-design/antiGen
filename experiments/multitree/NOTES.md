@@ -13938,3 +13938,29 @@ later cutoffs fail too: 20/471, 11/227, 6/157, 6/132. The drawn range, 2020-04-0
 2022-10-01, is unchanged, and so is the staged data. Count strips over each panel show
 the cells (per-cell panels) or events (per-mutation panels) behind every point, with the
 rule's floor dashed.
+
+## 164. supp_lm_cd1: sc2_results_revised2 L/M at codon distance 1 (2026-11-12)
+
+User: a supplementary L/M on codon-distance-1 mutations only. No new compute. The
+s162/s163 series runs (`STORE/evals_cd1_series_rare100_trainonly`, all 16 of L/M's
+cutoffs) carry `list_allcells_cd1_fullpool`: every RBD cell, with pool and targets
+restricted per query to cells 1 nt from that query's own residue. Every model in them is
+fitted on the train tree only. That variant applies no seen mask, so the arm's
+`--seen-min-count 100` does not touch it: its 225 rows are identical to the de novo arm's
+at 2021-01-01 and 2022-04-01.
+
+* `experiments/multitree/stage_lm_cd1.py` -> `data/gating_macro_aa20_cd1/<D>/` (variant
+  renamed `list_allcells` for the by_macro loader; 25 models per cutoff). Scored set:
+  1,236 cells / 50,283 events at 2020-04-01, down to 432 / 3,676 at 2024-01-01.
+* `figures/figS_lm_cd1.R` -> `figs/supp_lm_cd1.png`. A = per cell (L's quantity),
+  B = per mutation (M's, through list_macro's micro column). Same drawer, roster and
+  labels as L. antiGen is the single per-cutoff model.
+* Rule: s161 throughout. The main L/M are still on the pre-s161 rule, so the two differ
+  by up to ~1e-3 on that account alone.
+* Cross-check at 2023-01-01 against the cd1 2023 run (pre-s161 rule, pooled fits):
+  antiGen 0.309/0.737 -> 0.308/0.736, gate 0.317/0.749 -> 0.317/0.748, PFM and EVEscape
+  within 1e-3, BLOSUM62 identical. S×S per mutation 0.531 -> 0.519 is the pooling fix.
+
+Reading: per cell (A), antiGen and the gate lead or tie PFM at every cutoff, and the
+statistical models trail from 2022. Per mutation (B), the gate leads throughout. The
+single antiGen model is behind PFM until 2022 and level with the gate from mid-2022.
