@@ -99,6 +99,7 @@ from antiGen.load import load_examples                                     # noq
 from antiGen.models.factory import create_model                            # noqa: E402
 from calibrate_forecast import collect, temp_probs, AL, E                  # noqa: E402
 from forecast_hit_summary import Q, STOP                                 # noqa: E402
+from antiGen.eval_utils import topq_boundary  # exact q * n (NOTES s161)
 
 GAP = AL.index('-')
 ## Selection budgets. 10% is the figure's long-standing headline; 1% is the
@@ -352,7 +353,7 @@ def hits_at_q(scores, tg, aa, q):
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
     n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
-    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, q, dim=1).view(B, 1, 1)
     above, at = s > vb, s == vb
     n_above = above.reshape(B, -1).sum(1).float()
     frac = ((q * n_valid - n_above)
@@ -378,7 +379,7 @@ def caught_mask(scores, aa, cols, q=Q):
     s = torch.where(torch.isneginf(s), torch.full_like(s, float('nan')), s)
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
-    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, q, dim=1).view(B, 1, 1)
     return s > vb
 
 

@@ -56,6 +56,7 @@ from antiGen.models.factory import create_model                            # noq
 from calibrate_forecast import collect, AL, E                              # noqa: E402
 from collect_figure_metrics import (logp_model, seen_cells, split_temporal,  # noqa: E402
                                     FORECAST_PT, GAP, PANEL, STOP, WXW_SEEDS)
+from antiGen.eval_utils import topq_boundary  # exact q * n (NOTES s161)
 
 dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 QS = [0.10, 0.01]
@@ -86,7 +87,7 @@ def split_hits(score, tg, aa, keep, q):
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
     n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
-    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, q, dim=1).view(B, 1, 1)
     above, at = s > vb, s == vb
     n_above = above.reshape(B, -1).sum(1).float()
     n_at = at.reshape(B, -1).sum(1).float()

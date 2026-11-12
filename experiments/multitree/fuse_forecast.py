@@ -69,6 +69,7 @@ from antiGen.train import split_examples                                   # noq
 from calibrate_forecast import collect, AL, E                              # noqa: E402
 from collect_figure_metrics import logp_model, seen_cells                  # noqa: E402
 from forecast_hit_summary import per_example_hits                          # noqa: E402
+from antiGen.eval_utils import topq_boundary  # exact q * n (NOTES s161)
 
 PANEL = ['ncov', 'rsv_a', 'rsv_b', 'h5nx', 'measles',
          'denv1', 'denv2', 'denv3', 'denv4']
@@ -137,7 +138,7 @@ def hit_parts(score, aa):
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
     n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
-    vb = torch.nanquantile(fl, 1.0 - Q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, Q, dim=1).view(B, 1, 1)
     above, at = s > vb, s == vb
     frac = ((Q * n_valid - above.reshape(B, -1).sum(1).float())
             / at.reshape(B, -1).sum(1).float().clamp(min=1)).clamp(0.0, 1.0)

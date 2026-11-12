@@ -13486,7 +13486,22 @@ needs a larger de novo dev set (e.g. pooled across all 10 splits) or a rank crit
 
 Round 3 (`round3.sh`, unattended) repeats the selection with each joint member's own
 --save-best checkpoint from the 12-epoch continuation (holdout bests so far: s0 epoch 6,
-s1 epoch 7, s2 still improving at epoch 8), and scores it the same way. Results: pending.
+s1 epoch 7, s2 still improving at epoch 8), and scores it the same way.
+
+**Round 3 result.** The 12-epoch holdout minimum is epoch 9 for all three members (7.593 /
+7.611 / 7.595; epochs 10-11 are worse), so J = epoch 9. Gates reproduce (worst 0.0003).
+
+| pick (weights A/J/C/S/K) | holdout all | holdout de novo | C | D | E | F |
+|---|---|---|---|---|---|---|
+| antiGen CV x10 | 7.5695 | 14.29 | 0.599 | 0.930 | 0.497 | 0.688 |
+| A+J+C on the grid (.60/.35/.05/0/0) | 7.5450 | 13.77 | | | | |
+| **primary** (.55/.35/0/.05/.05) | **7.5431** | 13.66 | 0.614 | 0.926 | 0.477 | 0.695 |
+| secondary, de novo (0/0/.25/0/.75) | 9.0377 | 10.42 | 0.408 | 0.511 | 0.573 | 0.560 |
+
+Across rounds 1-3, every dev pick lifts C by about +0.012 to +0.015. D is flat. E moves
+-0.020 to +0.016 and F moves 0.000 to +0.021, with no consistent sign. Holdout NLL keeps
+improving (7.5507 -> 7.5490 -> 7.5431) without the panels following. The robust gain from
+the joint model is on C; the round 1 E/F gain is best read as noise.
 
 ## 159. Panel E at codon distance 1 (2026-11-11)
 
@@ -13532,3 +13547,142 @@ figure's C-F on this restriction. It uses the same export (`panels_coguk_export.
 variant names into `data/evals_sc2_lists_macro_aa20_2023-01-01_cd1`, and leaves out the
 blend rungs. antiGen (CV x10) is first in all four panels. Second place: PFM on A and B,
 S×S on C, EVEscape on D (0.510; antiGen 0.635).
+
+**Why A-D read lower than the main figure's C-F: the decile shrinks, not a bug.** A
+query's full pool has 3,819 non-wild-type RBD cells, so the decile is 382 slots; 1,565 of
+those cells are one nucleotide away. A model that ranks one-nucleotide cells first spends
+its 382 slots on its top ~24% of them in the main figure, against 157 slots (10%) here.
+Diagnostic (verify_cd1.py, C1t): one-nucleotide targets ranked over the FULL pool give
+antiGen CV x10 0.634 / 0.942, in line with the main figure's 0.599 / 0.930.
+
+**Independent check** (`experiments/multitree/verify_cd1.py`). It shares only data and
+model loading with list_macro, and recomputes the reachability, pools, fractional top-q
+selection and pooling. Cell and event counts match in every variant. A constant score gives
+exactly 0.100 everywhere. Codon and simple_d128 match to <= 4e-8 on C, E, C1 and E1, with
+codon's route counts rounded so its exact ties stay exact; float64 sum order otherwise
+splits ties (up to 0.008). mcm_interpolation and the CV x10 ensemble differ by <= 0.007,
+which I attribute to GPU vs CPU float32 near-ties. The first version of the verifier had its
+own bug (per-cell hits added back in sorted order); fixed.
+
+**Row 2, G-J at codon distance 1** (`evals_cd1_2021`, the COG-UK escape list at
+2021-01-01). Only the main figure's roster is scored; checkpoints are staged in
+`evals_cd1_2021/ckpt`. Gates: all 972 re-scored rows reproduce the published G-J data
+exactly, and the natively scored ensemble (ens_vs10_2021, --ensemble-dir
+ckpt_stage_vs10_aa20) reproduces the published `ens_8a91fbbf88` to 1e-7.
+`stage_cd1_2023.sh ARM=2021` stages it under that name only if that gate passes. cd1 sets:
+211 cells / 17,465 events, and de novo 106 / 3,381. supp_cd1 is now two rows: A-D = C-F,
+E-H = G-J.
+
+| model | G-J (macro/micro: all, de novo) | G-J at cd1 (all, de novo) |
+|---|---|---|
+| antiGen CV x10 | 0.545/0.831, 0.508/0.711 | 0.375/0.657, 0.384/0.427 |
+| EVEscape | 0.359/0.498, 0.387/0.545 | 0.374/0.492, **0.426/0.543** |
+| BA.1 DMS (expression) | 0.276/0.300, 0.320/0.483 | 0.291/0.290, 0.384/0.484 |
+| SxS-MCM interp. | 0.514/0.828, 0.483/0.705 | 0.334/0.644, 0.295/0.286 |
+| PFM | 0.449/0.790, 0.100/0.100 | 0.307/0.637, 0.100/0.100 |
+| codon | 0.282/0.292, 0.308/0.342 | 0.145/0.144, 0.140/0.088 |
+
+On escape, the restriction costs antiGen most on de novo escape per mutation
+(0.711 -> 0.427), while EVEscape and the DMS barely move. At cd1, antiGen is 1st on all
+escape (E, F) but 3rd on de novo escape (G, H), behind EVEscape and BA.1 DMS (expression).
+Part of antiGen's de novo escape lead in the main figure is the genetic code. The all-RBD
+row's lead is not.
+
+## 160. supp_cd1 C-F scored only on cells seen in >= 100 post-cutoff sequences (2026-11-12)
+
+User request: keep supp_cd1's per-query top decile (the one-nucleotide pool, de novo for
+the de novo panels, and the same ranking), but score only (position, residue) cells seen
+in >= 100 sequences dated on or after the 2023-01-01 cutoff. All-RBD row only (user:
+C-F only, no G-J).
+
+* Mask: the PFM `sc2-test/counts_ba2/counts_2023-01-01.tsv` (688,459 sequences dated >=
+  2023-01-01; the BA.2 subtree, which after this date is essentially every sequence).
+  339 of 4,020 RBD cells pass (wild-type residues included).
+* Because the pool and ranking are unchanged, each cell's hit mass is unchanged. The panels
+  are recomputed from the s159 run's per-cell output (`stage_cd1_min100.py`); nothing is
+  re-scored. Gate: the per-cell rows, unmasked, reproduce the run's summary for all 70
+  (model, variant) pairs (worst 6.9e-6; per-cell hits are stored to 4 decimals).
+* `figures/figS_cd1_min100.R` -> `figs/supp_cd1_min100.png`; arm `cd1min100_2023`.
+
+Panel A/B (all, per cell / per mutation; 183 cells, 8,904 events): antiGen CV x10
+0.781 / 0.898, PFM 0.770 / 0.835, EVE 0.710 / 0.747, SxS-MCM interp. 0.636 / 0.790,
+Tranception 0.544 / 0.563, SxS 0.504 / 0.595, EVEscape 0.290 / 0.254, codon 0.121 / 0.184.
+
+**Panels C/D are degenerate: ONE cell survives,** V445H (BA.2.86's; 13 test events,
+197,803 post-cutoff sequences). Every model that ranks it in the top decile scores 1.0;
+the others score 0. At lower thresholds the de novo set is still tiny (>= 5 sequences:
+11 cells / 60 events; >= 10: 5 / 46; >= 20 and >= 50: 2 / 28). A cell absent from the
+7.8M training-window sequences rarely reaches 100 sequences afterwards.
+
+## 161. The top-q selection over-selected by up to one cell per query: fixed (2026-11-12)
+
+**Found by** verify_cd1.py (s159). Fed the verifier's own scores and pools,
+`compute_hit_rate` reproduced list_macro exactly, but differed from the verifier's
+brute-force expected-hits selection (selecting exactly q * n cells, ties split
+uniformly) by up to 0.007.
+
+**The bug.** The boundary value was `torch.nanquantile(p, 1 - q, interpolation='lower')`,
+the element at ascending index floor((1 - q)(n - 1)). The cells strictly above it can
+number MORE than q * n: with untied scores, n_above = n - 1 - floor((1 - q)(n - 1)),
+e.g. 86 against q * n = 85.4 at n = 854, or 10 against 9.5 at n = 95. The tie fraction
+`(q n - n_above) / n_at` then clamps to 0, so the selection overshoots q * n by up to one
+cell. It was exact only when the boundary fell inside a tied block. The docstring promised
+"exactly q * n_valid cells". The bias favours continuous scores over coarse ones
+(constant, codon, PFM, BLOSUM62). It is <= 1 / (q n) of the decile: <= 0.3% on the full
+pools (~3,800 cells), ~0.6-2% on the codon-distance-1 and de novo pools.
+
+**The fix.** `eval_utils.topq_boundary`: the ceil(q n)-th largest valid value. Then
+n_above <= ceil(q n) - 1 < q n <= n_above + n_at, so frac is in [0, 1] and the selection
+is exactly q * n. It is used by every value-based copy: compute_hit_rate, the second
+copy in eval_utils, list_variant_recall, list_recall, and zeroshot_probe, tie_probe,
+fuse_forecast, forecast_hit_summary, figure_nll_audit and collect_figure_metrics. The
+rank-based rebuild `background_discrimination.top_q_weight` (rank_fractions consumers:
+ensemble_report / sweep / diagnostics, rescore_common_pool, backbone_list_eval,
+background_contrast) now takes the boundary at top rank ceil(q n) - 1.
+`tests/test_topq_exact.py` pins exact q * n selection for untied, tied and coarse scores.
+`test_validate_alphabet::test_the_twenty_two_letter_path_is_unchanged` compares against
+`git show HEAD:eval_utils.py` bit-for-bit, so it fails until this is committed (BLOSUM62's
+hit rate moves 0.2050 -> 0.2049).
+
+Size on the s159 run (verifier = the corrected rule): antiGen CV x10 C 0.5992 -> 0.5991,
+E 0.4970 -> 0.4970, C1 0.3320 -> 0.3314, E1 0.5569 -> 0.5528; mcm_interpolation E
+0.5192 -> 0.5121. Codon, constant and simple_d128 unchanged to 1e-8.
+
+**Every hit-rate CSV written before this is stale.** Regeneration of the published figures:
+see below.
+
+**Decision (user, 2026-11-12): the published figures are NOT regenerated.** The effect is
+too small to matter (<= 0.3% of the decile on their pools). Everything computed from now on
+uses the fixed rule. So the existing sc2_results_revised2 (+ supp), supp_fixed_split,
+supp_fullspike, supp_gate_units, supp_query_adapt, supp_cd1 and supp_cd1_min100 (2023)
+are on the OLD rule, and supp_cd1_min100_2021 (job 3732770, submitted after the fix) is on
+the NEW one. A regeneration plan (about 34 GPU-h, about 5 CPU-h; only the 2021 list maps
+and the background caches are replayable) is in this session's record if it is ever wanted.
+
+**supp_cd1_min100_2021** (fixed top-q rule, s161). The same eval for all RBD cells at a
+2021-01-01 cutoff: the one-nucleotide pool, and targets limited to cells seen in >= 100
+sequences dated >= 2021-01-01, counted over ALL lineages.
+* Run `STORE/evals_cd1_2021_allcells` (job 3732770, 26 min; main-figure roster: 2021
+  corpus, checkpoints `evals_cd1_2021/ckpt`, antiGen = CV x10 from
+  ckpt_stage_vs10_aa20).
+* Mask `STORE/postcutoff_counts/counts_all_lineages_2021-01-01.tsv` (8,151,572
+  sequences), written by `experiments/multitree/postcutoff_counts.py`. counts_ba2 would
+  miss Alpha, Delta and BA.1. The script reproduces counts_all and counts_ba2 at
+  2021-01-01 and 2023-01-01 exactly before writing; the BA.2 root, found from those
+  totals, is node 3430.
+* `ARM=2021 stage_cd1_min100.py` (gate worst 1e-6), then `FIG_ARM=2021
+  figS_cd1_min100.R`. 509 RBD cells pass the mask.
+
+| model | all, 1 nt, >=100 (cell / mut.; 364 cells, 39,615 events) | de novo (90 cells, 5,504 events) |
+|---|---|---|
+| antiGen CV x10 | 0.470 / 0.609 | **0.447 / 0.480** |
+| EVEscape | 0.225 / 0.264 | 0.370 / 0.429 |
+| SxS | 0.390 / 0.528 | 0.347 / 0.361 |
+| SxS-MCM interp. | 0.435 / 0.587 | 0.344 / 0.358 |
+| BA.1 / BA.2 DMS (expr.) | 0.197 / 0.223, 0.194 / 0.237 | 0.333 / 0.353, 0.333 / 0.358 |
+| PFM | **0.540 / 0.730** | 0.100 / 0.100 |
+| EVE | 0.416 / 0.587 | 0.183 / 0.163 |
+
+Not drawn, but present in the run: Bloom & Neher (BloomNeher_2023-10-01) scores 0.525 / 0.673
+and 0.611 / 0.749. It is fit on data through 2023-10, so at a 2021 cutoff it is not out
+of sample, and the drawer's roster leaves it out.

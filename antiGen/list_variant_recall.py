@@ -74,7 +74,7 @@ from antiGen import datasets
 from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.eval import (config_label, dataset_of_train_args, discover_checkpoints,
                           peek_checkpoint_meta)
-from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask,
+from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask, topq_boundary,
                                 fit_substitution_baseline, load_baselines,
                                 load_checkpoint, positional_marginal_counts,
                                 where_times_which_dirichlet,
@@ -126,7 +126,7 @@ def top_q_weights(scores_2d, qtile, pool_mask=None):
     n_valid = int(valid.sum())
     if n_valid == 0:
         return torch.zeros_like(p), 0
-    vb = torch.nanquantile(p, 1.0 - qtile, interpolation='lower')
+    vb = topq_boundary(p.reshape(-1), qtile).reshape(())   # exact q * n (NOTES s161)
     above = p > vb
     at = p == vb
     n_above = float(above.sum())

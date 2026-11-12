@@ -116,6 +116,34 @@ def real_wildtype_mask(aa_sub, allowed_aas=ALLOWED_AAS):
     return ~(aa_sub.unsqueeze(-1) == bad).any(dim=-1)
 
 
+def topq_boundary(p, q, dim=-1):
+    """The boundary value of an EXACT fractional top-q selection, along ``dim``.
+
+    With ``n`` the number of non-NaN entries in a row and ``k = ceil(q * n)``, this is
+    the k-th largest non-NaN value. Then the cells strictly above it number at most
+    ``k - 1 < q * n`` and, with its tied block, at least ``k >= q * n``, so
+    ``frac = (q * n - n_above) / n_at`` lies in [0, 1] and the selection holds exactly
+    ``q * n`` cells (NOTES s161).
+
+    It replaces ``torch.nanquantile(p, 1 - q, interpolation='lower')``, which is the
+    value at ascending index ``floor((1 - q) * (n - 1))``. That one can leave MORE than
+    ``q * n`` cells strictly above it (with untied scores, n_above = n - 1 -
+    floor((1 - q)(n - 1)) can exceed q * n: n = 854 gives 86 against 85.4). The tie
+    fraction then clamps to 0 and the selection overshoots by up to one cell per query.
+    Tie-heavy scores were exact only when the boundary fell inside a tied block.
+
+    Returns the boundary with ``dim`` kept (size 1); NaN for an all-NaN row.
+    """
+    p = p.float()
+    valid = ~torch.isnan(p)
+    n = valid.sum(dim=dim, keepdim=True)
+    k = torch.ceil(q * n.double() - 1e-9).clamp(min=1).long()
+    s = torch.sort(torch.where(valid, p, torch.full_like(p, float('-inf'))),
+                   dim=dim, descending=True).values
+    vb = torch.gather(s, dim, (k - 1).clamp(max=s.shape[dim] - 1))
+    return torch.where(n > 0, vb, torch.full_like(vb, float('nan')))
+
+
 def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
                      per_cell=False, pool_mask=None, wt_pool_mask=None):
     """Hit mass of the top-q of ``scores``, against ``target_batch``.
@@ -226,7 +254,7 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     n_valid = valid.sum(dim=1).clamp(min=1).float()          # (B,)
     n_needed = qtile * n_valid                                # (B,) target count to select
     # Boundary value = largest actual data value at/below the (1-q) quantile.
-    vb = torch.nanquantile(p_flat, 1.0 - qtile, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(p_flat, qtile, dim=1).view(B, 1, 1)   # exact q * n (NOTES s161)
     above = scores > vb                                       # strictly inside top-q
     at = scores == vb                                         # tied at the boundary
     n_above = above.reshape(B, -1).sum(dim=1).float()
@@ -930,7 +958,7 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
     out = {}
     for q in quantiles:
         n_needed = q * n_valid
-        vb = torch.nanquantile(pf, 1.0 - q, interpolation='lower')
+        vb = topq_boundary(pf.reshape(-1), q).reshape(())   # exact q * n (NOTES s161)
         above = pf > vb
         at = pf == vb
         # The tie fraction is taken over the WHOLE boundary block, filled cells

@@ -75,6 +75,7 @@ from calibrate_forecast import collect, AL, E                              # noq
 from collect_figure_metrics import boot_pooled                             # noqa: E402
 from forecast_hit_summary import STOP                                      # noqa: E402
 from zeroshot_eval import GENES, ZS, FORECAST, FORECAST_PT, panel_substitution_matrix  # noqa: E402
+from antiGen.eval_utils import topq_boundary  # exact q * n (NOTES s161)
 
 dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 FLOOR = 1e-8
@@ -137,7 +138,7 @@ def hits_at_q(scores, tg, aa, mask_stop, q):
     B = s.shape[0]
     fl = s.reshape(B, -1).float()
     n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
-    vb = torch.nanquantile(fl, 1.0 - q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, q, dim=1).view(B, 1, 1)
     above, at = s > vb, s == vb
     n_above = above.reshape(B, -1).sum(1).float()
     n_at = at.reshape(B, -1).sum(1).float().clamp(min=1)

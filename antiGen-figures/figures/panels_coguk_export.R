@@ -54,8 +54,33 @@ if (identical(ARM, "allcells_2023")) {
           coguk.list = "allcells",
           coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
   ENS_ID <- "ens_vs10_2023"
-  T4 <- c(all_pc = "All RBD, 1 nt, per cell", all_evt = "All RBD, 1 nt, per mutation",
-          dn_pc = "De novo RBD, 1 nt, per cell", dn_evt = "De novo RBD, 1 nt, per mutation")
+  T4 <- c(all_pc = "All, 1 nt, per cell", all_evt = "All, 1 nt, per mutation",
+          dn_pc = "De novo, 1 nt, per cell", dn_evt = "De novo, 1 nt, per mutation")
+} else if (identical(ARM, "cd1_2021")) {
+  ## supp_cd1's second row: G-J's COG-UK escape list at 2021-01-01, same restriction.
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_cd1",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_8a91fbbf88"
+  T4 <- c(all_pc = "All, 1 nt, per cell", all_evt = "All, 1 nt, per mutation",
+          dn_pc = "De novo, 1 nt, per cell", dn_evt = "De novo, 1 nt, per mutation")
+} else if (identical(ARM, "cd1min100_2021")) {
+  ## supp_cd1_min100_2021 (NOTES s160): all RBD cells at 2021-01-01 at codon distance 1,
+  ## scored on cells seen in >= 100 sequences (all lineages) dated >= 2021-01-01.
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2021_allcells_cd1_min100",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2021"
+  T4 <- c(all_pc = "All, per cell", all_evt = "All, per mutation",
+          dn_pc = "De novo, per cell", dn_evt = "De novo, per mutation")
+} else if (identical(ARM, "cd1min100_2023")) {
+  ## supp_cd1_min100 (NOTES s160): cd1_2023 with the scored cells limited to those seen
+  ## in >= 100 sequences dated >= 2023-01-01 (stage_cd1_min100.py).
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2023-01-01_cd1_min100",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2023"
+  T4 <- c(all_pc = "All, per cell", all_evt = "All, per mutation",
+          dn_pc = "De novo, per cell", dn_evt = "De novo, per mutation")
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }

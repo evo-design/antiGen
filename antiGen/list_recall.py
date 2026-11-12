@@ -54,7 +54,7 @@ _iu._torchvision_version = "N/A"
 from antiGen import datasets                                               # noqa: E402
 from antiGen.eval import (config_label, dataset_of_train_args,             # noqa: E402
                           discover_checkpoints, peek_checkpoint_meta)
-from antiGen.eval_utils import (RBD_RANGE, load_baselines,                 # noqa: E402
+from antiGen.eval_utils import (RBD_RANGE, load_baselines, topq_boundary,                 # noqa: E402
                                 load_checkpoint)
 from antiGen.load import load_examples, load_pssms                         # noqa: E402
 from antiGen.models.factory import create_model                            # noqa: E402
@@ -82,7 +82,7 @@ def recall_at_q(scores, targets, q):
         return float("nan"), n_valid, n_targets
     if q >= 1.0:
         return 1.0, n_valid, n_targets
-    vb = torch.nanquantile(flat, 1.0 - q, interpolation="lower")
+    vb = topq_boundary(flat, q).reshape(())   # exact q * n (NOTES s161)
     above = scores > vb
     at = scores == vb
     n_above = int(above.sum())

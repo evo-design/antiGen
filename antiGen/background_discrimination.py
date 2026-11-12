@@ -197,9 +197,9 @@ def rank_fractions(scores, aa_batch, eval_range, pool_mask=None, return_filled=F
 def top_q_weight(above, tie, n_valid, q):
     """``compute_hit_rate``'s fractional top-q weight, rebuilt from the stored ranks.
 
-    The boundary is the value ``torch.nanquantile(..., 1 - q, interpolation='lower')``
-    picks: the element at index ``floor((n_valid - 1) * (1 - q))`` of the ascending
-    pool, i.e. the one ``r = n_valid - 1 - that`` places from the top. A cell with ``a``
+    The boundary is the element ``eval_utils.topq_boundary`` picks: the
+    ``ceil(q * n_valid)``-th largest, i.e. the one ``r = ceil(q * n_valid) - 1`` places
+    from the top (NOTES s161; before, the nanquantile 'lower' element). A cell with ``a``
     cells strictly above it and a tied block of ``t`` occupies top ranks ``[a, a + t)``,
     so the boundary block is the one whose interval contains ``r``, and ``A`` is that
     block's ``a``. Cells above the boundary take the whole weight; the boundary block
@@ -220,7 +220,11 @@ def top_q_weight(above, tie, n_valid, q):
     # exact comparison against an integer rank would get wrong.
     a = torch.round(above.reshape(flat_shape) * nv)
     t = torch.round(tie.reshape(flat_shape) * nv)
-    r = nv - 1.0 - torch.floor((nv - 1.0).double() * (1.0 - q) + 1e-9).float()
+    # The boundary is the ceil(q * n)-th largest cell, i.e. top rank r = ceil(q n) - 1,
+    # as `eval_utils.topq_boundary` places it (NOTES s161). It was the nanquantile
+    # 'lower' element, r = n - 1 - floor((n - 1)(1 - q)), which can sit past q * n and
+    # over-select by up to one cell per query.
+    r = (torch.ceil(q * nv.double() - 1e-9).clamp(min=1) - 1.0).float()
 
     TOL = 1e-3
     is_boundary = (a <= r + TOL) & (r < a + t - TOL) & ~torch.isnan(a)

@@ -45,6 +45,7 @@ from antiGen.eval_utils import (compute_hit_rate, fit_substitution_baseline,    
 from antiGen.load import load_examples                                   # noqa: E402
 from antiGen.models.factory import create_model                          # noqa: E402
 from calibrate_forecast import collect, temp_probs, AL, E, PANEL         # noqa: E402
+from antiGen.eval_utils import topq_boundary  # exact q * n (NOTES s161)
 
 ROOT = '/large_storage/hielab/ispecht/multitree/forecast'
 DATA = 'experiments/multitree/data/forecast'
@@ -69,7 +70,7 @@ def per_example_hits(scores, tg, aa, mask_stop):
     fl = s.reshape(B, -1).float()
     n_valid = (~torch.isnan(fl)).sum(1).clamp(min=1).float()
     need = Q * n_valid
-    vb = torch.nanquantile(fl, 1.0 - Q, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(fl, Q, dim=1).view(B, 1, 1)
     above, at = s > vb, s == vb
     n_above = above.reshape(B, -1).sum(1).float()
     n_at = at.reshape(B, -1).sum(1).float().clamp(min=1)
