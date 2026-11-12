@@ -116,6 +116,12 @@ def parse_args():
                              'come from data that had no part in choosing the model. '
                              'Without it the epoch is chosen on val and reported on '
                              'val, which is not a held-out estimate.')
+    parser.add_argument('--val-sources', type=str, nargs='+', default=None, metavar='NAME',
+                        help='With --val-mode random: hold out only from these sources; every '
+                             'other source goes wholly to training (NOTES s155: a joint run '
+                             'selected on SARS-CoV-2 alone, related trees training-only). '
+                             'Each listed source draws the SAME holdout it would alone, since '
+                             'the split is seeded per source name. Default: every source.')
     parser.add_argument('--split-seed', type=int, default=0,
                         help='Seed for the random split, independent of --seed so the split is '
                              'stable across training seeds (--val-mode random only)')
@@ -132,6 +138,13 @@ def parse_args():
                              'validation NLL, as fitness_<prefix>_best.pt. Without this '
                              'only the final epoch is kept, which is typically well past '
                              'the best epoch.')
+    parser.add_argument('--resume-state', type=str, default=None, metavar='PATH',
+                        help='Resumable training (NOTES s155). After every epoch the model, '
+                             'optimizer, scheduler, RNG and validation history are written '
+                             'here (atomically); if the file exists at start, training '
+                             'resumes after its epoch under the same run prefix. The batch '
+                             'order is seeded by seed + epoch, so a resumed run replays the '
+                             'same order. Off by default: no existing run changes.')
     parser.add_argument('--save-best-per-source', action='store_true',
                         help='Also save, for every source, the checkpoint at THAT '
                              'source\'s best validation epoch, as '
@@ -558,6 +571,18 @@ def main():
     else:
         train_by_source, val_by_source = split_examples(
             examples_by_source, args.val_mode, args.val_frac, args.split_seed)
+    if args.val_sources:
+        unknown = set(args.val_sources) - set(examples_by_source)
+        if unknown:
+            raise SystemExit(f"--val-sources names unknown source(s): {sorted(unknown)}")
+        if args.val_mode != 'random':
+            raise SystemExit('--val-sources requires --val-mode random')
+        for n in list(val_by_source):
+            if n not in args.val_sources:
+                train_by_source[n] = train_by_source[n] + val_by_source[n]
+                val_by_source[n] = []
+                print(f"  [{n}] not in --val-sources: all {len(train_by_source[n])} "
+                      f"examples train")
 
     training_examples = [e for n in sources for e in train_by_source[n]]
     total_mutations_train = sum(float(e.mat.sum()) for e in training_examples)
@@ -800,6 +825,12 @@ def main():
     else:
         run_prefix = f"simple_d{args.d_model}_n{args.num_layers}_lr{args.lr}_{timestamp}"
 
+    resume = None
+    if args.resume_state and os.path.exists(args.resume_state):
+        resume = torch.load(args.resume_state, map_location='cpu', weights_only=False)
+        run_prefix = resume['run_prefix']
+        print(f"Resuming {run_prefix} after epoch {resume['epoch']} "
+              f"(global step {resume['global_step']}) from {args.resume_state}")
     write_manifest(args, model_config, args.output_dir, run_prefix,
                    source_summary=source_summary)
     val_metrics_path = os.path.join(args.output_dir,
@@ -905,12 +936,59 @@ def main():
             with open(val_metrics_path, 'w') as f:
                 json.dump(val_records, f, indent=2)
 
+        start_epoch = 0
+        if resume is not None:
+            model.load_state_dict(resume['model_state_dict'])
+            optimizer.load_state_dict(resume['optimizer_state_dict'])
+            if scheduler is not None and resume.get('scheduler_state_dict'):
+                scheduler.load_state_dict(resume['scheduler_state_dict'])
+            torch.set_rng_state(resume['torch_rng'])
+            if torch.cuda.is_available() and resume.get('cuda_rng') is not None:
+                torch.cuda.set_rng_state_all(resume['cuda_rng'])
+            np.random.set_state(resume['numpy_rng'])
+            random.setstate(resume['python_rng'])
+            val_records = resume['val_records']
+            best_val_nll, best_epoch = resume['best_val_nll'], resume['best_epoch']
+            best_val_nll_by_source = resume['best_val_nll_by_source']
+            best_epoch_by_source = resume['best_epoch_by_source']
+            epoch, global_step = resume['epoch'], resume['global_step']
+            avg_train_loss = resume['avg_train_loss']
+            start_epoch = resume['epoch'] + 1
+
+        def save_resume_state():
+            if not args.resume_state:
+                return
+            tmp = args.resume_state + '.tmp'
+            torch.save({'run_prefix': run_prefix, 'epoch': epoch, 'global_step': global_step,
+                        'avg_train_loss': avg_train_loss,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                        'torch_rng': torch.get_rng_state(),
+                        'cuda_rng': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                        'numpy_rng': np.random.get_state(), 'python_rng': random.getstate(),
+                        'val_records': val_records, 'best_val_nll': best_val_nll,
+                        'best_epoch': best_epoch,
+                        'best_val_nll_by_source': best_val_nll_by_source,
+                        'best_epoch_by_source': best_epoch_by_source}, tmp)
+            os.replace(tmp, args.resume_state)
+            # A loadable checkpoint per epoch, so a long run can be scored while it
+            # trains (NOTES s155). In a subdirectory: the output dir's own
+            # fitness_*.pt is the final model, and callers glob for it.
+            ep_dir = os.path.join(args.output_dir, 'epochs')
+            os.makedirs(ep_dir, exist_ok=True)
+            torch.save(build_checkpoint(model, model_config, args, run_prefix,
+                                        seq_len_by_source, source_summary, epoch,
+                                        global_step, avg_train_loss, None),
+                       os.path.join(ep_dir, f"fitness_{run_prefix}_ep{epoch:02d}.pt"))
+            print(f"  resume state and epoch-{epoch} checkpoint saved", flush=True)
+
         print("Starting training...")
 
         best_path = os.path.join(args.output_dir, f"fitness_{run_prefix}_best.pt")
         cells_path = os.path.join(args.output_dir, f"{run_prefix}_val_cells.npz")
 
-        for epoch in range(args.epochs):
+        for epoch in range(start_epoch, args.epochs):
             train_sampler.set_epoch(epoch)   # without this, every epoch replays one order
             total_train_loss = 0.0
             n_batches = 0
@@ -999,6 +1077,7 @@ def main():
                               f"{cells_path} ({n_bytes / 1e6:.1f} MB uncompressed)")
                 del dumper
 
+            save_resume_state()
             if args.max_batches is not None and global_step >= args.max_batches:
                 break
 

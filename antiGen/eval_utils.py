@@ -171,10 +171,17 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
     pm = None
     if pool_mask is not None:
         pm = pool_mask.to(scores.device)
-        if pm.shape != scores.shape[1:]:
+        if pm.dim() == 3:
+            # a PER-QUERY pool (B, R, E), e.g. the codon-distance-1 cells of each
+            # query's own wild type (list_macro --cd1-variants, NOTES s159)
+            if pm.shape != scores.shape:
+                raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the "
+                                 f"(batch, eval-range) score grid {tuple(scores.shape)}")
+        elif pm.shape != scores.shape[1:]:
             raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the eval-range "
                              f"score grid {tuple(scores.shape[1:])}")
-        pm = pm.unsqueeze(0).expand_as(scores)
+        else:
+            pm = pm.unsqueeze(0).expand_as(scores)
     if wt_pool_mask is not None:
         wt = wt_pool_mask.to(scores.device)
         if wt.shape != scores.shape[:2]:

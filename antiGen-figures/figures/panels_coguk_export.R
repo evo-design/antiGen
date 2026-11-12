@@ -46,6 +46,16 @@ if (identical(ARM, "allcells_2023")) {
   ENS_ID <- "ens_vs10_2023"
   T4 <- c(all_pc = "Whole spike, per cell", all_evt = "Whole spike, per mutation",
           dn_pc = "De novo spike, per cell", dn_evt = "De novo spike, per mutation")
+} else if (identical(ARM, "cd1_2023")) {
+  ## supp_cd1 (NOTES s159): the all-cells arm with pool AND targets restricted, per
+  ## query, to substitutions one nucleotide change from the query's wild-type residue
+  ## (stage_cd1_2023.sh stages those variants under the usual names).
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2023-01-01_cd1",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2023"
+  T4 <- c(all_pc = "All RBD, 1 nt, per cell", all_evt = "All RBD, 1 nt, per mutation",
+          dn_pc = "De novo RBD, 1 nt, per cell", dn_evt = "De novo RBD, 1 nt, per mutation")
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }

@@ -13259,3 +13259,276 @@ four transformations) is untouched; it is written by fig2_sc2_benchmarks.R's def
 Position-only controls exceed the prediction for antiGen, S×S, S×S-MCM interp. and the
 PFM on both targets (as in the earlier panel-G addendum "the counted rungs on panel G": the signal is
 largely positional).
+
+## 154. Data-generation seed robustness of antiGen (CV x10), 2023-01-01, panels C-F (2026-11-11; running)
+
+**Question.** How much do antiGen's C-F bars of sc2_results_revised2 move when only
+the seed of the data-generation pipeline changes?
+
+**Data.** `~/antiGen-data-revised/slurm/seed_study.sbatch` (MODE=all, jobs 3705565_1-5,
+2026-11-10) rebuilt the 2023-01-01 training examples under `--seed 1..5`, nothing else
+changed. `--seed` drives every source of randomness at once (queue shuffle, placement
+tie-breaks, allele draws, mutation order on multi-mutation edges). Seed 1 is
+byte-identical to the production `examples_2023-01-01_cur.txt` (cmp), so it is the
+published run and is not retrained. Records / mutations: 53,916 / 244,460 (seed 1),
+53,744 / 244,515, 53,802 / 244,407, 53,863 / 244,256, 53,771 / 244,186 (seeds 2-5).
+
+**Decisions (user).** Seeds 1-5. Only antiGen (CV x10) is retrained; every other bar
+stays the published one. The training seeds are held fixed (split seed i, init seed
+100+i, i = 0..9). The result goes in a new supplementary figure.
+
+**Pipeline**, `experiments/multitree/submit_dataseed_2023.sh`:
+* train: `train_antigen_valsel10.sh` unchanged (ens_vs10_2023's recipe: 10 runs, 256
+  epochs, val-frac 0.1, best epoch kept), only EXAMPLES moved; one array of ten
+  one-run jobs per seed into `$STORE/dataseed_2023-01-01/seed_<k>/valsel/`. Arrays
+  3722088 / 3722090 / 3722092 / 3722094 (seeds 2-5), 12 h limit, gpu_batch.
+* eval: the published 2023 all-RBD run's command (job 3682938's flags: the production
+  `--train-examples`, the test file cut at 2023-01-01, `--pool-examples`, the
+  production root counts, the 4,020-cell list), scoring only the ensemble
+  (`--baselines-only --skip-baselines --ensemble-dir`), so every seed is scored on the
+  identical test data and de novo set. Jobs 3722089 / 91 / 93 / 95, `afterany` on their
+  arrays; each refuses unless all ten runs wrote a final checkpoint, and logs each
+  member's selected epoch.
+* gate: job 3722087 re-scores the PUBLISHED members through the same eval command;
+  it must reproduce the published ens_vs10_2023 row. **Passed** (worst difference 0.0).
+
+Results: pending (the four training arrays wait on gpu_batch).
+
+## 155. A coronavirus pretraining corpus at 2023-01-01, and joint ESM-2 training (2026-11-11)
+
+**Goal (user).** av-multitree's headline -- one ESM-2 35M trained across many trees --
+tried on the 2023-01-01 SARS-CoV-2 cutoff, panels C-F of sc2_results_revised2; first
+pass on coronaviruses only (the other-virus groups are fetched in part and paused).
+
+**No Nextstrain trees qualify.** Charon's archive returned 404 at 2023-01-01 for every
+dataset it answered before rate-limiting us (HTTP 403); of 94 cached current builds only
+3 (ebola-2013, yam HA/NA) have every tip pre-2023. (The nextstrain-data S3 bucket that
+the sc2 series came from was not yet checked for other pathogens.) So every backbone is
+BUILT, `experiments/multitree/corpus2023/`:
+
+* `fetch_group.py` -- Entrez protein, PUBLISHED before 2023-01-01 (PDAT), PDB and
+  patent records excluded; summaries first, so huge groups could be subsampled (default:
+  every record).
+* `split_by_taxon.py` -- the one Coronaviridae spike fetch (13,900 records, SARS-CoV-2
+  excluded by taxon, 300-1600 aa) split by NCBI lineage: every sarbecovirus one group
+  (in the SARS-CoV-2 frame), a species with >= 20 full-length records its own group,
+  smaller ones pooled at subgenus then genus; NCBI's catch-all "species" pool too.
+  19 groups.
+* `build_cov_tree.py` -- clean (length 0.9-1.1x reference, <= 1% ambiguous; sarbecovirus
+  records within 1% of SARS-CoV-2 dropped), MAFFT --keeplength onto the reference
+  (--6merpair: this build's localpair segfaults), backbone = a (country, year)-stratified
+  subsample of <= 1,500 DISTINCT sequences, IQ-TREE 3 LG+G4 -fast with ancestral states,
+  midpoint root, Nextstrain-v2 JSON + root sidecar, then EVERY cleaned record -- partial
+  spikes >= 300 aa included, as fragments -- attached with antigen_arms prepare + place
+  (run_arms.sbatch's train side; dates from collection, else GenBank creation, --no-clock).
+  Internal nodes are '-' where no descendant tip has a residue.
+* Totals: 19 trees, 73,243 mutations. Branch lengths are nothing like SARS-CoV-2's
+  (1.17 mutations per branch, 0.18 in the RBD): 75% of the relatives' mutations sit on
+  branches of > 10. The five genus/subgenus POOLS (97-100% long-branch) were dropped
+  (user); the other 14 species trees keep all branches (no cap, user). 14 trees,
+  ~51,600 mutations.
+
+**Training changes, `antiGen/train.py` (opt-in; no existing run changes):**
+`--resume-state` (model/optimizer/RNG after every epoch, atomic; resumes after the last
+epoch saved, batch order seeded by seed + epoch; also writes epochs/fitness_*_epNN.pt),
+and `--val-sources` (hold out only from the named sources; each keeps the holdout it
+would get alone, since the split is seeded by source name -- verified: 48,524 / 5,392 at
+split seed 0, = antiGen CV x10 member 0). quick_preemptible chunks of 1h55m
+(`train_joint_cov15.sh`, `train_joint_cov15_cv.sh`) because gpu_batch estimated a
+next-day start. `resume_to_ckpt.py` puts joint weights into the control's metadata (a
+joint checkpoint records seq_len 1,447; ESM-2 does not depend on it).
+
+**Single runs, recipe = the published ESM-2 35M partial FT (32 epochs planned, no
+holdout, seed 42).** The published control is its FINAL epoch and has overfit badly:
+the matched SARS-CoV-2-only rerun scores 0.540 / 0.854 / 0.433 / 0.496 at epoch 0
+against the published 0.358 / 0.635 / 0.298 / 0.305 at epoch 31. Matched
+(joint - SARS-CoV-2 only), C / D / E / F:
+
+| epoch | difference |
+|---|---|
+| 0 | -0.006 / +0.004 / +0.039 / +0.128 |
+| 1 | +0.007 / +0.004 / +0.033 / +0.170 |
+| 2 | -0.024 / -0.017 / -0.029 / +0.021 |
+
+Both single runs were stopped after epoch 2 (user).
+
+**CV x3 (av-multitree's headline is CV x3, joint49_*_val_s0-s2).** Members 0-2: split
+seed i, init 100+i, 10% SARS-CoV-2 holdout only (--val-sources), the 14 trees train
+wholly, 6-epoch budget, --save-best. All three selected epoch 5 = the LAST: the budget
+binds (continuations to 12 epochs, jobs 3729032-34, resume after epoch 5). Mean-of-log-
+probs average, C-F: 0.564 / 0.892 / 0.480 / 0.681 (antiGen CV x10 0.599 / 0.930 / 0.497 /
+0.688). Per-epoch panel scores (monitoring only, they chose nothing) peaked on E/F at
+epoch 2 (0.509 / 0.702) while C/D kept rising.
+
+## 156. Next-mutation prediction from the mutation history (2026-11-11)
+
+`antiGen/history.py`, `experiments/history/`, `list_macro.py --history-model`. Query =
+the node's mutations from the tree ROOT (Wuhan-Hu-1, shared by the train and test trees;
+verified: root + history reproduces every record's sequence, 53,916 train and 75,606
+test records). Same targets and loss as antiGen, holdout = antiGen member 0's.
+
+| model | holdout NLL | C | D | E | F |
+|---|---|---|---|---|---|
+| v1: ordered history, one [QUERY] vector, tied output | 7.971 | 0.437 | 0.772 | 0.380 | 0.482 |
+| v2: ordered history, per-site queries cross-attend | 7.545 | 0.483 | 0.837 | 0.400 | 0.504 |
+| history as an unordered SET (+15% token dropout) | 7.523 | 0.474 | 0.809 | 0.400 | 0.518 |
+| NET DIFFERENCE set from the root (+15% dropout) | 7.539 | 0.532 | 0.851 | 0.518 | 0.582 |
+| (antiGen CV x10 member 0 / ensemble) | 7.561 | 0.599 | 0.930 | 0.497 | 0.688 |
+
+The history models beat antiGen on the holdout and lose on the test panels: test
+histories are longer (median 51 against 18 mutations; 42 against 12 sites differing from
+the root) and come from another inferred tree. The net-difference set -- a function of
+the genotype alone, so tree-invariant -- closes most of the gap (E 0.518 ties S×S-MCM
+interp.), but it carries no history beyond the genotype. Conclusion: no gain from the
+history itself. Line paused (user).
+
+## 157. Blending the joint ESM-2 with antiGen CV x10, chosen on the development holdouts (2026-11-11)
+
+**Rule: nothing is chosen on the test panels.** Joint member i and antiGen CV x10
+member i hold out the SAME 10% of SARS-CoV-2 (i = 0, 1, 2), so both are out of sample
+there. `holdout_select.py` scores, per member pair, the holdout NLL over ALL mutations
+and over DE NOVO cells only (a (site, residue) in no training-split node and no training
+child mutation; ~110-130 mutations per holdout -- noisy).
+
+* Joint: holdout NLL over all mutations falls every epoch (7.815 -> 7.621, member 0);
+  over de novo cells it is BEST at epoch 0 and rises every epoch (12.46 -> 13.13). antiGen
+  member 0: 7.562 all, 14.11 de novo. The two models are good at different things.
+* Mixture weight w (score = (1-w) antiGen + w joint, mean of log-probs): the all-mutation
+  criterion picks joint epoch 5, w = 0.30 in all three members; the de novo criterion
+  picks joint alone (w = 1, epoch 0) -- degenerate.
+* `list_macro.py --mix NAME=W[:W2] --mix-dir DIR [--mix-dir2 DIR]`: the weighted blend of
+  --ensemble-dir with one or two more ensembles. Gate: the antiGen re-score in each run
+  reproduces the published ens_vs10_2023 row (worst difference 0.0).
+
+| blend | C | D | E | F |
+|---|---|---|---|---|
+| antiGen CV x10 | 0.599 | 0.930 | 0.497 | 0.688 |
+| **A: 0.70 antiGen + 0.30 joint (epoch 5)** -- dev-selected | **0.614** | 0.929 | 0.499 | **0.702** |
+| B: 0.90 antiGen + 0.10 joint (epoch 0) | 0.607 | 0.932 | 0.496 | 0.681 |
+
+A is within noise of antiGen on D/E and ahead on C (+0.015) and F (+0.014; 71 cells).
+
+**Coronavirus-only finetune** (the 14 trees, no SARS-CoV-2; recipe as above, 6 epochs):
+every SARS-CoV-2 example is out of sample for it. `blend_select.py` picks its epoch on
+the pooled SARS-CoV-2 holdouts and the three-way weights (antiGen + joint + coronavirus-
+only, grid 0.05) on the mean all-mutation holdout NLL; `run_blend_round.sh` then scores
+the selected blends (round 1, `blend_r1.json`):
+
+* Coronavirus-only, pooled SARS-CoV-2 holdout NLL by epoch: 9.40, 9.59, 9.80, 9.86,
+  10.42, 10.55 -- best at epoch 0 and worse every epoch after (more coronavirus
+  training moves it AWAY from SARS-CoV-2). Epoch 0 is used.
+* Holdout NLL (mean over members, all mutations / de novo): antiGen alone 7.5695 /
+  14.29; A+J (wJ 0.35) 7.5534 / 13.88; A+C (wC 0.05) 7.5657 / 14.04; **A+J+C
+  (0.65 / 0.30 / 0.05) 7.5507 / 13.69** -- the dev pick.
+
+| blend (weights A/J/C) | C | D | E | F |
+|---|---|---|---|---|
+| antiGen CV x10 | 0.599 | 0.930 | 0.497 | 0.688 |
+| gate: mixture A re-scored (0.70/0.30/0) | 0.614 | 0.929 | 0.499 | 0.702 |
+| A+J (0.65/0.35/0) | 0.609 | 0.927 | 0.499 | 0.702 |
+| A+C (0.95/0/0.05) | 0.604 | 0.931 | 0.497 | 0.688 |
+| **A+J+C (0.65/0.30/0.05)** -- dev pick | **0.611** | 0.929 | **0.513** | **0.709** |
+
+The gate reproduces mixture A exactly. The dev pick improves on antiGen on C (+0.012),
+E (+0.016) and F (+0.021), and ties D. Note A+J at 0.35 scores below mixture A's 0.30
+on C: the 0.05 grid step is within the noise of the panel.
+
+
+## 158. Five-way dev-selected blend: + counted SxS/MCM interpolation and codon (2026-11-11)
+
+**Which models may be weighted on the dev holdouts.** Only those out of sample on member
+i's holdout: antiGen CV x10 member i (A), joint member i (J), the coronavirus-only
+finetune (C, s157), and two baselines made eligible here. **S** is mcm_interpolation
+(`statistical_baselines`, kappa = N_total) with its counts REFIT on member i's training
+90%. The published row is fit on all training examples, holdout included. **K** is codon,
+which is untrained. The published antiGen single model, PFM and the other fitted rows
+saw the holdouts and are not eligible.
+
+* `blend_select2.py`: per-member log-probs for A, J, C (epoch 0), S, K, then the full
+  simplex grid at step 0.05 (10,626 points). **Primary pick = the grid minimum of the
+  mean all-mutation holdout NLL.** Every subset lies on the grid, so this is one pick.
+  The de novo criterion's minimum is a secondary, reported only.
+* `list_macro.py --mix-baseline {codon,mcm_interpolation,site_substitution}`
+  (repeatable): further `--mix` components, fitted on the run's training examples.
+  `--mix NAME=wJ:wC:wS:wK` with the antiGen ensemble taking 1 - sum. Every component is
+  clamped at -1e4 before weighting (a no-op for all components so far).
+* `run_blend_round2.sh TAG JOINT_EPOCH SELECTION_JSON` scores a selection with four
+  gates that must reproduce: ens_vs10_2023 and S alone / K alone against the published
+  rows, and r1's A+J+C against s157. All four reproduce here (worst difference 0.0003, the
+  rounding of the published 3-decimal values).
+
+Solo holdout NLL (member 0, all / de novo): A 7.561/14.11, J (epoch 5) 7.621/13.13,
+C 9.409/11.11, S 7.901/12.72, K 9.203/10.12. Codon is the best single model on de novo
+holdout cells, and the worst-but-one over all mutations.
+
+Selection with J = epoch 5 (`blend_sel2_ep5.json`). It reproduces s157's A+J+C exactly
+(0.65/0.30/0.05, 7.5507):
+
+| pick (weights A/J/C/S/K) | holdout all | holdout de novo | C | D | E | F |
+|---|---|---|---|---|---|---|
+| antiGen CV x10 (1/0/0/0/0) | 7.5695 | 14.29 | 0.599 | 0.930 | 0.497 | 0.688 |
+| s157 A+J+C (.65/.30/.05/0/0) | 7.5507 | 13.69 | 0.611 | 0.929 | 0.513 | 0.709 |
+| **primary** (.65/.30/0/0/.05) | **7.5490** | 13.67 | 0.614 | 0.929 | 0.484 | 0.688 |
+| secondary, de novo (0/0/.25/0/.75) | 9.0377 | 10.42 | 0.408 | 0.511 | 0.573 | 0.560 |
+| (dev only) A+S (.85/0/0/.15/0) | 7.5624 | 14.02 | | | | |
+| (dev only) A+K (.95/0/0/0/.05) | 7.5641 | 14.02 | | | | |
+
+**Reading.** The new primary beats s157's pick on the dev criterion by 0.0017 nats, but
+does worse on E (-0.029) and F (-0.021). A difference that small on the holdout does not
+separate the two, and this result is not a reason to swap back: swapping on the panels is
+the peeking this section rules out. S adds little once A is present (antiGen already
+carries the count information). The de novo criterion is degenerate as in s157: it drops
+antiGen entirely. On de novo holdout cells (~110-130 per member) codon's "reachable by
+one nucleotide change" prior wins. It gives the best E of any row (0.573, codon alone
+0.536) at a heavy cost on C, D and F. Takeaway: the all-mutation holdout NLL is dominated by
+recurrent mutations and cannot weight de novo specialists; a fair E/F-targeted blend
+needs a larger de novo dev set (e.g. pooled across all 10 splits) or a rank criterion.
+
+Round 3 (`round3.sh`, unattended) repeats the selection with each joint member's own
+--save-best checkpoint from the 12-epoch continuation (holdout bests so far: s0 epoch 6,
+s1 epoch 7, s2 still improving at epoch 8), and scores it the same way. Results: pending.
+
+## 159. Panel E at codon distance 1 (2026-11-11)
+
+Question (user): among de novo mutations reachable by ONE nucleotide change, where the
+genetic code no longer separates candidates, which models have learned the rules?
+
+* `list_macro.py --cd1-variants` adds `list_<l>_unseen_cd1_fullpool` (panel E restricted)
+  and `list_<l>_cd1_fullpool` (panel C restricted). For each query, the pool AND the
+  targets are limited to cells whose residue is one nucleotide change from the query's
+  OWN wild-type residue (any codon of wt -> any codon of mut at Hamming 1; the examples
+  carry no nucleotide state). That is 150 of 380 substitutions. Per-query because 320
+  RBD wild-type letters differ from the root across backgrounds. `compute_hit_rate`
+  accepts a (B, R, E) pool for this.
+* Run: the full published 2023-01-01 all-cells roster plus the s157/s158 blends
+  (`evals_cd1_2023-01-01`, job 3730899, 32 min). Gate: all 2,160 pre-existing
+  (model, variant, qtile) rows reproduce the published run exactly (worst diff 0).
+* Panel E at cd1: 48 cells and 104 events (from 71 / 141). The random rate is 0.10.
+  Codon is not fully inert inside the pool, because it still counts routes: 0.242 / 0.203.
+
+| model | E macro / micro | E (cd1) macro / micro | C (cd1) macro / micro |
+|---|---|---|---|
+| antiGen CV x10 | 0.497 / 0.688 | **0.557** / 0.635 | 0.332 / 0.777 |
+| blend r2 (A .65, J .30, K .05) | 0.484 / 0.688 | 0.555 / **0.644** | 0.342 / 0.790 |
+| antiGen single (simple_d128) | 0.507 / 0.660 | 0.541 / 0.615 | 0.309 / 0.737 |
+| blend r1 (A .65, J .30, C .05) | 0.513 / 0.709 | 0.526 / 0.615 | **0.344 / 0.792** |
+| gated xfmr + PSSM | 0.475 / 0.546 | 0.501 / 0.615 | 0.317 / 0.749 |
+| joint ESM-2 CV x3 | 0.480 / 0.681 | 0.400 / 0.587 | 0.328 / 0.753 |
+| where x which / wxw Dirichlet | 0.518 / 0.667 | 0.397 / 0.500 | 0.251-0.275 |
+| SxS / MCM interpolation | 0.518-0.519 / 0.667-0.674 | 0.356 / 0.452 | 0.254-0.276 |
+| de novo blend (C .25, K .75) | 0.573 / 0.560 | 0.354 / 0.385 | 0.193 / 0.297 |
+| EVEscape | 0.239 / 0.496 | 0.292 / 0.510 | 0.189 / 0.243 |
+| codon | 0.536 / 0.490 | 0.242 / 0.203 | 0.143 / 0.180 |
+| ESM-2 35M partial4 (SARS-CoV-2 only) | 0.298 / 0.305 | 0.231 / 0.221 | 0.262 / 0.564 |
+
+Reading: once reachability is controlled, the trained antiGen models lead, and the count
+and substitution baselines fall by 0.12-0.16 macro. Their panel E edge was largely
+the genetic code. The de novo blend's E lead was too (0.573 -> 0.354). Caveat: 48 cells.
+
+**supp_cd1** (`antiGen-figures/figures/figS_cd1.R` -> `figs/supp_cd1.png`): the main
+figure's C-F on this restriction. It uses the same export (`panels_coguk_export.R`, new arm
+`REVISED2_ARM=cd1_2023`), roster (DROP_MAIN), names and colours.
+`experiments/multitree/stage_cd1_2023.sh` stages the cd1 variants under the drawer's
+variant names into `data/evals_sc2_lists_macro_aa20_2023-01-01_cd1`, and leaves out the
+blend rungs. antiGen (CV x10) is first in all four panels. Second place: PFM on A and B,
+S×S on C, EVEscape on D (0.510; antiGen 0.635).

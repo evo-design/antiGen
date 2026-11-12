@@ -89,7 +89,7 @@ def test_dumped_map_replays_to_the_same_metric(tmp_path):
 
     cached = torch.from_numpy(arr)
     replay = {}
-    for suffix, score_mask, target_mask in variants:
+    for suffix, score_mask, target_mask, _reach1 in variants:
         v = cached.clone()
         if score_mask is not None:
             v[:, score_mask[EVAL_RANGE, :]] = float('nan')

@@ -77,14 +77,21 @@ SUMMARY = "list_macro_summary.csv"
 PERCELL = "list_macro_percell.csv"
 
 
-def build_variants(lists, seen_mask):
-    """(suffix, score_mask, target_mask) per list variant. Masks are True = exclude."""
+def build_variants(lists, seen_mask, reach1=None):
+    """(suffix, score_mask, target_mask, reach1) per list variant. Masks are True =
+    exclude. ``reach1`` (E, E) bool, when given, adds the codon-distance-1 variants
+    (NOTES s159): pool AND targets further restricted, per query, to the cells one
+    nucleotide change away from that query's own wild-type residue."""
     variants = []
     for label, in_full in lists:
-        variants.append((f"list_{label}_fullpool", None, ~in_full))
-        variants.append((f"list_{label}", ~in_full, ~in_full))
-        variants.append((f"list_{label}_unseen_fullpool", seen_mask, (~in_full) | seen_mask))
-        variants.append((f"list_{label}_unseen", (~in_full) | seen_mask, (~in_full) | seen_mask))
+        variants.append((f"list_{label}_fullpool", None, ~in_full, None))
+        variants.append((f"list_{label}", ~in_full, ~in_full, None))
+        variants.append((f"list_{label}_unseen_fullpool", seen_mask, (~in_full) | seen_mask, None))
+        variants.append((f"list_{label}_unseen", (~in_full) | seen_mask, (~in_full) | seen_mask, None))
+        if reach1 is not None:
+            variants.append((f"list_{label}_unseen_cd1_fullpool", seen_mask,
+                             (~in_full) | seen_mask, reach1))
+            variants.append((f"list_{label}_cd1_fullpool", None, ~in_full, reach1))
     return variants
 
 
@@ -133,7 +140,7 @@ def cell_pass(score_fn, loader, variants, device, eval_range, qtiles, sink=None,
             sink(start, sub.detach().float().cpu().numpy())
         start += int(aa_batch.shape[0])
 
-        for suffix, score_mask, target_mask in variants:
+        for suffix, score_mask, target_mask, reach1 in variants:
             # With a common pool the candidate set is handed to compute_hit_rate as a
             # mask instead of being burned into the scores, so that a cell inside the
             # pool which this model cannot score RANKS LAST rather than leaving the
@@ -156,6 +163,12 @@ def cell_pass(score_fn, loader, variants, device, eval_range, qtiles, sink=None,
             else:
                 v_target = target_batch.clone()
                 v_target[target_mask.to(device).unsqueeze(0).expand_as(v_target)] = 0
+            if reach1 is not None:
+                if v_pool is None:
+                    raise SystemExit("--cd1-variants needs the common pool (not --legacy-pool)")
+                keep = reach1.to(device)[aa_batch]                    # (B, L, E)
+                v_pool = v_pool.unsqueeze(0) & keep[:, eval_range, :]
+                v_target = v_target * keep.to(v_target.dtype)
 
             for qtile in qtiles:
                 _h, _n, cell_hits, cell_events = compute_hit_rate(
@@ -340,11 +353,33 @@ def main():
                          'eval.py --ensemble-dir, which instead needs the full range.')
     ap.add_argument('--ensemble-name', default='antigen_valsel',
                     help='row name for --ensemble-dir')
+    ap.add_argument('--history-model', action='append', default=[], metavar='NAME=PT',
+                    help='a HistoryTransformer checkpoint (antiGen.history, NOTES s156): '
+                         'each scored query is its mutation history from the root of the '
+                         'tree it came from, rebuilt from its own examples file.')
     ap.add_argument('--query-maps', action='append', default=[], metavar='NAME=NPZ',
                     help='a precomputed PER-QUERY map rung (NOTES s151): an NPZ with '
                          '`aa` (Nq, L) int8 genotypes, `eval_range` and `scores` '
                          '(Nq, R, E). Each scored query is looked up by genotype; a '
                          'query the NPZ lacks is an error, not a skip.')
+    ap.add_argument('--mix-dir', default=None, metavar='DIR',
+                    help='a SECOND ensemble directory (fitness_*.pt), mixed with --ensemble-dir '
+                         'by --mix (NOTES s157)')
+    ap.add_argument('--mix-dir2', default=None, metavar='DIR',
+                    help='an optional THIRD ensemble directory for --mix NAME=W:W2')
+    ap.add_argument('--mix', action='append', default=[], metavar='NAME=W[:W2[:W3...]]',
+                    help='a rung scoring (1 - sum W) * mean-log-prob(--ensemble-dir) + '
+                         'W * mean-log-prob(--mix-dir) + W2 * (--mix-dir2) + W3.. * each '
+                         '--mix-baseline in order, every component normalised per query '
+                         'over the eval range as ens_vs10_2023 is. Repeatable.')
+    ap.add_argument('--cd1-variants', action='store_true',
+                    help='add list_<l>_cd1_fullpool and list_<l>_unseen_cd1_fullpool: pool '
+                         'and targets restricted, per query, to substitutions one nucleotide '
+                         'change from the query\'s own wild-type residue (NOTES s159)')
+    ap.add_argument('--mix-baseline', action='append', default=[], metavar='NAME',
+                    choices=['codon', 'mcm_interpolation', 'site_substitution'],
+                    help='an untrained / counted model as a further --mix component, fitted '
+                         'on this run\'s training examples (NOTES s158)')
     ap.add_argument('--mcm-baseline', action='store_true',
                     help='add the mutation count matrix alone, "mcm": log N[i,a] '
                          '(statistical_baselines "frequency"). NOTES s121.')
@@ -409,6 +444,9 @@ def main():
             for path in list(args.train_examples) + list(args.test_examples):
                 recs = load_examples(path, allowed_aas, variant,
                                      split_date=args.split_date)
+                if args.history_model:
+                    from antiGen.history import attach_histories
+                    attach_histories(recs)       # per file: parents precede children
                 print(f"  pooled {len(recs)} from {path}")
                 pooled += recs
             training_examples = [e for e in pooled if e.is_training]
@@ -544,7 +582,14 @@ def main():
     else:
         raise SystemExit("--root-counts, or a --data-dir carrying pssms/root.csv.")
     seen_mask = pssm_root > 0
-    variants = build_variants(lists, seen_mask)
+    reach1 = None
+    if args.cd1_variants:
+        from antiGen.models.codon_fitness_predictor import build_codon_lookup
+        reach1 = build_codon_lookup(allowed_aas, pseudocount=0.01) > float(np.log(0.01)) + 1e-4
+        reach1.fill_diagonal_(False)
+        print(f"codon-distance-1 variants: {int(reach1.sum())} of {E * (E - 1)} "
+              f"amino-acid substitutions reachable by one nucleotide change")
+    variants = build_variants(lists, seen_mask, reach1)
     common_pool = (None if args.legacy_pool
                    else eu.real_substitution_mask(len(eval_range), allowed_aas))
     if common_pool is None:
@@ -683,6 +728,88 @@ def main():
 
         builtin_models[args.ensemble_name] = _ensemble
         candidates.append((args.ensemble_name, None))
+
+        if args.mix:
+            if not args.mix_dir:
+                raise SystemExit("--mix needs --mix-dir")
+            mix_paths = sorted(glob.glob(os.path.join(args.mix_dir, "fitness_*.pt")))
+            if not mix_paths:
+                raise SystemExit(f"--mix-dir {args.mix_dir} has no fitness_*.pt")
+            _mix_cache = {}
+
+            def _members(paths):
+                mems = []
+                for ep in paths:
+                    eck, ecfg = load_checkpoint(ep, map_location=device)
+                    if ecfg.seq_len != seq_len:
+                        raise SystemExit(f"{ep}: seq_len {ecfg.seq_len} != {seq_len}")
+                    em = create_model(ecfg, device)
+                    em.load_state_dict(eck['model_state_dict'], strict=False)
+                    em.eval()
+                    mems.append(em)
+                return MeanLogProbEnsemble(mems, eval_range=eval_range).to(device)
+
+            mix2_paths = (sorted(glob.glob(os.path.join(args.mix_dir2, "fitness_*.pt")))
+                          if args.mix_dir2 else [])
+
+            def _baseline(name):
+                """A --mix-baseline component (NOTES s158): codon is untrained; the
+                counted ones are fitted on this run's training examples."""
+                if name == 'codon':
+                    bm = create_model(ModelConfig(
+                        model_type=ModelType.CODON, seq_len=seq_len,
+                        alphabet=AlphabetConfig(amino_acids=allowed_aas),
+                        codon=CodonConfig()), device)
+                else:
+                    from antiGen.statistical_baselines import fit as _bfit
+                    bm = CountedStatPredictor(
+                        ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
+                                    alphabet=AlphabetConfig(amino_acids=allowed_aas)),
+                        _bfit(training_examples, seq_len, E), name).to(device)
+                bm.eval()
+                return MeanLogProbEnsemble([bm], eval_range=eval_range).to(device)
+
+            class _Mix(torch.nn.Module):
+                """(1 - sum w) * A + sum_k w_k * comps[k] over the eval range; -inf outside.
+                Each component is clamped at -1e4 first, as blend_select.py does (a no-op
+                for every component used so far: none is -inf inside the eval range)."""
+                def __init__(self, A, comps, ws):
+                    super().__init__()
+                    self.A, self.comps = A, list(comps)
+                    self.ws = [float(w) for w in ws]
+
+                def forward(self, aa):
+                    a_ = self.A(aa)
+                    clamp = lambda t: torch.nan_to_num(t[:, eval_range, :], neginf=-1e4)
+                    s_ = (1 - sum(self.ws)) * clamp(a_)
+                    for w_, c_ in zip(self.ws, self.comps):
+                        if w_:
+                            s_ = s_ + w_ * clamp(c_(aa))
+                    out = torch.full_like(a_, float('-inf'))
+                    out[:, eval_range, :] = s_
+                    return out
+
+            for item in args.mix:
+                mname, ws = item.split('=', 1)
+                ws = [float(x) for x in ws.split(':')]
+                if len(ws) > 2 + len(args.mix_baseline):
+                    raise SystemExit(f"--mix {item}: more weights than components")
+                ws += [0.0] * (2 + len(args.mix_baseline) - len(ws))
+                if ws[1] and not mix2_paths:
+                    raise SystemExit(f"--mix {item} has a third weight but no --mix-dir2")
+
+                def _mk(ws=tuple(ws)):
+                    if 'A' not in _mix_cache:
+                        _mix_cache['A'] = _ensemble()
+                        _mix_cache['B'] = _members(mix_paths)
+                        _mix_cache['C'] = _members(mix2_paths) if mix2_paths else None
+                        _mix_cache['X'] = [_baseline(b) for b in args.mix_baseline]
+                    return _Mix(_mix_cache['A'],
+                                [_mix_cache['B'], _mix_cache['C']] + _mix_cache['X'], ws)
+                builtin_models[mname] = _mk
+                candidates.append((mname, None))
+            print(f"  mix rungs: {', '.join(m.split('=')[0] for m in args.mix)} "
+                  f"({len(ens_paths)} + {len(mix_paths)} members)")
         print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
               f"from {args.ensemble_dir}, normalised over the eval range")
 
@@ -802,6 +929,44 @@ def main():
         del bp
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    # ── History models (NOTES s156): same unshuffled-loader offset as the query maps.
+    if args.history_model and not args.pool_examples:
+        raise SystemExit("--history-model is implemented for --pool-examples runs only")
+    for item in args.history_model:
+        hname, hpath = item.split('=', 1)
+        if _resume_skip(hname):
+            print(f"[resume-skip] {hname}")
+            continue
+        from antiGen.history import load_history_model, make_tokens, pad_histories
+        hm = load_history_model(hpath, device)
+        print(f"\n=== History model: {hname} ({hpath}) ===", flush=True)
+        sink, finish = _sink_for(hname)
+        _hoff = [0]
+
+        def _hfn(aa, m=hm, off=_hoff):
+            rows = scored[off[0]:off[0] + aa.shape[0]]
+            off[0] += aa.shape[0]
+            for r, e in zip(range(aa.shape[0]), rows):
+                if not torch.equal(aa[r].cpu(), e.aa_idx):
+                    raise SystemExit(f"{hname}: loader row and scored query disagree")
+            hist, pad = pad_histories([make_tokens(e, m.tokens) for e in rows], aa.device)
+            with torch.no_grad():
+                return m(aa, hist, pad).float()
+        try:
+            acc = cell_pass(_hfn, loader, variants, device, eval_range, qtiles,
+                            sink=sink, common_pool=common_pool)
+        except BaseException:
+            finish(ok=False)
+            raise
+        if _hoff[0] != len(scored):
+            raise SystemExit(f"{hname}: consumed {_hoff[0]} of {len(scored)} queries")
+        if hname in by_model:
+            _verify_against_row(hname, acc)
+        finish()
+        if hname not in by_model:
+            record(hname, acc)
+        del hm
 
     # ── Per-query maps: the loader is unshuffled, so batch rows are `scored` in order.
     for name, full in query_maps.items():
