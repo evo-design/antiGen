@@ -34,6 +34,9 @@ STORE = "/large_storage/hielab/ispecht/fitness-inference"
 # ARM=rare100: cells seen in < 100 training sequences (list_macro --seen-min-count 100).
 ARM = os.environ.get("ARM", "denovo")
 RUNS = f"{STORE}/evals_cd1_series" + ("" if ARM == "denovo" else "_rare100")
+# NOTES s163: every model fitted on the train tree only (POOL=0). The pooled runs above
+# gave the fitted baselines the test corpus's pre-cutoff records.
+RUNS += os.environ.get("RUN_SUFFIX", "_trainonly")
 OUT = ("/home/ivan.specht/antiGen/antiGen-figures/data/gating_cd1_"
        + ("dn" if ARM == "denovo" else "rare100") + "_min100")
 VAR = "list_allcells_unseen_cd1_fullpool"

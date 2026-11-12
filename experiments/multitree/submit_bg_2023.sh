@@ -63,7 +63,7 @@ $PYTHON antiGen/background_discrimination.py \
     --train-examples '$TRAIN_EX' \
     --backbone-examples '$TEST_EX' \
     --root-counts '$ROOT_COUNTS' \
-    --split-date $CUTOFF --pool-examples \
+    --split-date $CUTOFF \
     --substitution-seed 0 \
     --multitree-baselines --counted-baselines --mcm-baseline \
     --ensemble-dir '$ENS_DIR' --ensemble-name $ENS_NAME

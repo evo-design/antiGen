@@ -225,6 +225,8 @@ def top_q_weight(above, tie, n_valid, q):
     # 'lower' element, r = n - 1 - floor((n - 1)(1 - q)), which can sit past q * n and
     # over-select by up to one cell per query.
     r = (torch.ceil(q * nv.double() - 1e-9).clamp(min=1) - 1.0).float()
+    if os.environ.get("ANTIGEN_TOPQ_LEGACY") == "1":   # pre-s161 rank, for s163's refits only
+        r = nv - 1.0 - torch.floor((nv - 1.0).double() * (1.0 - q) + 1e-9).float()
 
     TOL = 1e-3
     is_boundary = (a <= r + TOL) & (r < a + t - TOL) & ~torch.isnan(a)

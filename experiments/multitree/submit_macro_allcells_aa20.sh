@@ -114,6 +114,11 @@ else
     # published panel. Without it the substitution fit sees 2,934 examples where the
     # panel's own eval saw 6,836.
     SPLIT_ARGS=(--split-date "$CUTOFF" --pool-examples)
+    # POOL=0 (NOTES s163): every fitted baseline sees ONLY the training file the
+    # antiGen checkpoints were trained on. The pooled default hands the counted
+    # baselines 3,902 extra pre-cutoff branches at 2021-01-01 (6,836 vs 2,934) that
+    # no checkpoint saw. The test set is the same 71,704 either way.
+    [ "${POOL:-0}" = 0 ] && SPLIT_ARGS=(--split-date "$CUTOFF")   # default since s163
     CKPTS=${CKPTS:-$STORE/cutoff_stage_aa20/$CUTOFF}
     TAG=aa20_$CUTOFF
 fi
@@ -155,7 +160,9 @@ mkdir -p logs
 export DATA_DIR=""
 export CKPT_DIR=$CKPTS
 OUTDIR=$OUTDIR \
-exec sbatch --job-name="$JOBNAME" --partition="$PARTITION" --nice=0 \
+# GRES=none for a run with no checkpoint to load (the s163 baseline refits on cpu_batch).
+GRES_ARGS=(); [ -n "${GRES:-}" ] && GRES_ARGS=(--gres="$GRES")
+exec sbatch --job-name="$JOBNAME" --partition="$PARTITION" --nice=0 "${GRES_ARGS[@]}" \
     --exclude="$EXCLUDE" \
     --time="$TIME" --export=ALL \
     examples/slurm/eval_sc2_list_macro.sh \

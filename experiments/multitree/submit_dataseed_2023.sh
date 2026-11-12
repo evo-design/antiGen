@@ -47,7 +47,7 @@ bash examples/slurm/eval_sc2_list_macro.sh default \
     --train-examples $REVISED/sc2-$D/train/examples_${D}_cur.txt \
     --test-examples $REVISED/sc2-test/examples_all_cur.txt \
     --root-counts $REVISED/sc2-$D/train/counts_${D}_cur.tsv \
-    --substitution-seed 0 --split-date $D --pool-examples \
+    --substitution-seed 0 --split-date $D \
     --mutation-list allcells=$LIST \
     --baselines-only --skip-baselines \
     --ensemble-dir $1 --ensemble-name $3"

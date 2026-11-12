@@ -240,9 +240,12 @@ def main():
         if not (args.test_examples and args.train_examples):
             raise SystemExit("--train-examples and --test-examples go together.")
         all_examples = []
+        from_test_file = set()   # NOTES s163: never training data, whatever its flag
         for path in list(args.train_examples) + list(args.test_examples):
-            all_examples += load_examples(path, allowed_aas, variant,
-                                          split_date=args.split_date)
+            recs = load_examples(path, allowed_aas, variant, split_date=args.split_date)
+            if path in args.test_examples:
+                from_test_file.update(id(e) for e in recs)
+            all_examples += recs
     else:
         if not args.data_dir:
             raise SystemExit("--data-dir, or --train-examples with --test-examples.")
@@ -260,6 +263,8 @@ def main():
         raise SystemExit(f"No testing root for variant '{variant}' -- nothing to query.")
     root = roots[0]
     training_examples = [e for e in all_examples if e.is_training]
+    if args.train_examples:
+        training_examples = [e for e in training_examples if id(e) not in from_test_file]
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
     print(f"Variant root: '{variant}', {len(roots)} candidate(s), querying the first")
     print(f"Eval range: {len(eval_range)} positions "

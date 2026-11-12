@@ -133,7 +133,13 @@ def topq_boundary(p, q, dim=-1):
     Tie-heavy scores were exact only when the boundary fell inside a tied block.
 
     Returns the boundary with ``dim`` kept (size 1); NaN for an all-NaN row.
+
+    ``ANTIGEN_TOPQ_LEGACY=1`` restores the pre-s161 boundary, exactly as it was called.
+    It is for one purpose only: rescoring a few rows into a run whose other rows were
+    scored under that rule, so one panel never mixes the two (NOTES s163).
     """
+    if os.environ.get("ANTIGEN_TOPQ_LEGACY") == "1":
+        return torch.nanquantile(p, 1.0 - q, dim=dim, keepdim=True, interpolation='lower')
     p = p.float()
     valid = ~torch.isnan(p)
     n = valid.sum(dim=dim, keepdim=True)

@@ -323,6 +323,10 @@ def parse_args():
                         help='The revised corpus writes the two halves as separate '
                              'files; naming them replaces the data-dir glob.')
     parser.add_argument('--test-examples', type=str, nargs='+', default=None)
+    parser.add_argument('--pool-examples', action='store_true',
+                        help='LEGACY, wrong for any comparison (NOTES s163): also fit the '
+                             'training-fitted baselines on the test corpus\'s pre-cutoff '
+                             'records. Default: training data is --train-examples only.')
     parser.add_argument('--split-date', type=str, default=None, metavar='YYYY-MM-DD',
                         help='Which train/test split to read, for a corpus whose '
                              'POST_CUTOFF field is a set of cutoff dates.')
@@ -517,9 +521,11 @@ def main():
 
     # ── 1. Discover checkpoint groups (prefix -> newest-first list) ──────────
     groups = discover_checkpoints(args.checkpoint_dir, model_filters, exclude_filters)
-    if not groups:
+    if not groups and not args.multitree_baselines:
         print(f"No checkpoints matched in {args.checkpoint_dir} (filters={model_filters}). Nothing to do.")
         return
+    # --multitree-baselines with no checkpoint is a baselines-only run (NOTES s163); the
+    # later `if not candidates` check already allows exactly that case.
     print(f"Found {len(groups)} checkpoint group(s): {sorted(groups)}")
 
     # ── 2. Resolve data paths ────────────────────────────────────────────────
@@ -565,10 +571,18 @@ def main():
         if not (args.train_examples and args.test_examples):
             raise SystemExit("--train-examples and --test-examples go together.")
         all_examples = []
+        # Which records came from the TEST corpus (NOTES s163). Its pre-cutoff records
+        # are NOT training data: the training data of every model is the train tree,
+        # built from sequences dated before the cutoff, and a test-tree node flagged
+        # pre-cutoff still lists mutations to children observed only after it. They stay
+        # in all_examples (the variant root can be one) but never reach the fits.
+        from_test_file = set()
         for path in list(args.train_examples) + list(args.test_examples):
             print(f"Loading examples from {path}...")
-            all_examples += load_examples(path, allowed_aas, variant,
-                                          split_date=args.split_date)
+            recs = load_examples(path, allowed_aas, variant, split_date=args.split_date)
+            if path in args.test_examples:
+                from_test_file.update(id(e) for e in recs)
+            all_examples += recs
     else:
         examples_files = sorted(glob.glob(os.path.join(data_dir, "examples_cutoff_*.txt")))
         if not examples_files:
@@ -651,6 +665,12 @@ def main():
     testing_examples = [e for e in all_examples if not e.is_training]
     variant_testing_examples = [e for e in testing_examples if e.is_descended_from_variant]
     training_examples = [e for e in all_examples if e.is_training]
+    if args.train_examples and not args.pool_examples:
+        n_pooled = len(training_examples)
+        training_examples = [e for e in training_examples if id(e) not in from_test_file]
+        print(f"Training examples: {len(training_examples)} from --train-examples "
+              f"({n_pooled - len(training_examples)} pre-cutoff test-corpus records "
+              f"excluded; NOTES s163)")
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
     print(f"Testing examples: {len(testing_examples)}, "
           f"variant-descended: {len(variant_testing_examples)}")

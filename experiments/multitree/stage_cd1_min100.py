@@ -43,6 +43,10 @@ else:
     PFM = f"{STORE}/postcutoff_counts/counts_all_lineages_2021-01-01.tsv"
     OUT = f"{FIG}/evals_sc2_lists_macro_aa20_2021_allcells_cd1_min{MIN}"
     ENS = "ens_vs10_2021"
+# NOTES s163: RUN_DIR / OUT_DIR override, to stage a re-fitted run somewhere the
+# published file can then be spliced from.
+RUN = os.environ.get("RUN_DIR", RUN)
+OUT = os.environ.get("OUT_DIR", OUT)
 EXTRA = {"joint_cv3", "covonly", "blend_r1_AJC", "blend_r2_AJK", "blend_dn_CK"}
 REN = {"list_allcells_cd1_fullpool": "list_allcells_fullpool",
        "list_allcells_unseen_cd1_fullpool": "list_allcells_unseen_fullpool"}

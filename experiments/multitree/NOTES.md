@@ -13785,3 +13785,149 @@ Figure: `figures/figS_cd1_series.R` -> `figs/supp_cd1_series.png`. Data:
 `make_gate_plot` takes an opt-in `sc2.gate_xbreaks` option, set through
 `REVISED2_GATE_XBREAKS` in panels_gate_macro_export.R. It puts breaks at decimal-year
 cutoffs labelled "Apr 2020". Unset, every published axis is unchanged.
+
+## 163. Training-fitted baselines saw test-period mutations: fix and audit (2026-11-12; running)
+
+**Found** (user, comparing supp_cd1_min100_2021 C with supp_cd1_series A at 2021-01-01).
+Both score the same 90 cells and 5,504 events, and every model that ignores the training
+pool agrees to 1e-8. The counted baselines did not: S×S-MCM 0.34 -> 0.54. The series
+passed `--pool-examples` (s111's eval.py semantics), so the counted baselines were
+fitted on the train file PLUS the shared test corpus's pre-cutoff branches: 6,836
+examples against the 2,934 that every antiGen checkpoint was trained on. Checkpoint
+`train_args` confirm it: `examples` = the cutoff's own train file, `split_date` None,
+for every trained rung at every cutoff. BLOSUM62 is one untrained lookup table, shared
+across cutoffs, which is harmless. The 3,902 extra branches carry 331 events at 64 of
+the 90 "de novo" cells, so for the counted baselines those cells were not de novo.
+
+**Rule (user): every model in a comparison sees exactly the same training data.**
+
+**Fix for supp_cd1_series:** `submit_macro_allcells_aa20.sh POOL=0` keeps
+`--split-date` and drops `--pool-examples`. The test set is unchanged (71,704 at
+2021-01-01), and every fitted baseline sees only the train file. Drivers:
+`run_cd1_series_trainonly.sh` and `run_cd1_series_rare100_trainonly.sh`, writing to
+`STORE/evals_cd1_series{,_rare100}_trainonly/<D>`. The stopping rule uses only cell and
+event counts, which pooling does not change, so the drawn cutoffs do not change.
+
+**What pooling touches.** Only the rungs fitted from `training_examples`: substitution
+(Codon-B62 mixture), where_times_which (S×M), wxw_dirichlet (S×M-MCM), site_substitution
+(S×S), mcm_interpolation (S×S-MCM) and mcm. Trained checkpoints, fixed maps, PFM
+(`--root-counts`), codon and the test pool do not depend on it.
+
+**Size of the extra data.** Test-corpus pre-cutoff branches against the train file:
+x3.44 at 2020-04-01, x2.33 at 2021-01-01, x2.02 at 2023-01-01, ~x2.00 after that.
+
+**Audit: which runs pooled** (from every log's training-pool line):
+
+| run family | training pool for counted baselines | fair? |
+|---|---|---|
+| `eval.py` (eval_all_sc2), every cutoff, 2021 arm AND 2023 | pooled: eval.py always pools both files, then splits on is_training | NO |
+| list_macro, 2023-01-01 arm and the L/M per-cutoff series (`--pool-examples`) | pooled | NO |
+| `bg` (2023 background), `cd1_panelE` | pooled | NO |
+| endemic evals (H3N2, RSV-A, DENV2) | pooled (eval.py) | NO |
+| list_variant_recall | pooled (same loader as eval.py) | NO |
+| list_macro, sc2-2021 arm (COG-UK lists, cd1, cd1_2021_all) | train file only (2,934) | yes |
+| background_discrimination, 2021 arm | train file only | yes |
+
+Even the sc2-2021 arm's test file carries the 3,902 pre-cutoff branches, so eval.py's
+2021 arm fits on 6,836 while list_macro's fits on 2,934. Per-cell and per-mutation bars
+in one figure can therefore come from differently fitted baselines.
+
+External baselines (PyR0, Bloom & Neher, CoVFit, EVEscape, DMS, ESM-2/EVE pretraining)
+are trained on outside data and cannot share antiGen's. The fixed-split panel already
+compares each with antiGen trained to that baseline's own date. Bloom & Neher is dropped
+from every earlier-cutoff panel by name.
+
+**Correction: what the extra branches are. This is test-period leakage, not just "more
+pre-cutoff data".** The test corpus is ONE tree over every sequence of every date. A
+node is labelled training at D when the earliest leaf anywhere below it is dated < D
+(`minLeafDated`, antiGen-data-revised/src/examples.cpp:62). Its record still lists the
+mutations to ALL of its children (`MUTATIONS_TO_CHILDREN`, examples.cpp:373), whatever
+their dates. So one early sequence under a node makes every later mutation off that
+node a "training" event. At 2021-01-01, in the 3,902 such records:
+
+* of the 56,255 child events, 9,653 lead to an interior child whose whole subtree is
+  dated >= D, 3,938 to an interior child with a pre-cutoff leaf, and 42,664 to leaves
+  (whose dates the record does not carry);
+* of the 331 events at the 90 de novo cells, 66 lead to an all-post-cutoff interior
+  child and 265 to leaves. NOT ONE pre-cutoff sequence in the whole corpus carries any
+  of the 90 cells (all-lineage counts: 0 before D, 10.3 M after), so all 331 are
+  mutations first observed after the cutoff.
+
+The counted baselines in every pooled run were therefore partly fitted on the test
+period. The trained antiGen checkpoints never were: they were trained on the per-cutoff
+train tree, which is built only from sequences dated < D.
+
+**antiGen was trained correctly.** Every checkpoint in every directory a figure run
+loaded (124: ckpt_stage_aa20, ckpt_stage_vs10_{aa20,2023-01-01}, ckpt_stage_bg/il_2023,
+cutoff_stage_aa20/*, the cd1 stages) records `examples` = its cutoff's train-tree file
+and `split_date` None. Across all 1,159 checkpoints in STORE, 939 record a train file
+and none a test file. The other 220 are untrained tables or legacy checkpoints that no
+figure run loads.
+
+**Current figures (not `figs/old/`), panel by panel.**
+
+| figure / panels | source | status |
+|---|---|---|
+| sc2_results_revised2 (+supp) C-F, All RBD 2023 | list_macro `--pool-examples` | LEAKED, re-fitted |
+| sc2_results_revised2 G-J, escape 2021 | list_macro, train file only | fair |
+| sc2_results_revised2 K, fixed splits | antiGen vs one external model | fair (no fitted rung) |
+| sc2_results_revised2 L (per cell) | list_macro `--pool-examples`, 16 cutoffs | LEAKED, re-fitted |
+| sc2_results_revised2 M (per mutation) | eval.py (always pooled), 16 cutoffs | LEAKED, re-fitted |
+| supp_cd1 A-D (2023) / E-H (2021) | cd1 2023 pooled / cd1 2021 train only | A-D re-fitted / fair |
+| supp_cd1_min100 (2023) / _2021 | from the cd1 runs above | re-fitted / fair |
+| supp_cd1_series | per-cutoff series | rerun, POOL=0 |
+| supp_fullspike | full-spike list_macro, pooled, 16 cutoffs + 2023 | LEAKED, re-fitted |
+| supp_query_adapt | C-F's data + background 2023 (pooled) + background 2021 (train only) | re-fitted / fair |
+| coguk_list_aa20 (+supp) | 2021 list run, variant recall from its cached maps, background 2021 | fair |
+| supp_dms, supp_dms_revised2 | maps dumped from the 2021 list run | fair |
+| supp_gate_units, supp_fixed_split, usher_benchmark | no fitted rung | fair |
+
+**The fix: re-fit only what depends on the training pool, and splice it in.** Rescoring
+whole runs would take tens of GPU-hours for rows that do not change.
+
+* list_macro (`submit_refit_trainonly.sh`, 33 runs): `refit_trainonly.py prepare`
+  copies a run without its fitted rows (and the unused blend rows) into `<run>_trainonly`.
+  list_macro then resumes into the copy with POOL=0 and no checkpoint, so it scores only
+  the missing rows. codon and pssm_root are dropped and rescored as the GATE
+  (`refit_trainonly.py verify`).
+* eval.py (`submit_refit_evalpy.sh`, 16 runs, into `cutoff_evals_aa20_refit`) and
+  background 2023 (`submit_refit_bg_2023.sh`): a fresh no-checkpoint run (eval.py on
+  resume drops rows it has no checkpoint for, so it cannot resume into a copy).
+  `merge_refit.py ORIG NEW DST` splices the fitted rows into a copy, gated on every
+  shared non-fitted row.
+* `stage_refit_all.sh`: all gates, then `merge_refit.py splice` replaces the fitted rows
+  of each staged figure file in place. Every other row must equal the source exactly.
+* Partition: cpu_batch_high_mem with `--gres=none`. No checkpoint is loaded; there are
+  ~700 idle CPUs; gpu_batch had them pending on Priority. A 2020-04-01 refit took ~10 min.
+* **Top-q rule.** The copied rows were scored under the pre-s161 boundary, so the refits
+  run with `ANTIGEN_TOPQ_LEGACY=1`. This new opt-in switch is in
+  `eval_utils.topq_boundary` and `background_discrimination.top_q_weight`, pinned by
+  `tests/test_topq_legacy.py`. Without it a panel would mix two rules, and the old one
+  over-selects, which favours the copied rows. With it, the gate rows agree to 1.2e-7
+  (CPU vs GPU summation order), where the rule change alone moves them ~1e-3.
+
+First gate, 2020-04-01 RBD: 288 fixed-row values identical (worst 1.2e-7). Fitted rows,
+pooled -> train only, per mutation: MCM all 0.632 -> 0.282 and de novo 0.715 -> 0.114;
+S×S 0.706 -> 0.577 and 0.717 -> 0.547; S×S-MCM 0.726 -> 0.601 and 0.754 -> 0.546.
+
+**Code now defaults to the train file only.** `eval.py` and `list_variant_recall.py`
+exclude every record from `--test-examples` from the training pool. eval.py keeps the
+old behaviour behind `--pool-examples`, marked legacy. list_macro already defaulted to
+it. `submit_macro_allcells_aa20.sh` now defaults to POOL=0. `--pool-examples` is removed from
+`submit_bg_2023.sh`, `finish_ft_2023.sh` and `submit_dataseed_2023.sh`. The dseed jobs already
+queued were submitted with it, which is harmless: they run `--baselines-only --skip-baselines`
+and score only the antiGen ensemble rung. In list_macro the training pool feeds nothing but the
+fitted baselines and the reference root, which is the train file's first record either way.
+
+**supp_cd1_series re-done (s162's figure, train-only fits).** Both arms were rerun with
+POOL=0 into `STORE/evals_cd1_series{,_rare100}_trainonly`. Because these are complete
+runs, every row of the figure is on the s161 rule. Counts and the stopping rule are
+unchanged (de novo 2020-04-01 .. 2021-07-01; <100 arm all 11 cutoffs), as they must be:
+pooling never touched the test set. The de novo staging read 2020-04-01 .. 2021-10-01.
+2021-10-01 is the first failing cutoff, and later de novo cutoffs cannot be drawn.
+
+**Consistency check that was failing before.** At 2021-01-01 de novo, S×S now scores
+0.347/0.361 and S×S-MCM 0.344/0.358, exactly supp_cd1_min100_2021's values on the same 90
+cells (that run was fitted on the train file). antiGen (single model) 0.402/0.436 and the
+gate 0.370/0.381 are unchanged. MCM is at chance (0.098) on de novo cells, as a count
+matrix must be. Pooled, it had 0.48.
