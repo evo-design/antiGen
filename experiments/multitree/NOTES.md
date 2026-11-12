@@ -13964,3 +13964,38 @@ at 2021-01-01 and 2022-04-01.
 Reading: per cell (A), antiGen and the gate lead or tie PFM at every cutoff, and the
 statistical models trail from 2022. Per mutation (B), the gate leads throughout. The
 single antiGen model is behind PFM until 2022 and level with the gate from mid-2022.
+
+## 165. sc2_results_revised2: a codon-distance-1 row, the 2021 row led by the >=100-seq de novo pair, pair sub-headers (2026-11-12)
+
+User, for the main figure (the supp variant is unchanged apart from the s163 data):
+
+* **New row G-J under C-F:** supp_cd1's A-D (all RBD, 2023, codon distance 1). Each
+  panel's x axis is now fitted to its own bars. Before, it was shared with its pooling
+  partner: supp_cd1 A ran to 0.57 for bars ending at 0.33. This is the opt-in
+  `coguk.decile_own_range` (`REVISED2_OWN_XRANGE=1` in panels_coguk_export.R); unset, no
+  other figure moves.
+* **2021 row, K-N:** the all-escape pair (old G, H) is replaced by
+  supp_cd1_min100_2021's de novo pair: all RBD at 2021, 1 nt, cells seen in >= 100
+  sequences after the cutoff. The de novo escape pair stays as M, N. The pair now leads the
+  row, so it is exported with the model names (`decile_dn_pc_named`). It is drawn on the
+  main roster (DROP_MAIN, no gate), so all four panels share one roster. The row is now
+  half all-RBD and half escape list, so its rotated header is "2021 cutoff" and the
+  sub-headers say which is which.
+* **Sub-headers over each pair of a bar row:** C-F "All mutations" / "De novo
+  mutations"; G-J the same with ", 1 nt"; K-N "All RBD: >=100 seqs after cutoff, 1 nt" /
+  "Escape: de novo". Each has a thin rule under its pair. The left label is centred over
+  the bars rather than over the model-name column.
+* **Relettered:** fixed-split K -> O, cutoff series L/M -> P/Q.
+* Panel titles can now be overridden per panel (`REVISED2_T4="dn_pc=...;dn_evt=..."`).
+  The K/L titles say "1 nt". `run_export` in fig_sc2_revised2.R now shell-quotes its env
+  values, which a title with spaces needs.
+
+Data are the s163 train-only fits: C-F, G-J, P from the list_macro refits, Q from the
+eval.py refits, and K-N from 2021 runs that were fitted on the train file throughout.
+
+Pushed with ONE point pending: sc2_results_revised2 Q at 2022-01-01 still carries the
+pooled fits for its fitted baselines. That eval.py refit landed on a slow node; a GPU
+duplicate is in `STORE/cutoff_evals_aa20_refit_gpu/2022-01-01`, and it is spliced and
+re-rendered when it lands. supp_fullspike waits on its five early-cutoff refits. Staged and
+re-rendered from the s163 fits: sc2_results_revised2 (+supp), supp_cd1, supp_cd1_min100
+(2023), supp_query_adapt.

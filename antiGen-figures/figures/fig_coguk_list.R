@@ -1279,9 +1279,12 @@ recall_curve_panel <- function(metric, first) {
 }
 
 decile_bar <- function(metric, first, metrics) {
+  ## coguk.decile_own_range (opt-in, NOTES s165): each panel's x axis fitted to its OWN
+  ## bars rather than shared with its pooling partner. Unset, every figure is unchanged.
+  rng <- decile_range_for(if (isTRUE(getOption("coguk.decile_own_range"))) metric else metrics)
   bar_panel(recall_q10_df, metric, paste0("Recall at ", q_label),
             titled(paste0(q_Noun, ", ", metric)),
-            labels_on_y = first, xrange = decile_range_for(metrics)) +
+            labels_on_y = first, xrange = rng) +
     ## Chance, for a metric whose scale is otherwise easy to misread.
     geom_vline(xintercept = QTILE, linetype = "dotted", linewidth = 0.3,
                color = "grey30")

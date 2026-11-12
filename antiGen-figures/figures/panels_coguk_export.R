@@ -84,6 +84,13 @@ if (identical(ARM, "allcells_2023")) {
 } else {
   ENS_ID <- "ens_8a91fbbf88"
 }
+## NOTES s165, both opt-in. REVISED2_OWN_XRANGE=1 fits each bar panel's x axis to its
+## own bars. REVISED2_T4="all_pc=...;dn_pc=..." overrides individual panel titles, for a
+## figure that puts these panels under its own headers.
+if (nzchar(Sys.getenv("REVISED2_OWN_XRANGE"))) options(coguk.decile_own_range = TRUE)
+for (kv in strsplit(Sys.getenv("REVISED2_T4"), ";", fixed = TRUE)[[1]]) {
+  k <- sub("=.*$", "", kv); stopifnot(k %in% names(T4)); T4[[k]] <- sub("^[^=]*=", "", kv)
+}
 ## THE BACKGROUND ROW, for supp_query_adapt (NOTES s138). REVISED2_BG_DIR points the
 ## drawer at a background run -- either arm, either pooling: a cell-weighted
 ## `background_summary.csv` or its event-weighted re-pool -- and REVISED2_BG_POOL names
@@ -342,6 +349,10 @@ saveRDS(list(
   ## says "escape"; dropping it from two of the four reads as a change of target. Both are drawn without y-axis labels: of the four, only the leftmost
   ## carries the model names, and all four share one roster in one order.
   decile_dn_pc   = as_grob(decile_bar(RECALL_MAIN[2], FALSE, RECALL_MAIN) +
+                           ggtitle(T4[["dn_pc"]])),
+  ## The same panel WITH the model names, for a figure that leads a row with it
+  ## (sc2_results_revised2's escape row, NOTES s165).
+  decile_dn_pc_named = as_grob(decile_bar(RECALL_MAIN[2], TRUE, RECALL_MAIN) +
                            ggtitle(T4[["dn_pc"]])),
   bg_all       = if (have_bg) as_grob(bg_bar(BG_MAIN[1], TRUE,  BG_MAIN) +
                            ggtitle("Query adaptability, all escape mutations")),

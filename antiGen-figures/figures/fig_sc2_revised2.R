@@ -57,9 +57,10 @@ RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", 
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
 run_export <- function(script, rds, extra_env = character(0)) {
-  st <- system2(RSCRIPT, c(script), env = c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1",
-                                            extra_env),
-                stdout = TRUE, stderr = TRUE)
+  env <- c(paste0("REVISED_PANELS_RDS=", rds), "REVISED2_LABELS=1", extra_env)
+  ## Values quoted: a title override carries spaces (NOTES s165).
+  env <- paste0(sub("=.*$", "", env), "=", shQuote(sub("^[^=]+=", "", env)))
+  st <- system2(RSCRIPT, c(script), env = env, stdout = TRUE, stderr = TRUE)
   if (!file.exists(rds)) {
     stop(script, " produced no panels. Its output was:\n",
          paste(utils::tail(st, 25), collapse = "\n"))
@@ -78,6 +79,18 @@ gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
 message("  [4/4] exporting the 2023-01-01 all-cells panels ...")
 ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
                  c("REVISED2_ARM=allcells_2023", BAR_ENV))
+## MAIN ONLY (user, s165): supp_cd1's A-D as a row under C-F, and supp_cd1_min100_2021's
+## de novo pair leading the 2021 row. Each of these panels fits its x axis to its own
+## bars (REVISED2_OWN_XRANGE).
+if (VARIANT == "main") {
+  message("  [5/6] exporting the codon-distance-1 panels (2023) ...")
+  c1 <- run_export("figures/panels_coguk_export.R", RS("cd1_2023"),
+                   c("REVISED2_ARM=cd1_2023", BAR_ENV, "REVISED2_OWN_XRANGE=1"))
+  message("  [6/6] exporting the >= 100-sequence de novo panels (2021) ...")
+  m21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021"),
+                    c("REVISED2_ARM=cd1min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1",
+                      "REVISED2_T4=dn_pc=De novo, 1 nt, per cell;dn_evt=De novo, 1 nt, per mutation"))
+}
 
 ## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
 ## MCM interpolations, antiGen (CV x10). The table is `figures/revised2_labels.R`;
@@ -98,6 +111,11 @@ for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", 
   cg[[k]] <- relabel_grob(cg[[k]])
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
   ca[[k]] <- relabel_grob(ca[[k]])
+NEW_KEYS <- c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt",
+              "decile_dn_pc_named")
+if (VARIANT == "main") for (k in NEW_KEYS) {
+  c1[[k]] <- relabel_grob(c1[[k]]); m21[[k]] <- relabel_grob(m21[[k]])
+}
 ## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
 ## somewhere the walk misses, or carries a label the table does not list would still
 ## show an old name, and that is an error.
@@ -106,7 +124,8 @@ left <- grep(REVISED2_STALE,
                              cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
                                   "decile_dn_evt", "legend")],
                              ca[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
-                                  "decile_dn_evt")]), grob_text)),
+                                  "decile_dn_evt")],
+                             if (VARIANT == "main") c(c1[NEW_KEYS], m21[NEW_KEYS])), grob_text)),
              value = TRUE, perl = TRUE)
 if (length(left)) stop("old names survived the relabel: ",
                        paste(unique(left), collapse = "; "))
@@ -162,7 +181,7 @@ strip_inside_legend <- function(g) {
 ## directly beneath C and D, then white space before the bar rows begin.
 row2 <- plot_grid(
   plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
-            nrow = 1, rel_widths = c(1, 1), labels = c("L", "M")),   # the bottom row (s150)
+            nrow = 1, rel_widths = c(1, 1), labels = if (VARIANT == "main") c("P", "Q") else c("L", "M")),   # the bottom row (s150; P/Q s165)
   gm$gate_legend, NULL,
   ncol = 1, rel_heights = c(1, 0.1, 0.07))
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
@@ -275,12 +294,47 @@ fs_pair <- function(arm) {
 ## No row header for K (user, s131), but the same left gutter, so K lines up with C-J.
 row5 <- plot_grid(NULL, NULL,
                   plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
-                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "K", ""))
+                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "O", ""))   # K before s165
 ## Panel K's row, sized so its bars come out the same height as C-J's.
 M_IN <- 1.05
 
+## MAIN LAYOUT (user, s165). Under C-F, supp_cd1's A-D (G-J); then the 2021 row, led
+## by supp_cd1_min100_2021's de novo pair (K-L) in place of the all-escape pair, with
+## the de novo escape pair (M-N); then K -> O and L/M -> P/Q.
+## SUB-HEADERS name each PAIR of a bar row, above it: the left pair's label is centred
+## over its bars (the leading panel also carries the model names), with a thin rule
+## under each label spanning its pair.
+SUBHDR_IN <- 0.24
+pair_hdr <- function(txt, x0) {
+  ggdraw() +
+    draw_line(x = c(x0 + 0.01, 0.985), y = c(0.12, 0.12), colour = "grey65", linewidth = 0.35) +
+    draw_label(txt, x = (x0 + 1) / 2, y = 0.52, size = 9.5, fontface = "bold", colour = "grey20")
+}
+NAMES_FRAC <- 0.62 / (1.75 + 1.1)   # the model-name column's share of the left pair
+bar_block_h <- function(panels, letters, left, right, panel_in) {
+  plot_grid(
+    plot_grid(pair_hdr(left, NAMES_FRAC), pair_hdr(right, 0.02), nrow = 1,
+              rel_widths = c(1.75 + 1.1, 1.1 + 1.1)),
+    plot_grid(plotlist = panels, nrow = 1, rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters),
+    ncol = 1, rel_heights = c(SUBHDR_IN, panel_in))   # both in inches
+}
+if (VARIANT == "main") {
+  row3 <- with_header("All RBD, 2023 cutoff", bar_block_h(
+    list(ca$decile_all_pc, ca$decile_all_evt, ca$decile_dn_pc, ca$decile_dn_evt),
+    LETTERS[3:6], "All mutations", "De novo mutations", PANEL_IN[["rbd"]]))
+  row3b <- with_header("All RBD, 1 nt, 2023 cutoff", bar_block_h(
+    list(c1$decile_all_pc, c1$decile_all_evt, c1$decile_dn_pc, c1$decile_dn_evt),
+    LETTERS[7:10], "All mutations, 1 nt", "De novo mutations, 1 nt", PANEL_IN[["rbd"]]))
+  row4 <- with_header("2021 cutoff", bar_block_h(
+    list(m21$decile_dn_pc_named, m21$decile_dn_evt, cg$decile_dn_pc, cg$decile_dn_evt),
+    LETTERS[11:14], "All RBD: \u2265100 seqs after cutoff, 1 nt", "Escape: de novo",
+    PANEL_IN[["esc"]] + 0.15))
+  ROW_IN[3] <- PANEL_IN[["rbd"]] + SUBHDR_IN
+  ROW_IN[4] <- PANEL_IN[["esc"]] + 0.15 + SUBHDR_IN
+  ROW3B_IN <- PANEL_IN[["rbd"]] + SUBHDR_IN
+}
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, row3, row4, row5, key_row, NULL, row2)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, row3, row3b, row4, row5, key_row, NULL, row2)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -288,7 +342,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[c(1, 3, 4)], M_IN, LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[c(1, 3)], ROW3B_IN, ROW_IN[4], M_IN, LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -298,6 +352,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + M_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + M_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
