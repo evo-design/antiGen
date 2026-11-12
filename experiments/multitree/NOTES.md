@@ -13993,9 +13993,14 @@ User, for the main figure (the supp variant is unchanged apart from the s163 dat
 Data are the s163 train-only fits: C-F, G-J, P from the list_macro refits, Q from the
 eval.py refits, and K-N from 2021 runs that were fitted on the train file throughout.
 
-Pushed with ONE point pending: sc2_results_revised2 Q at 2022-01-01 still carries the
+Pushed with ONE point pending (now done, below): sc2_results_revised2 Q at 2022-01-01 still carried the
 pooled fits for its fitted baselines. That eval.py refit landed on a slow node; a GPU
 duplicate is in `STORE/cutoff_evals_aa20_refit_gpu/2022-01-01`, and it is spliced and
 re-rendered when it lands. supp_fullspike waits on its five early-cutoff refits. Staged and
 re-rendered from the s163 fits: sc2_results_revised2 (+supp), supp_cd1, supp_cd1_min100
 (2023), supp_query_adapt.
+
+**s163 complete.** Q 2022-01-01 came from the GPU duplicate (gate: 22,356 shared values,
+worst 0.0) and was spliced in; the slow CPU copy was cancelled. The full-spike refits
+all passed (0 failures), and supp_fullspike is restaged (16 cutoffs + the 2023 bars) and
+re-rendered. Every current figure the audit marked as leaked is now on train-only fits.
