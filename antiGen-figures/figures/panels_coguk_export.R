@@ -72,6 +72,15 @@ if (identical(ARM, "allcells_2023")) {
   ENS_ID <- "ens_vs10_2021"
   T4 <- c(all_pc = "All, per cell", all_evt = "All, per mutation",
           dn_pc = "De novo, per cell", dn_evt = "De novo, per mutation")
+} else if (identical(ARM, "min100_2021")) {
+  ## supp_min100_2021 (NOTES s166): supp_cd1_min100_2021 without the 1-nt filter --
+  ## every substitution in the pool, the same >= 100 post-cutoff-sequence mask.
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2021_allcells_min100",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2021"
+  T4 <- c(all_pc = "All, per cell", all_evt = "All, per mutation",
+          dn_pc = "De novo, per cell", dn_evt = "De novo, per mutation")
 } else if (identical(ARM, "cd1min100_2023")) {
   ## supp_cd1_min100 (NOTES s160): cd1_2023 with the scored cells limited to those seen
   ## in >= 100 sequences dated >= 2023-01-01 (stage_cd1_min100.py).

@@ -14004,3 +14004,32 @@ re-rendered from the s163 fits: sc2_results_revised2 (+supp), supp_cd1, supp_cd1
 worst 0.0) and was spliced in; the slow CPU copy was cancelled. The full-spike refits
 all passed (0 failures), and supp_fullspike is restaged (16 cutoffs + the 2023 bars) and
 re-rendered. Every current figure the audit marked as leaked is now on train-only fits.
+
+## 166. supp_min100_2021: supp_cd1_min100_2021 without the 1-nt filter (2026-11-12)
+
+User: a version of sc2_results_revised2 K/L (de novo, >= 100 post-cutoff seqs, 2021) on the
+full pool. No new compute: the 2021 run (`STORE/evals_cd1_2021_allcells`, train file
+only, s161 rule) already has per-cell rows for `list_allcells{,_unseen}_fullpool`.
+`NT1=0 ARM=2021 stage_cd1_min100.py` applies the same mask to those
+(-> `data/evals_sc2_lists_macro_aa20_2021_allcells_min100`; gate worst 1.4e-6).
+Export arm `min100_2021`. `FIG_ARM=2021full figS_cd1_min100.R` -> `figs/supp_min100_2021.png`.
+
+Scored sets: all 365 cells / 40,418 events; de novo 91 / 5,748. The 1-nt version had
+90 / 5,504, so frequent de novo substitutions are essentially all one nucleotide away.
+
+Per cell / per mutation, q = 0.1:
+
+| | all, full pool | all, 1 nt | de novo, full pool | de novo, 1 nt |
+|---|---|---|---|---|
+| antiGen (CV x10) | 0.719 / 0.805 | 0.470 / 0.609 | 0.665 / 0.706 | 0.447 / 0.480 |
+| gate | 0.768 / 0.873 | 0.550 / 0.718 | 0.577 / 0.618 | 0.370 / 0.381 |
+| S×S | 0.668 / 0.773 | 0.390 / 0.528 | 0.698 / 0.743 | 0.347 / 0.361 |
+| S×S-MCM | 0.690 / 0.787 | 0.435 / 0.587 | 0.697 / 0.741 | 0.344 / 0.358 |
+| codon table | 0.317 / 0.313 | 0.158 / 0.164 | 0.385 / 0.382 | 0.157 / 0.142 |
+
+Reading: on the full pool, de novo recall mostly measures whether a model ranks one-nt
+substitutions above multi-nt ones. Every target is 1 nt, and S×S's counted M[wt, a]
+learns that multi-nt substitutions almost never happen. The codon table alone goes
+0.157 -> 0.385. So the statistical models pass antiGen there (0.70 vs 0.67). Within the
+1-nt pool, where that signal is removed, antiGen leads (0.45/0.48 vs 0.35/0.36). This is
+the reason for the 1-nt filter (s159).

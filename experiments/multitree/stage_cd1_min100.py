@@ -50,6 +50,12 @@ OUT = os.environ.get("OUT_DIR", OUT)
 EXTRA = {"joint_cv3", "covonly", "blend_r1_AJC", "blend_r2_AJK", "blend_dn_CK"}
 REN = {"list_allcells_cd1_fullpool": "list_allcells_fullpool",
        "list_allcells_unseen_cd1_fullpool": "list_allcells_unseen_fullpool"}
+# NT1=0 (NOTES s166): the same mask on the FULL pool (every substitution, no 1-nt
+# filter) -- the run's own *_fullpool variants, staged under their own names.
+if os.environ.get("NT1", "1") == "0":
+    REN = {"list_allcells_fullpool": "list_allcells_fullpool",
+           "list_allcells_unseen_fullpool": "list_allcells_unseen_fullpool"}
+    OUT = os.environ.get("OUT_DIR", OUT.replace("_cd1_min", "_min"))
 
 pfm = np.asarray(load_counts_matrix(PFM, AA))
 keep = pfm >= MIN                                     # (1273, 20), site index = pos1 - 1
