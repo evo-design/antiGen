@@ -13931,3 +13931,10 @@ pooling never touched the test set. The de novo staging read 2020-04-01 .. 2021-
 cells (that run was fitted on the train file). antiGen (single model) 0.402/0.436 and the
 gate 0.370/0.381 are unchanged. MCM is at chance (0.098) on de novo cells, as a count
 matrix must be. Pooled, it had 0.48.
+
+**C/D's end now set by the rule.** The <100 arm was run through 2024-01-01. 2023-01-01
+has 26 cells / 840 events and fails (< 30 cells), so the series stops before it. The
+later cutoffs fail too: 20/471, 11/227, 6/157, 6/132. The drawn range, 2020-04-01 ..
+2022-10-01, is unchanged, and so is the staged data. Count strips over each panel show
+the cells (per-cell panels) or events (per-mutation panels) behind every point, with the
+rule's floor dashed.
