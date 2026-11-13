@@ -14467,3 +14467,7 @@ all now closed through one check:
   best single-amino-acid variants from the RBD ranking (headers carry the mutation, rank
   and prob). Checked: each variant differs from the query only at its named position, by
   its named residue; the notebook and the script write the same file.
+* README Part 1 gains an **Alphabet** paragraph: antiGen-data `--alphabet 20` (the
+  default, and the paper's corpora: no driver passes it) reads `*` and `-` as missing,
+  like `X`; `--alphabet 22` makes them states of their own (long or end-touching gap
+  runs stay missing). Part 2's training alphabet points back to it.

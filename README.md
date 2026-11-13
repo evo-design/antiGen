@@ -129,6 +129,19 @@ antigen place   --tree <dataset.json> --root-seq <root-sequence.json> --prepared
 (`{"S": "MFVF…*"}`), an aligned FASTA of the sequences to place (protein, in the sidecar's
 frame), and a `strain`⇥`date` metadata TSV.
 
+**Alphabet.** `--alphabet` picks how stops and gaps are read. Give the same value to every
+command of a run (`place` refuses a queue `prepare`d under another):
+
+* `--alphabet 20` (**the default**, and what the paper's corpora use): the 20 standard
+  amino acids. A stop (`*`) or a gap (`-`) is treated like `X`, as missing or ambiguous
+  data at that site, never as a residue of its own.
+* `--alphabet 22`: stop and gap are states like the other 20, so the alphabet has 22
+  tokens and only `X` is missing. A run of `-` longer than `prepare --max-gap-run`
+  (default 10), or one touching either end of the gene, is still read as missing
+  coverage rather than a deletion.
+
+Train on the same alphabet the corpus was built with (Part 2, *Alphabet*).
+
 **Train and test come from two separate runs.** For a cutoff D:
 
 * the **train corpus** is an *earlier* tree, the last build before D, plus only the
@@ -182,8 +195,9 @@ of the train corpus and keeps the epoch that scores best on it. The paper's anti
 as the mean of their log-probabilities. Validation never reads the test tree.
 
 **Alphabet.** antiGen trains over the **20 standard amino acids** by default, with no gap
-and no stop column. `--alphabet ACDEFGHIKLMNPQRSTVWY*-` trains in the older 22-token
-frame, for data that still carries gaps and stops. A checkpoint stores its alphabet, so
+and no stop column, matching antiGen-data's default `--alphabet 20` (Part 1).
+`--alphabet ACDEFGHIKLMNPQRSTVWY*-` trains in the 22-token frame, for a corpus built with
+`--alphabet 22`. A checkpoint stores its alphabet, so
 `antiGen-infer` and `antiGen-eval` reload it without being told.
 
 ## Model architectures (`--model-type`)
