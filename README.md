@@ -6,9 +6,9 @@ Welcome to antiGen, a model that predicts future mutations to viral proteins bas
 scores every substitution of a SARS-CoV-2 spike (BA.2.86 in the example) with the
 pretrained 2023-01-01 antiGen that ships with the package, and lists the top-decile RBD
 mutations, in a few chunks of Python. It is also a
-[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb)
-([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb))
-and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py). CPU
+[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial.ipynb)
+([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial.ipynb))
+and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial.py). CPU
 only; no model download.
 
 ## Install

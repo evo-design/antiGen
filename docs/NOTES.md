@@ -14444,3 +14444,19 @@ all now closed through one check:
   in an empty directory (installs antigen-model, fetches the query); the outputs are the
   paper's numbers (S446G first; R346T 9th, L455S 114th of 3,819 with CV x10; L455S 98th
   with the base model). `python tutorial.py` prints the same.
+
+## 184. Tutorial simplified: the query is a file the user drops in queries/ (2026-11-13)
+
+* The query cell (download / fetch / FASTA parser) is gone. The intro tells the user to
+  download BA.2.86_spike.fasta and save it as `queries/BA.2.86_spike.fasta` in the
+  directory they run the tutorial from; the model cell reads it in one line. A clone
+  already has it: the file moved from tutorial/ to queries/ at the repo root.
+* Section 6 (the case study with the single base model) is gone; the base model is named
+  in the model list. Sections: install, load model + query, every substitution, the RBD
+  top decile.
+* tutorial.py and tutorial.ipynb moved to the repo root (beside TUTORIAL.md and queries/),
+  because Jupyter runs a notebook from its own folder; tutorial/build.py now writes from
+  there. Neither is in the wheel (packages.find includes antiGen only; checked).
+* Checked: the notebook validates and executes from a fresh kernel in a directory holding
+  only tutorial.ipynb and queries/; `python tutorial.py` likewise; same numbers (S446G
+  first; R346T 9th, L455S 114th of 3,819). The release download link is unchanged.
