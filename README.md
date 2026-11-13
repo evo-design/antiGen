@@ -2,14 +2,11 @@
 
 Welcome to antiGen, a model that predicts future mutations to viral proteins based on inferred phylogenetic trees. This repository is intended for (1) generating training data from phylogenetic trees, (2) training antiGen on said data, (3) querying substitution probabilities predicted by antiGen, (4) running the evaluations reported in the antiGen manuscript, and (5) reproducing the manuscript figures.
 
-**Just want predictions?** [TUTORIAL.md](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md)
-scores every substitution of a SARS-CoV-2 spike (BA.2.86 in the example) with the
-pretrained 2023-01-01 antiGen that ships with the package, and lists the top-decile RBD
-mutations, in a few chunks of Python. It is also a
-[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb)
-([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb))
-and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py). CPU
-only; no model download.
+**Where to start.** To score mutations relative to BA.2.86 (or your own spike) with the
+pretrained model, follow the [tutorial](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md).
+To generate data and train and evaluate your own models, continue with this README: the
+Quickstart, then Parts 1–5. To regenerate the paper's evaluations and figures, see
+[REPRODUCE.md](https://github.com/evo-design/antiGen/blob/main/REPRODUCE.md).
 
 ## Install
 
@@ -103,9 +100,6 @@ antiGen-infer ./checkpoints/fitness_*.pt $E/seqs.fasta -o scores.csv
 The train corpus holds 5 records, every one of them training data. The test tree holds 7,
 of which the 2 on or after 2020-08-15 are the test set; its other 5 are never used. The
 evaluations in Part 4 score a model on the test records of the test tree.
-
-**Just want predictions from the paper's model?** [TUTORIAL.md](TUTORIAL.md) scores a
-SARS-CoV-2 spike with the pretrained antiGen that ships with the package.
 
 ---
 
