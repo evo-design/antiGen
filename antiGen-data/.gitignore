@@ -1,56 +1,10 @@
-# Build artifacts
-build/
+antigen
 *.o
-antiGen-data
-
-# Output directories
-output*/
+__pycache__/
+# Downloaded inputs (fetch_trees.py / fetch_snapshots.py; see PROVENANCE.md) and build products
+data/*.json
+data/trees/*/
+data/trees/.s3-index.json
+output/
+work/
 logs/
-cache/
-
-# Data files (too large for git)
-*.fasta
-*.json
-*.tsv
-*.jsonl
-
-# Temporary files
-*.tmp
-*.log
-*.out
-*.err
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# SLURM files
-slurm-*.out
-
-# Benchmark generated/derived data (large; regenerable via bench/ scripts).
-# Tracked in bench/: the scripts (*.sh, *.slurm, *.py), results*.csv, scaling.png.
-bench/data/
-bench/out_smoke/
-bench/usher_guide*out/
-bench/guide.*        # guide.nwk / guide.vcf / guide.pb — derived from tree.json
-*.pb
-*.vcf
-*.vcf.gz
-*.nwk
-
-# Planning doc (kept local, not published)
-BENCHMARK_PLAN.md
-
-# Toy example: commit the tiny inputs (despite the global *.json/*.tsv/*.fasta
-# ignores) but not the generated output.
-example/out/
-!example/ref.json
-!example/tree.json
-!example/seqs.fasta
-!example/metadata.tsv

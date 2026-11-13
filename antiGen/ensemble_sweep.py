@@ -42,7 +42,7 @@ Usage, Stage 1 (backbone, no GPU, maps already on disk):
     python antiGen/ensemble_sweep.py --substrate backbone \\
         --background-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_background_update \\
         --data-dir /home/ivan.specht/antiGen-data/output1 \\
-        --tree-json data/mutation-annotated-trees/sc2_update.json --ref-json antiGen-data/ref.json --cutoff 0.989 \\
+        --tree-json data/mutation-annotated-trees/sc2_update.json --ref-json data/mutation-annotated-trees/sc2_guide_ref.json --cutoff 0.989 \\
         --mutation-list coguk=data/mutation_lists/coguk.csv --grid verify --output-dir /tmp/sweep
 """
 from __future__ import annotations

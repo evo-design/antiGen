@@ -54,8 +54,8 @@ PY
 python "$REPO/antiGen/background_discrimination.py" \
     --dataset sc2 \
     --data-dir /home/ivan.specht/antiGen-data/output1 \
-    --tree-json "$REPO/antiGen-data/tree.json" \
-    --ref-json "$REPO/antiGen-data/ref.json" \
+    --tree-json "$REPO/data/mutation-annotated-trees/sc2_guide.json" \
+    --ref-json "$REPO/data/mutation-annotated-trees/sc2_guide_ref.json" \
     --checkpoint-dir "$STAGE" \
     --output-dir "$OUT" \
     --include-experimental \

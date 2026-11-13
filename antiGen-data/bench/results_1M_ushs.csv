@@ -1,2 +1,0 @@
-tool,mode,N,guide_nodes,threads,core_ms,wall_s,max_rss_kb
-usher-sampled,place+optimize(10x100k),1000000,4549,16,18509338,18515,4468328

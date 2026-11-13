@@ -60,8 +60,8 @@ exec sbatch \
     --error=logs/bg_vs10_aa20_%j.err \
     --wrap "cd $REPO && $PYTHON antiGen/background_discrimination.py \
         --dataset sc2 \
-        --tree-json $REPO/antiGen-data/tree.json \
-        --ref-json $REPO/antiGen-data/ref.json \
+        --tree-json $REPO/data/mutation-annotated-trees/sc2_guide.json \
+        --ref-json $REPO/data/mutation-annotated-trees/sc2_guide_ref.json \
         --checkpoint-dir '$CKPTS' \
         --output-dir '$OUT' \
         --include-experimental \

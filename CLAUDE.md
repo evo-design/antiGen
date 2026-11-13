@@ -58,6 +58,6 @@ scontrol update jobid=<id> partition=cpu_batch   # PENDING only
 
 ## Working log
 
-`experiments/multitree/NOTES.md` is the running record — numbered sections, newest at
+`docs/NOTES.md` is the running record — numbered sections, newest at
 the end. Work that lands in the repo gets a section; code comments reference them as
 `NOTES s<N>`, so a referenced section has to exist.

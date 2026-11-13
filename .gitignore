@@ -73,7 +73,8 @@ evals_*/
 # ...but the antiGen-figures rendered outputs are committed so they show on GitHub.
 !antiGen-figures/figs/**
 !antiGen-figures/figs_vector/**
-!antiGen-figures/fig1/**
+# The cartoons the figures place as image panels are inputs, not outputs.
+!antiGen-figures/cartoons/*.png
 
 # Scratch/temp files
 plan_optimizations.md

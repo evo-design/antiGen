@@ -22,10 +22,10 @@ from antiGen.load import load_examples
 ALPHABET = LEGACY_AAS
 
 
-def validate(path, variant=None, alphabet=ALPHABET):
+def validate(path, variant=None, alphabet=ALPHABET, split_date=None):
     """Parse and check an examples file. Raises SystemExit with a clear message on failure."""
     try:
-        examples = load_examples(path, alphabet, variant)
+        examples = load_examples(path, alphabet, variant, split_date=split_date)
     except (ValueError, IndexError) as exc:
         raise SystemExit(f"Failed to parse '{path}': {exc}\n"
                          f"Expected an antiGen-data examples_cutoff_*.txt file (see the README, Training).")
@@ -64,8 +64,11 @@ def main():
     ap.add_argument("--alphabet", default=ALPHABET,
                     help="Amino-acid alphabet (default: the 22-token frame, which accepts "
                          "a 20-residue file too)")
+    ap.add_argument("--split-date", default=None, metavar="YYYY-MM-DD",
+                    help="For files whose POST_CUTOFF lists several cutoffs (antiGen-data "
+                         "'place --post-cutoff'): the train/test split to read")
     args = ap.parse_args()
-    validate(args.examples, args.variant, args.alphabet)
+    validate(args.examples, args.variant, args.alphabet, args.split_date)
     print("Validation passed.")
 
 

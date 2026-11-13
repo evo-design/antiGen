@@ -1,1368 +1,1462 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
-#include <cmath>
+// antiGen-data-revised: annotate the Nextstrain tree with parsimony-consistent
+// allele sets over one gene, or a concatenation of several, place new sequences
+// on it, then resolve and collapse the result into a mutation tree of training
+// examples. Nothing is collapsed and no node is committed to a genotype until
+// that last step.
+#include "alphabet.hpp"
+#include "examples.hpp"
+#include "hartigan.hpp"
+#include "tree.hpp"
+#include "placement.hpp"
+#include "sequences.hpp"
+
+#include <sys/stat.h>
+
+#include <cerrno>
+
 #include <algorithm>
 #include <chrono>
-#include <filesystem>
-#include <random>
-#include <set>
-#include <sstream>
-#include <iomanip>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include "json.hpp"
-#include "types.h"
-#include "read_fasta.h"
-#include "attach.h"
-#include "cache.h"
-#ifdef USE_CUDA
-#include <cuda_runtime.h>
-#endif
-
-using json = nlohmann::json;
-
-// Protein alphabet used by default. For nucleotide datasets this global is
-// overwritten from the DatasetConfig alphabet in main() before it is used by
-// aa_to_index / the PSSM code.
-std::string ALLOWED_AAS = "ACDEFGHIKLMNPQRSTVWY*-";
-
-int aa_to_index(char aa) {
-    size_t pos = ALLOWED_AAS.find(aa);
-    if(pos == std::string::npos) {
-        throw std::runtime_error(std::string("Invalid amino acid: ") + aa);
-    }
-    return (int)pos;
-}
-
-Mutation parse_mutation(const std::string& s) {
-    char from = s.front();
-    char to = s.back();
-    int pos = std::stoi(s.substr(1, s.size() - 2)) - 1;
-    return {from, pos, to};
-}
-
-int translate_mutation_position(const DatasetConfig& config,
-                               const std::string& segment,
-                               int segment_pos) {
-    if (config.segment_names.size() == 1) {
-        return segment_pos;  // Single-segment dataset, no translation needed
-    }
-
-    // Multi-segment: convert segment coordinates to concatenated coordinates
-    for (size_t i = 0; i < config.segment_names.size(); i++) {
-        if (config.segment_names[i] == segment) {
-            return config.segment_offsets[i] + segment_pos;
-        }
-    }
-    throw std::runtime_error("Unknown segment: " + segment);
-}
-
-DatasetConfig create_dataset_config(const std::string& type) {
-    const std::string AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY*-";
-    // Nucleotide alphabet: A/C/G/T + gap + N (ambiguity sentinel).
-    const std::string NUC_ALPHABET = "ACGT-N";
-    if (type == "sc2") {
-        return {
-            .type = "sc2",
-            .segment_names = {"S"},
-            .segment_lengths = {1273},
-            .segment_offsets = {0},
-            .total_length = 1273,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else if (type == "sc2_nuc") {
-        // Whole-genome SARS-CoV-2 nucleotide (Wuhan-Hu-1 / MN908947, 29903 nt).
-        // Mutations live under branch_attrs.mutations.nuc in Auspice JSON; the
-        // root sequence is taken from ref["nuc"] (no stop-codon stripping).
-        return {
-            .type = "sc2_nuc",
-            .segment_names = {"nuc"},
-            .segment_lengths = {29903},
-            .segment_offsets = {0},
-            .total_length = 29903,
-            .alphabet = NUC_ALPHABET,
-            .ambig_char = 'N'
-        };
-    } else if (type == "sc2_spike_nuc") {
-        // Spike-only SARS-CoV-2 nucleotide (NC_045512 21563-25384, rebased to
-        // 1..3822). Same handling as sc2_nuc, shorter total_length.
-        return {
-            .type = "sc2_spike_nuc",
-            .segment_names = {"nuc"},
-            .segment_lengths = {3822},
-            .segment_offsets = {0},
-            .total_length = 3822,
-            .alphabet = NUC_ALPHABET,
-            .ambig_char = 'N'
-        };
-    } else if (type == "toy") {
-        // Tiny self-contained amino-acid dataset for the example/ demo + smoke test
-        // (see example/). Single "protein" segment, length 25; emits AA examples so
-        // the toy trains the model on the same 22-token alphabet as the real datasets.
-        return {
-            .type = "toy",
-            .segment_names = {"protein"},
-            .segment_lengths = {25},
-            .segment_offsets = {0},
-            .total_length = 25,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else if (type == "h3n2") {
-        return {
-            .type = "h3n2",
-            .segment_names = {"SigPep", "HA1", "HA2"},
-            .segment_lengths = {16, 329, 221},
-            .segment_offsets = {0, 16, 345},
-            .total_length = 566,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else if (type == "rsv_b") {
-        return {
-            .type = "rsv_b",
-            .segment_names = {"F"},
-            .segment_lengths = {574},
-            .segment_offsets = {0},
-            .total_length = 574,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else if (type == "rsv_a") {
-        return {
-            .type = "rsv_a",
-            .segment_names = {"F"},
-            .segment_lengths = {574},
-            .segment_offsets = {0},
-            .total_length = 574,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else if (type == "denv2") {
-        return {
-            .type = "denv2",
-            .segment_names = {"E"},
-            .segment_lengths = {495},
-            .segment_offsets = {0},
-            .total_length = 495,
-            .alphabet = AA_ALPHABET,
-            .ambig_char = 'X'
-        };
-    } else {
-        throw std::runtime_error("Unknown dataset type: " + type + ". Supported: sc2, sc2_nuc, sc2_spike_nuc, toy, h3n2, rsv_a, rsv_b, denv2");
-    }
-}
-
-Node* build_tree(const json& j, Node* parent, const DatasetConfig& config) {
-    Node* node = new Node();
-    node->parent = parent;
-    node->name = j.at("name").get<std::string>();
-
-    // Parse clade membership - use subclade for H3N2 and DENV2, clade_membership otherwise
-    if (j.contains("node_attrs")) {
-        std::string clade_field = (config.type == "h3n2" || config.type == "denv2") ? "subclade" : "clade_membership";
-        if (j["node_attrs"].contains(clade_field) &&
-            j["node_attrs"][clade_field].contains("value")) {
-            node->possible_clades = {j["node_attrs"][clade_field]["value"].get<std::string>()};
-        }
-    }
-
-    // Parse mutations for all segments in this dataset
-    if (j.contains("branch_attrs") && j["branch_attrs"].contains("mutations")) {
-        for (const std::string& segment : config.segment_names) {
-            if (j["branch_attrs"]["mutations"].contains(segment)) {
-                for (const auto& m : j["branch_attrs"]["mutations"][segment]) {
-                    std::string mut_str = m.get<std::string>();
-                    Mutation mut = parse_mutation(mut_str);
-                    mut.pos = translate_mutation_position(config, segment, mut.pos);
-
-                    // Skip mutations beyond the sequence length (e.g. stop-codon
-                    // position after stripping the trailing '*').
-                    if (mut.pos < 0 || mut.pos >= config.total_length) continue;
-
-                    // Skip mutations involving the ambiguity sentinel ('X'/'N').
-                    if (mut.from == config.ambig_char || mut.to == config.ambig_char) continue;
-
-                    node->spike_mutations.push_back(mut);  // Keep field name for compatibility
-                }
-            }
-        }
-    }
-
-    // Recurse on children
-    if (j.contains("children")) {
-        for (const auto& child : j["children"]) {
-            Node* c = build_tree(child, node, config);
-            node->children.push_back(c);
-        }
-    }
-
-    // Set estimated node time
-    node->time = j.at("node_attrs").at("num_date").at("value").get<double>();
-
-    // If this is too early compared to parent, update
-    if(node->parent != nullptr) {
-        if(node->time < node->parent->time) {
-            std::cout << "Warning: child time before parent time; setting equal to parent time" << std::endl;
-            node->time = node->parent->time;
-        }
-    }
-
-    // If leaf node, also set leaf times
-    if (node->children.empty()) {
-        node->leaf_times.push_back(node->time);
-    }
-
-    return node;
-}
-
-void set_times_rel_root(Node* node, double root_time) {
-
-    // Update node's time
-    node->time -= root_time;
-    if(node->time < 0.0) throw std::runtime_error("Negative node time");
-
-    // Update leaf times
-    for(int j = 0; j < node->leaf_times.size(); j++) {
-        node->leaf_times[j] -= root_time;
-        if(node->leaf_times[j] < 0.0) {
-            throw std::runtime_error("Negative leaf time");
-        }
-    }
-    for(Node* n : node->children) {
-        set_times_rel_root(n, root_time);
-    }
-}
-
-void set_node_times(Node* node) {
-
-    std::vector<double> child_times;
-    for(Node* n : node->children) {
-        set_node_times(n);
-        child_times.push_back(n->time);
-    }
-
-    if(node->children.size() == 0) {
-
-        if(node->leaf_times.size() == 0) {
-            throw std::runtime_error("Node with no children must have at least one leaf time");
-        }
-
-        node->time = *std::min_element(node->leaf_times.begin(), node->leaf_times.end());
-
-    }else{
-        node->time = *std::min_element(child_times.begin(), child_times.end());
-    }
-}
-
-void count_nodes(const Node* node, int& total, int& leaves) {
-    total++;
-    if (node->children.empty()) leaves++;
-    for (const Node* c : node->children) {
-        count_nodes(c, total, leaves);
-    }
-}
-
-void index_nodes(Node* node, int& idx, std::map<int, Node*>& idx_to_node) {
-    node->idx = idx;
-    idx_to_node[idx] = node;
-    idx++;
-    for(Node* n : node->children) {
-        index_nodes(n, idx, idx_to_node);
-    }
-}
-
-void spike_seqs_to_host(Node* node, char* h_sequences, std::vector<int>& h_parent, long long L) {
-    std::memcpy(h_sequences + ((long long)node->idx * L), node->seq.data(), L * sizeof(char));
-    if(node->parent != nullptr) {
-        h_parent[node->idx] = node->parent->idx;
-    }
-
-    for(Node* n : node->children) {
-        spike_seqs_to_host(n, h_sequences, h_parent, L);
-    }
-
-}
-
-void delete_tree(Node* node) {
-    for (Node* c : node->children) {
-        delete_tree(c);
-    }
-    delete node;
-}
-
-// Via post-order traversal, prune branches with zero mutations
-// Note this function doesn't affect node times, just may update leaves assigned to each node
-void prune_branches_without_mutations(Node* node) {
-
-    // post-order traversal (copy vector since children may be modified)
-    std::vector<Node*> kids = node->children;
-    for(Node* n : kids) {
-        prune_branches_without_mutations(n);
-    }
-
-    // If node has no mutations and has a parent, prune
-    if(node->spike_mutations.size() == 0 && node->parent != nullptr) {
-        Node* parent = node->parent;
-        parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), node), parent->children.end());
-        for(Node* n : node->children) {
-            n->parent = parent;
-            parent->children.push_back(n);
-        }
-        for(double t : node->leaf_times) {
-            parent->leaf_times.push_back(t);
-        }
-        // Clade assignment: prioritize child
-        for(std::string c : node->possible_clades) {
-            parent->possible_clades.insert(c);
-        }
-
-        delete node;
-    }
-}
-
-void check_prune(Node* node, int& total, int& leaf_count) {
-
-    for(Node* n : node->children) {
-        check_prune(n, total, leaf_count);
-    }
-
-    // If node has no mutations and has a parent, prune
-    if(node->parent != nullptr) {
-        if(node->spike_mutations.size() == 0) {
-            throw std::runtime_error("Branch with 0 mutations");
-        }
-    }
-    total++;
-    leaf_count += node->leaf_times.size();
-}
-
-void assign_spike_sequences(Node* node) {
-
-    if(node->parent != nullptr) {
-
-        if(node->spike_mutations.size() == 0) {
-            throw std::runtime_error("Branch with no mutations on original tree");
-        }
-
-
-        std::vector<char> new_seq = node->parent->seq;
-        for(Mutation mut : node->spike_mutations) {
-            if(new_seq[mut.pos] != mut.from) {
-                throw std::runtime_error("Mutation mismatch!");
-            }
-            new_seq[mut.pos] = mut.to;
-        }
-        node->seq = new_seq;
-
-        if(node->seq == node->parent->seq) {
-            throw std::runtime_error("Sequences identical parent to child");
-        }
-    }
-
-    for(Node* n : node->children) {
-        assign_spike_sequences(n);
-    }
-}
-
-void update_pssm(
-    Node* node,
-    char* h_sequences,
-    double cutoff_time,
-    double lower_cutoff_time,
-    std::vector<int>& pssm,
-    int L
-) {
-
-    if(node->leaf_times.size() == 0) return;
-
-    int multiplicity = 0;
-    for(double t : node->leaf_times) {
-        if(t <= cutoff_time && t > lower_cutoff_time) {
-            multiplicity++;
-        }
-    }
-
-    if(multiplicity == 0) return;
-
-    long long idx_offset = (long long)node->idx * L;
-    for(int pos = 0; pos < L; pos++) {
-        char aa = h_sequences[idx_offset + pos];
-        pssm[pos * ALLOWED_AAS.size() + aa_to_index(aa)] += multiplicity;
-    }
-}
-
-// Compile PSSMs for root and variant
-void compile_pssms(
-    Node* node,
-    char* h_sequences,
-    std::vector<int>& pssm_root, // matrix (flat)
-    std::vector<std::vector<std::vector<int>>>& pssm_variants, // variant, timestep, matrix (flat)
-    double cutoff,
-    int L,
-    const std::vector<std::string>& variants,
-    double timestep = 0.1,
-    int n_steps = 60,
-    double start_time = 0.0,
-    bool variant_pssms_post_cutoff = false
-) {
-
-
-    // Root PSSM
-    update_pssm(node, h_sequences, cutoff, -INFINITY, pssm_root, L);
-
-    // PSSM for each variant
-    double variant_lower_time = variant_pssms_post_cutoff ? cutoff : -INFINITY;
-    for(int v = 0; v < (int)variants.size(); v++) {
-        if(!node->is_descended_from_variant[v]) continue;
-        for(int i = 0; i < n_steps; i++) {
-            update_pssm(node, h_sequences, start_time + ((double)i) * timestep, variant_lower_time, pssm_variants[v][i], L);
-        }
-    }
-
-    for(Node* n : node->children) {
-        compile_pssms(n, h_sequences, pssm_root, pssm_variants, cutoff, L, variants, timestep, n_steps, start_time, variant_pssms_post_cutoff);
-    }
-}
-
-
-
-
-void set_variant_descendants(Node* node, const std::vector<std::string>& variants) {
-    for(int i = 0; i < (int)variants.size(); i++) {
-        if(node->possible_clades.find(variants[i]) != node->possible_clades.end()) {
-            node->is_descended_from_variant.push_back(true);
-        }else if(node->parent != nullptr) {
-            node->is_descended_from_variant.push_back(node->parent->is_descended_from_variant[i]);
-        }else{
-            node->is_descended_from_variant.push_back(false);
-        }
-
-        if(
-            node->parent != nullptr &&
-            node->is_descended_from_variant[i] && 
-            !node->parent->is_descended_from_variant[i]
-        ) {
-            node->is_variant_root.push_back(true);
-        }else{
-            node->is_variant_root.push_back(false);
-        }
-    }
-
-
-    for(Node* n : node->children) {
-        set_variant_descendants(n, variants);
-    }
-}
-
-Node* prune_node(Node* node) {
-    Node* original_parent = node->parent;
-    if(original_parent == nullptr) throw std::runtime_error("Cannot prune a node with no parent");
-
-    Node* new_node = new Node;
-    new_node->children = {node};
-    new_node->parent = nullptr;
-    new_node->idx = original_parent->idx; // Map to the same sequence idx
-    new_node->time = node->time;
-    new_node->is_descended_from_variant = original_parent->is_descended_from_variant;
-    new_node->is_variant_root = original_parent->is_variant_root;
-
-    // Re-wire parent of node
-    node->parent = new_node;
-
-    // Update children of original parent
-    original_parent->children.erase(std::remove(original_parent->children.begin(), original_parent->children.end(), node), original_parent->children.end());
-
-    return new_node;
-
-}
-
-void prune_tree(Node* node, std::vector<Node*>& pruned_roots, double cutoff) {
-    if(node->parent != nullptr) {
-        if(node->time > cutoff && node->parent->time <= cutoff) {
-            pruned_roots.push_back(prune_node(node));
-        }
-    }
-    std::vector<Node*> kids = node->children;
-    for(Node* n : kids) {
-        prune_tree(n, pruned_roots, cutoff);
-    }
-}
-
-void cleanup_pruned_tree(Node* node) {
-
-    std::vector<Node*> kids = node->children;
-    for(Node* n : kids) {
-        cleanup_pruned_tree(n);
-    }
-
-    if(
-        node->leaf_times.size() == 0 && 
-        node->parent != nullptr &&
-        node->children.size() <= 1
-    ) {
-        
-        Node* parent = node->parent;
-        parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), node), parent->children.end());
-
-        if(node->children.size() == 1) {
-            Node* child = node->children[0];
-            parent->children.push_back(child);
-            child->parent = parent;
-        }
-
-        // Either way, no longer need this node
-        delete node;
-        
-    }
-}
-
-void set_mutation_pos_order(Node* node, char* h_sequences, long long L, std::mt19937& rng) {
-
-    if(node->parent != nullptr) {
-        std::vector<int> mutation_pos_order;
-        long long idx = node->idx;
-        long long parent_idx = node->parent->idx;
-        for(int pos = 0; pos < L; pos++) {
-            if(h_sequences[idx*L + pos] != h_sequences[parent_idx*L + pos]) {
-                mutation_pos_order.push_back(pos);
-            }
-        }
-
-        if(mutation_pos_order.size() == 0) {
-            throw std::runtime_error("Should have at least one mutation from parent to child");
-        }
-
-        std::shuffle(mutation_pos_order.begin(), mutation_pos_order.end(), rng);
-
-        node->mutation_pos_order = mutation_pos_order;
-
-    }
-
-    for(Node* n : node->children) {
-        set_mutation_pos_order(n, h_sequences, L, rng);
-    }
-}
-
-
-
-
-void write_training_examples(
-    Node* node,
-    char* h_sequences,
-    std::ofstream& txt_out,
-    long long L,
-    bool is_testing,
-    int& example_id,
-    const std::vector<std::string>& variants
-) {
-
-    std::string seq;
-    long long idx = node->idx; // Index of this node
-
-    // Intermediate training examples along the branch
-    if(node->parent != nullptr) {
-        long long parent_idx = node->parent->idx;
-        for(long long pos = 0; pos < L; pos++) {
-            seq += h_sequences[parent_idx*L + pos];
-        }
-
-        // Apply first mutation
-        seq[node->mutation_pos_order[0]] = h_sequences[idx*L + node->mutation_pos_order[0]];
-
-        // If there are more mutations, generate a training example for each
-        for(int j = 1; j < (int)node->mutation_pos_order.size(); j++) {
-            // Write the sequence and its (one) mutation
-            txt_out << "EXAMPLE_ID: " << example_id << std::endl;
-            if(j == 1) {
-                txt_out << "PARENT_EXAMPLE_ID: " << node->parent->example_id << std::endl;
-            }else{
-                txt_out << "PARENT_EXAMPLE_ID: " << example_id - 1 << std::endl;
-            }
-            example_id++;
-            txt_out << "MUTATION_FROM_PARENT:" << std::endl;
-            txt_out << h_sequences[parent_idx*L + node->mutation_pos_order[j-1]] << "," << node->mutation_pos_order[j-1] << "," << h_sequences[idx*L + node->mutation_pos_order[j-1]] << std::endl;
-
-            if(is_testing) {
-                txt_out << "TESTING" << std::endl;
-            }else{
-                txt_out << "TRAINING" << std::endl;
-            }
-
-            // Inherited from parent
-            txt_out << "IS_DESCENDED_FROM_VARIANT:" << std::endl;
-            for(int v = 0; v < variants.size(); v++) {
-                txt_out << variants[v] << ",";
-                if(node->parent->is_descended_from_variant[v] && is_testing) {
-                    txt_out << "True" << std::endl;
-                }else{
-                    txt_out << "False" << std::endl;
-                }
-            }
-
-            // Only an example at an actual node can ever be the variant root
-            txt_out << "IS_VARIANT_ROOT:" << std::endl;
-            for(int v = 0; v < variants.size(); v++) {
-                txt_out << variants[v] << ",False" << std::endl;
-            }
-            
-            txt_out << seq << std::endl;
-            txt_out << "MUTATIONS_TO_CHILDREN:" << std::endl;
-            txt_out << node->mutation_pos_order[j] << "," << h_sequences[idx*L + node->mutation_pos_order[j]] << std::endl;
-
-            txt_out << std::endl;
-
-            // Mutate the sequence
-            seq[node->mutation_pos_order[j]] = h_sequences[idx*L + node->mutation_pos_order[j]];
-        }
-
-
-    }else{
-        // If we're at the root, just get the sequence directly from the node
-        for(long long pos = 0; pos < L; pos++) {
-            seq += h_sequences[idx*L + pos];
-        }
-    }
-
-    // Final example: the node itself
-    if(node->children.size() > 0) {
-
-        // Write the sequence and its (one) mutation
-        txt_out << "EXAMPLE_ID: " << example_id << std::endl;
-
-        
-        /*
-        txt_out << "NAME: " << node->name << std::endl;
-        txt_out << "POSSIBLE_CLADES: " << std::endl;
-        for(std::string c : node->possible_clades) {
-            txt_out << c << std::endl;
-        }
-        txt_out << "LEAF_TIMES: " << std::endl;
-        for(double t : node->leaf_times) {
-            txt_out << t << " ";
-        }
-        txt_out << std::endl;
-        */
-
-        
-        if(node->parent == nullptr) {
-            txt_out << "PARENT_EXAMPLE_ID: None" << std::endl;
-            txt_out << "MUTATION_FROM_PARENT:" << std::endl;
-            txt_out << "None" << std::endl;
-
-        }else{
-            long long parent_idx = node->parent->idx;
-            if(node->mutation_pos_order.size() == 1) {
-                txt_out << "PARENT_EXAMPLE_ID: " << node->parent->example_id << std::endl;
-            }else{
-                txt_out << "PARENT_EXAMPLE_ID: " << example_id - 1 << std::endl;
-            }
-
-            txt_out << "MUTATION_FROM_PARENT:" << std::endl;
-            txt_out << h_sequences[parent_idx*L + node->mutation_pos_order[node->mutation_pos_order.size()-1]] << "," << node->mutation_pos_order[node->mutation_pos_order.size()-1] << "," << h_sequences[idx*L + node->mutation_pos_order[node->mutation_pos_order.size()-1]] << std::endl;
-
-        }
-        node->example_id = example_id;
-        example_id++;
-
-        // Write the sequence and its mutations
-        if(is_testing) {
-            txt_out << "TESTING" << std::endl;
-        }else{
-            txt_out << "TRAINING" << std::endl;
-        }
-
-        txt_out << "IS_DESCENDED_FROM_VARIANT:" << std::endl;
-        for(int v = 0; v < variants.size(); v++) {
-            txt_out << variants[v] << ",";
-            if(node->is_descended_from_variant[v] && is_testing) { // ATTEMPTED FIX: enforce these are in testing
-                txt_out << "True" << std::endl;
-            }else{
-                txt_out << "False" << std::endl;
-            }
-        }
-
-        txt_out << "IS_VARIANT_ROOT:" << std::endl;
-        for(int v = 0; v < variants.size(); v++) {
-            txt_out << variants[v] << ",";
-            if(node->is_variant_root[v] && is_testing) { // ATTEMPTED FIX: enforce these are in testing
-                txt_out << "True" << std::endl;
-            }else{
-                txt_out << "False" << std::endl;
-            }
-        }
-
-
-        txt_out << seq << std::endl;
-
-        txt_out << "MUTATIONS_TO_CHILDREN:" << std::endl;
-        for(Node* n : node->children) {
-            long long child_idx = n->idx;
-            txt_out << n->mutation_pos_order[0] << "," << h_sequences[child_idx*L + n->mutation_pos_order[0]] << std::endl;
-        }
-
-        txt_out << std::endl;
-    }
-
-    for(Node* n : node->children) {
-        write_training_examples(
-            n,
-            h_sequences,
-            txt_out,
-            L,
-            is_testing,
-            example_id,
-            variants
-        );
-    }
-}
-
-
-struct CliOptions {
-    std::string output_dir;
-    double cutoff = 0.0;
-    std::string dataset_type;
-    std::string ref_json_path;
-    std::string tree_json_path;
-    std::string metadata_path;
-    std::vector<std::string> alignment_files;
-    int max_seqs = -1;
-    std::string cache_path;
-    bool no_cache = false;
-    bool force_rebuild_cache = false;
-    int grid_count = 0;
-    bool grid_interior = false;
-    std::string grid_output_dir;
-    bool force_cpu = false;  // --cpu: force the CPU attachment path even if a GPU is present
+#include <exception>
+#include <numeric>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+namespace {
+
+const char* kUsage =
+    "usage: antigen <command> --tree <dataset.json> --root-seq <root-sequence.json> [options]\n"
+    "\n"
+    "commands:\n"
+    "  tree       read the Nextstrain tree and report it, uncollapsed\n"
+    "  sets       the above, plus Hartigan allele sets at every (node, site)\n"
+    "  prepare    select the open-data sequences eligible for placement\n"
+    "  place      append prepared sequences to the tree by parsimony placement\n"
+    "\n"
+    "options:\n"
+    "  --tree <path>      Nextstrain v2 dataset JSON (tree, sets, place)\n"
+    "  --root-seq <path>  root-sequence sidecar JSON (required)\n"
+    "  --out <path>       TSV out: the tree, the allele sets, or the prepared\n"
+    "                     sequences\n"
+    "  --out-tree <path>  for 'sets' and 'place', also write the tree here\n"
+    "  --out-examples <p> for 'sets' and 'place', also write the examples file:\n"
+    "                     one allele drawn per (node, site), one mutation per edge,\n"
+    "                     positions 0-based\n"
+    "  --gene <names>     the CDS to read, or a comma-separated list of them,\n"
+    "                     concatenated in the order given: the sidecar's entries,\n"
+    "                     the tree's branch mutations and --fasta all follow it.\n"
+    "                     Default 'S'. The seasonal-flu build has no 'HA' key, so\n"
+    "                     its headline gene is '--gene HA1,HA2'\n"
+    "  --fasta <paths>    for 'prepare': the aligned FASTA, one per --gene, in the\n"
+    "                     same order. Several are joined by strain name, not by\n"
+    "                     position: the per-CDS translations are neither in the\n"
+    "                     same order nor over quite the same strains\n"
+    "  --metadata <path>  for 'prepare': strain/date TSV alongside it\n"
+    "  --prepared <path>  for 'place': what 'prepare' wrote\n"
+    "  --seed <n>         the within-day shuffle and tie-breaking for 'place', and\n"
+    "                     the allele draw and mutation order for --out-examples\n"
+    "  --examples-seed <n[,n...]> for --out-examples: seed the allele draw and the\n"
+    "                     mutation order separately from --seed. With several, the\n"
+    "                     same tree is written once per seed, to <path>.seed<n>\n"
+    "  --tie-seed <n>     for 'place': seed the placement tie-break separately from\n"
+    "                     the queue shuffle, to isolate the two sources of variation\n"
+    "  --limit <n>        for 'place': stop after n sequences\n"
+    "  --threads <n>      for 'place': cores to run the placement scan on, which\n"
+    "                     is ~85% of the work. The tree written does not depend\n"
+    "                     on the count: results are merged in tree order, not in\n"
+    "                     completion order (default 1)\n"
+    "  --date-cutoff <d>  for 'prepare': keep collection dates before YYYY-MM-DD,\n"
+    "                     or 'none' to keep every dated sequence (default 2021-01-01)\n"
+    "  --date-impute <m>  for 'prepare': 'month' takes a YYYY-MM collection date as\n"
+    "                     the 15th of that month; 'none' (the default) drops it. A\n"
+    "                     year on its own is dropped either way -- the cutoff and\n"
+    "                     the clock both work at the resolution of a month, so an\n"
+    "                     imputed day cannot move a record across either\n"
+    "  --no-clock         for 'prepare': drop the clock filter entirely\n"
+    "  --min-covered <f>  for 'prepare': the fraction of sites a sequence must have\n"
+    "                     data at to be kept, 0..1 (default 0.9). 0 keeps everything\n"
+    "  --keep-order       for 'prepare' and 'place': keep the FASTA's order instead\n"
+    "                     of sorting by date and shuffling within a day. Give it to\n"
+    "                     both, to place in exactly the order another tool does\n"
+    "  --progress-every <n> for 'place': print a progress line, with the running\n"
+    "                     parsimony score, every n placements (default 10000)\n"
+    "  --clock-tol <n>    for 'prepare': how many months the collection date may be\n"
+    "                     off by before the divergence counts against it (default 3)\n"
+    "  --clock-slack <n>  for 'prepare': substitutions of slack on the envelope's\n"
+    "                     upper edge (default 3)\n"
+    "  --out-clock <p>    for 'prepare': the calibrated envelope, month by month\n"
+    "  --variant <name>   for 'sets' and 'place': the clade whose root to flag in the\n"
+    "                     examples, e.g. 'BA.2'. Matched as the whole clade label or\n"
+    "                     as '(name)' inside it; it must begin at exactly one node\n"
+    "  --post-cutoff <d>  for 'sets' and 'place': a date, or a comma-separated list\n"
+    "                     of them, the examples' POST_CUTOFF flags are taken\n"
+    "                     against; repeatable. A record lists each one every\n"
+    "                     observed date below it is at or after, as '<d>,True'.\n"
+    "                     Default: none at all, and the field is written empty --\n"
+    "                     which is what a train tree wants, since it stops before\n"
+    "                     its own cutoff. Give the whole series here on the test\n"
+    "                     tree, which holds every sequence and so can answer for\n"
+    "                     every cutoff at once\n"
+    "  --out-counts <p>   for 'prepare' and 'place': a (site x 20) count matrix over\n"
+    "                     the sequences that got through the filters, one increment\n"
+    "                     per standard residue. Missing data counts for nothing\n"
+    "  --out-variant-counts <dir>\n"
+    "                     for 'place': one (site x 20) count matrix per --post-cutoff\n"
+    "                     date, written into <dir> as 'counts_<date>.tsv'. The matrix\n"
+    "                     for date D counts every placed sequence whose collection\n"
+    "                     date is at or after D and whose placement sits at or below\n"
+    "                     the --variant root -- the test-side residue distribution of\n"
+    "                     the variant over exactly the window the train arm at D does\n"
+    "                     not see. Needs --variant and --post-cutoff\n"
+    "  --out-msa <path>   for 'prepare' and 'place': those same sequences as a FASTA,\n"
+    "                     gaps and stops included -- the alignment the matrix counts\n"
+    "  --out-matches <p>  for 'place': TSV of the sequences that matched a node's\n"
+    "                     allele sets exactly and were counted there, not attached\n"
+    "  --attach-matches   for 'place': attach those as leaves anyway, as the rule\n"
+    "                     before 2026-10-22 did. Slower, and a much larger tree\n"
+    "  --verify           for 'place': recompute the sets from scratch after every\n"
+    "                     placement and compare (small --limit only)\n"
+    "  --verify-final     for 'place': the same, once, after the last placement\n"
+    "  --alphabet <n>     20 (default), 22 or nuc. At 20, '-', '*' and X are all\n"
+    "                     missing data. At 22, '-' and '*' are states of their own and\n"
+    "                     only X is missing. nuc is A, C, G, T, with N, '-' and every\n"
+    "                     IUPAC partial code missing; use it with --gene nuc. The same\n"
+    "                     value must be given to every command in one arm; 'place'\n"
+    "                     refuses a queue prepared under another\n"
+    "  --max-gap-run <n>  for 'prepare' with --alphabet 22: the longest run of '-'\n"
+    "                     still read as a deletion, default 10. A run touching either\n"
+    "                     end of a gene, or longer than this, is missing coverage and\n"
+    "                     is rewritten to X before the coverage test sees it\n"
+    "\n"
+    "Each gene's terminal stop codon is dropped -- that is where S's 1,274 sidecar\n"
+    "characters become 1,273 sites. Gaps, stop codons and X are missing data unless\n"
+    "--alphabet 22 says otherwise.\n"
+    "Observations are the input tree's leaves and the placed sequences; the root is\n"
+    "pinned to the sidecar; every other node is free. The mutation tree exists only\n"
+    "in the examples file.\n";
+
+struct Options {
+    std::string command;
+    std::string tree;
+    std::string rootSeq;
+    std::string out;
+    std::string outTree;
+    std::string outExamples;
+    std::vector<std::string> genes{"S"};
+    std::vector<std::string> fasta;
+    std::string metadata;
+    std::string prepared;
+    std::string outMatches;
+    std::string outCounts;
+    std::string outVariantCounts;  // for 'place': a directory, one matrix per cutoff
+    std::string outMsa;
+    bool        attachMatches = false;
+    long long   dateCutoff    = 20210101;  // for 'prepare'; 0 means keep every date
+    int         dateImputeDay = 0;         // for 'prepare'; 0 drops year-month dates
+    bool        noClock       = false;     // for 'prepare'
+    double      minCovered    = -1.0;      // for 'prepare'; < 0 means the default
+    bool        keepOrder     = false;     // for 'prepare' and 'place'
+    long long   progressEvery = 10000;     // for 'place'
+    long long   clockTol      = -1;        // for 'prepare'; < 0 means the default
+    long long   clockSlack    = -1;        // for 'prepare'; < 0 means the default
+    std::string outClock;                  // for 'prepare': dump the calibration
+    std::string variant;                   // for 'sets'/'place': the clade to flag
+    std::vector<std::string> postCutoffs;  // for 'sets'/'place': the POST_CUTOFF dates;
+                                           // empty means the field is written empty
+    int         alphabet  = 20;   // 20, 22, or 4 for nuc; 22 makes '-' and '*' states
+    int         maxGapRun = -1;   // for 'prepare' with --alphabet 22; < 0 means
+                                  // the default, kDefaultMaxGapRun
+    uint64_t    seed   = 0;
+    long long   tieSeed = -1;  // < 0 means "follow --seed"
+    // For --out-examples: the seed(s) of the allele draw and the mutation order.
+    // Empty means "follow --seed". More than one writes one file per seed.
+    std::vector<uint64_t> examplesSeeds;
+    long long   limit  = -1;
+    long long   threads = 1;   // for 'place': cores on the scan
+    bool        verify = false;
+    bool        verifyFinal = false;  // for 'place': one full recompute at the end
 };
 
-bool is_integer_arg(const std::string& arg) {
-    if (arg.empty()) return false;
-    size_t start = arg[0] == '-' ? 1 : 0;
-    if (start == arg.size()) return false;
-    for (size_t i = start; i < arg.size(); i++) {
-        if (!std::isdigit((unsigned char)arg[i])) return false;
+// The coordinate frame every other line of output is in: which CDSs were read,
+// in which order, and where each one starts in the concatenation. One gene is
+// the usual case and prints as one line; HA1+HA2 prints where the seam is,
+// because every site number downstream is on the far side of it.
+void reportGenes(const GeneLayout& layout) {
+    std::printf("gene         : %s -- %zu %s in the sidecar, %d sites kept\n",
+                layout.label().c_str(), layout.raw, numStates() == 4 ? "nt" : "aa",
+                layout.nSites());
+    if (layout.name.size() > 1) {
+        for (size_t i = 0; i < layout.name.size(); ++i) {
+            std::printf("               %-8s %d sites at %d..%d\n", layout.name[i].c_str(),
+                        layout.length[i], layout.offset[i] + 1,
+                        layout.offset[i] + layout.length[i]);
+        }
+    }
+}
+
+// The variant root, resolved once from the input tree and reported. Throws out
+// of findCladeRoot if the clade is absent or begins at more than one node, which
+// is a stop rather than a choice: a clade with two entry points is not a variant
+// root and nothing downstream could read it as one.
+ExampleOptions exampleOptions(const Options& opt, const std::vector<RawNode>& raw) {
+    ExampleOptions eo;
+    eo.seed = opt.seed;
+    for (const std::string& d : opt.postCutoffs) {
+        const int32_t code = parseDateCode(d.c_str(), d.size());
+        if (!code) throw std::runtime_error("--post-cutoff wants YYYY-MM-DD, got '" + d + "'");
+        eo.cutoffs.push_back({d, decimalYearStart(code)});
+    }
+    // Ascending and deduplicated, which is what makes the flags a record carries
+    // a prefix of this list rather than an arbitrary subset of it.
+    std::sort(eo.cutoffs.begin(), eo.cutoffs.end(),
+              [](const Cutoff& a, const Cutoff& b) { return a.when < b.when; });
+    eo.cutoffs.erase(std::unique(eo.cutoffs.begin(), eo.cutoffs.end(),
+                                 [](const Cutoff& a, const Cutoff& b) { return a.label == b.label; }),
+                     eo.cutoffs.end());
+    if (eo.cutoffs.empty()) {
+        std::printf("post-cutoff  : none given -- POST_CUTOFF is written empty on every record\n");
+    } else {
+        std::printf("post-cutoff  : %zu cutoffs, %s (%.4f) .. %s (%.4f) -- each record lists\n"
+                    "               the ones every observed date below it is at or after\n",
+                    eo.cutoffs.size(), eo.cutoffs.front().label.c_str(), eo.cutoffs.front().when,
+                    eo.cutoffs.back().label.c_str(), eo.cutoffs.back().when);
+    }
+    if (!opt.variant.empty()) {
+        std::string      label;
+        int              nMatched = 0;
+        std::vector<int> entries;
+        eo.variantRoot  = findCladeRoot(raw, opt.variant, &label, &nMatched, &entries);
+        eo.variantLabel = label;
+        std::printf("variant      : '%s' matches clade '%s' on %d nodes, which begin at\n"
+                    "               exactly one of them: node %d (%s)\n",
+                    opt.variant.c_str(), label.c_str(), nMatched, eo.variantRoot,
+                    raw[eo.variantRoot].name.c_str());
+    }
+    return eo;
+}
+
+void reportExamples(const Tree& t, const AlleleSets& sets, const std::string& rootS,
+                    const ExampleOptions& eo, const std::string& path) {
+    const ExampleStats e = writeExamples(t, sets, rootS, eo, path);
+    std::printf("examples     : %lld records, %lld mutations, one per edge\n", e.examples,
+                e.mutations);
+    std::printf("               %lld childless nodes left out, carrying nothing to predict\n",
+                e.leafRecords);
+    std::printf("               %lld resolved nodes (%lld edges collapsed to nothing),\n",
+                e.resolvedNodes, e.collapsedEdges);
+    std::printf("               %lld split from %lld multi-mutation edges (longest %d),\n",
+                e.intermediates, e.splitEdges, e.maxEdgeMut);
+    std::printf("               %lld (node, site) alleles drawn from more than one option\n",
+                e.drawn);
+    for (size_t k = 0; k < eo.cutoffs.size(); ++k) {
+        std::printf("               %s: %lld records at or after it, %lld before it\n",
+                    eo.cutoffs[k].label.c_str(), e.postCutoff[k],
+                    e.examples - e.postCutoff[k]);
+    }
+    if (eo.variantRoot >= 0) {
+        std::printf("               %lld inside the variant, %lld of them the variant root\n",
+                    e.descended, e.variantRoots);
+    }
+    std::printf("wrote        : %s\n", path.c_str());
+}
+
+// --out-examples under --examples-seed: the writer only reads the tree and its
+// sets, so one placement can be written under several draws. One seed, or none,
+// writes the path as given; several write <path>.seed<n>, one per seed.
+void writeExamplesPerSeed(const Tree& t, const AlleleSets& sets, const std::string& rootS,
+                          const Options& opt, ExampleOptions eo) {
+    if (opt.examplesSeeds.size() <= 1) {
+        if (!opt.examplesSeeds.empty()) eo.seed = opt.examplesSeeds[0];
+        reportExamples(t, sets, rootS, eo, opt.outExamples);
+        return;
+    }
+    for (uint64_t k : opt.examplesSeeds) {
+        eo.seed = k;
+        reportExamples(t, sets, rootS, eo, opt.outExamples + ".seed" + std::to_string(k));
+    }
+}
+
+// The matrix is a summary of the queue, so what is worth printing is the two
+// numbers that say the queue is the one it was meant to be: how many sequences
+// went in, and how much of them was actually readable.
+void reportCounts(const ResidueCounts& counts) {
+    const double perSeq = counts.sequences ? static_cast<double>(counts.residues) /
+                                                 static_cast<double>(counts.sequences)
+                                           : 0.0;
+    std::printf("counts       : %lld sequences, %lld residues in the alphabet (mean %.1f of\n"
+                "               %d per sequence); %s count for nothing\n",
+                counts.sequences, counts.residues, perSeq, counts.nSites,
+                numStates() == 22  ? "X and nothing else"
+                : numStates() == 4 ? "N, gaps and IUPAC partial codes"
+                                   : "gaps, stops and X");
+}
+
+
+// mkdir -p, so that --out-variant-counts names a directory the run creates
+// rather than one the caller has to have made first.
+void ensureDir(const std::string& path) {
+    for (size_t i = 1; i <= path.size(); ++i) {
+        if (i != path.size() && path[i] != '/') continue;
+        const std::string part = path.substr(0, i);
+        if (::mkdir(part.c_str(), 0777) != 0 && errno != EEXIST) {
+            throw std::runtime_error("cannot create directory " + part);
+        }
+    }
+}
+
+// Two matrices over the same sites, added cell by cell.
+void addInto(ResidueCounts& dst, const ResidueCounts& src) {
+    for (size_t i = 0; i < dst.n.size(); ++i) dst.n[i] += src.n[i];
+    dst.sequences += src.sequences;
+    dst.residues  += src.residues;
+}
+
+// --- the variant's count matrices, one per cutoff ---------------------------
+//
+// One (site x 20) matrix per --post-cutoff date D, over the placed sequences
+// that are **inside the variant** -- their placement sits at or below the
+// variant root -- and are dated **at or after D**. A train arm at D keeps the
+// dates strictly before D, so M_D is the residue distribution of the variant
+// over exactly the window that arm does not see: the test side's own summary,
+// written beside the test examples it belongs to.
+//
+// Who is inside is settled incrementally rather than by walking to the root per
+// placement. A node's answer is its parent's, except at the variant root, where
+// it is True; placement only ever appends nodes, and an appended node's parent
+// already has its answer, so one lookup per new node keeps the whole array
+// current. Splicing a node into a branch cannot change any existing node's
+// answer -- it lengthens the path to the root without altering what is on it --
+// which is what makes a once-computed answer safe to keep.
+//
+// Which matrices a sequence belongs to is a **prefix** of the ascending cutoff
+// list, by the same argument POST_CUTOFF rests on: raising D can only turn
+// "at or after D" into "before D". So a sequence is added once, to the bucket
+// B_m where m is how many cutoffs it is at or after, and M_k is the suffix sum
+// over m > k, formed once at the end. That is one pass over a sequence's 1,273
+// sites instead of up to 24 -- the difference between a rounding error and
+// hours, over millions of sequences.
+struct VariantCounts {
+    std::vector<int32_t>       code;       // the cutoffs as YYYYMMDD, ascending
+    std::vector<std::string>   label;      // and as they are written
+    std::vector<ResidueCounts> bucket;     // size code.size() + 1; B_m is prefix m
+    std::vector<char>          inVariant;  // per node: at or below the variant root
+    long long                  counted = 0;  // sequences that fell inside the variant
+
+    // The initial tree's answers, by one walk down from the variant root.
+    void init(const Tree& t, int variantRoot, const std::vector<Cutoff>& cutoffs, int nSites) {
+        for (const Cutoff& c : cutoffs) {
+            const int32_t d = parseDateCode(c.label.c_str(), c.label.size());
+            if (!d) throw std::runtime_error("cannot read cutoff date '" + c.label + "'");
+            code.push_back(d);
+            label.push_back(c.label);
+        }
+        bucket.resize(code.size() + 1);
+        for (ResidueCounts& b : bucket) b.init(nSites);
+
+        inVariant.assign(static_cast<size_t>(t.size()), 0);
+        std::vector<int> stack{variantRoot};
+        while (!stack.empty()) {
+            const int v = stack.back();
+            stack.pop_back();
+            inVariant[static_cast<size_t>(v)] = 1;
+            for (int c : t.children[v]) stack.push_back(c);
+        }
+    }
+
+    // The nodes placement has just appended, in the order it appended them, so
+    // a split node's own answer is in hand before the leaf below it asks for it.
+    void grow(const Tree& t) {
+        for (int n = static_cast<int>(inVariant.size()); n < t.size(); ++n) {
+            inVariant.push_back(inVariant[static_cast<size_t>(t.parent[n])]);
+        }
+    }
+
+    // `where` is the leaf the sequence became, or the node it matched exactly:
+    // either way, the place on the tree the sequence was found to belong.
+    void add(int where, int32_t dateCode, const char* seq) {
+        if (where < 0 || !inVariant[static_cast<size_t>(where)]) return;
+        const size_t m = static_cast<size_t>(
+            std::upper_bound(code.begin(), code.end(), dateCode) - code.begin());
+        bucket[m].add(seq);
+        ++counted;
+    }
+
+    // B_m summed over m > k, walked down so each matrix is the one above it
+    // plus one bucket. Reports and writes as it goes.
+    void finish(const std::string& dir) const {
+        ensureDir(dir);
+        ResidueCounts run;
+        run.init(bucket.front().nSites);
+        std::printf("variant counts: %lld sequences inside the variant, bucketed by how many\n"
+                    "               cutoffs they are at or after\n", counted);
+        for (size_t k = code.size(); k-- > 0;) {
+            // B_{k+1} is the bucket of the sequences at or after cutoff k and no
+            // later cutoff, so adding it turns M_{k+1} into M_k.
+            addInto(run, bucket[k + 1]);
+            const std::string path = dir + "/counts_" + label[k] + ".tsv";
+            writeResidueCounts(run, path);
+            std::printf("               %s: %lld sequences, %lld residues\n", label[k].c_str(),
+                        run.sequences, run.residues);
+        }
+        std::printf("wrote        : %s/counts_<date>.tsv, %zu of them\n", dir.c_str(),
+                    code.size());
+    }
+};
+
+double secondsSince(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+}
+
+// "a,b,c" -> {"a", "b", "c"}, empty fields dropped. --gene, --fasta and
+// --post-cutoff all take a list, and a list is one `paste -sd,` away in the
+// shell, so none of them makes the caller loop.
+std::vector<std::string> splitCommas(const std::string& v) {
+    std::vector<std::string> out;
+    for (size_t b = 0; b <= v.size();) {
+        const size_t e = std::min(v.find(',', b), v.size());
+        if (e > b) out.push_back(v.substr(b, e - b));
+        b = e + 1;
+    }
+    return out;
+}
+
+bool needValue(int argc, char** argv, int i, const char* flag, std::string& dst) {
+    if (i + 1 >= argc) {
+        std::fprintf(stderr, "error: %s needs a value\n", flag);
+        return false;
+    }
+    dst = argv[i + 1];
+    return true;
+}
+
+// The tree, as given. Input node ids are tree node ids; the only thing derived
+// here is each leaf's sequence, from the mutation path down to it.
+Tree loadTree(const Options& opt, const GeneLayout& layout, std::string& rootS,
+              std::vector<RawNode>* rawOut) {
+    const int            nSites = layout.nSites();
+    std::vector<RawNode> raw    = parseNextstrainTree(opt.tree, layout);
+
+    // The pin is the root node's own sequence, not the sidecar's: see pinnedRoot.
+    std::vector<std::string> bad;
+    rootS = pinnedRoot(raw, layout.seq, &bad);
+
+    size_t rawTips = 0, rawEdgesWithMut = 0, rawMutCount = 0, maxDeg = 0;
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i].children.empty()) ++rawTips;
+        maxDeg = std::max(maxDeg, raw[i].children.size());
+        if (i > 0 && !raw[i].mut.empty()) ++rawEdgesWithMut;
+        if (i > 0) rawMutCount += raw[i].mut.size();
+    }
+    reportGenes(layout);
+    {
+        size_t off = 0;
+        for (int s = 0; s < nSites; ++s) if (rootS[s] != layout.seq[s]) ++off;
+        if (off) {
+            std::printf("root node    : %zu branch mutations put the tree's root %zu residues\n"
+                        "               off the sidecar; the pin is the root node, not the\n"
+                        "               sidecar -- see NOTES, pinnedRoot\n",
+                        raw[0].mut.size(), off);
+        }
+    }
+    std::printf("tree         : %zu nodes, %zu tips, %zu edges, largest multifurcation %zu\n",
+                raw.size(), rawTips, raw.size() - 1, maxDeg);
+    std::printf("               %zu edges carry gene mutations (%zu total); the other\n",
+                rawEdgesWithMut, rawMutCount);
+    std::printf("               %zu carry none and are kept -- nothing is collapsed here\n",
+                raw.size() - 1 - rawEdgesWithMut);
+
+    Tree t = buildTree(raw, rootS, nSites, &bad);
+
+    size_t observed = 0, obsEntries = 0, missingObs = 0;
+    for (int i = 0; i < t.size(); ++i) {
+        if (t.observed(i)) ++observed;
+        obsEntries += t.obs[i].size();
+        for (const ObsAllele& o : t.obs[i]) if (isMissing(o.aa)) ++missingObs;
+    }
+    std::printf("observations : %zu nodes (%zu leaves plus the pinned root); %d free\n",
+                observed, rawTips, t.size() - static_cast<int>(observed));
+    std::printf("               %zu residues recorded against the root, %zu of them missing\n",
+                obsEntries, missingObs);
+    if (bad.empty()) {
+        std::printf("               every branch's from-allele matches the path above it\n");
+    } else {
+        std::printf("               %zu from-allele mismatches, first few:\n", bad.size());
+        for (size_t i = 0; i < bad.size() && i < 5; ++i)
+            std::printf("                 %s\n", bad[i].c_str());
+    }
+    if (observed != rawTips + 1) throw std::runtime_error("tips were lost building the tree");
+    if (rawOut) *rawOut = std::move(raw);
+    return t;
+}
+
+int runTree(const Options& opt) {
+    const GeneLayout layout = parseRootSequence(opt.rootSeq, opt.genes);
+    const int        nSites = layout.nSites();
+
+    std::string rootS;
+    Tree t = loadTree(opt, layout, rootS, nullptr);
+
+    std::unordered_set<std::string> distinct;
+    std::string                     seq;
+    for (int i = 0; i < t.size(); ++i) {
+        if (!t.observed(i)) continue;
+        seq.assign(rootS.begin(), rootS.begin() + nSites);
+        for (const ObsAllele& o : t.obs[i]) seq[o.site - 1] = o.aa;
+        distinct.insert(seq);
+    }
+    std::printf("sequences    : %zu distinct observed sequences\n", distinct.size());
+
+    if (!opt.out.empty()) {
+        writeTree(t, opt.out);
+        std::printf("wrote        : %s\n", opt.out.c_str());
+    }
+    return 0;
+}
+
+int runSets(const Options& opt) {
+    const GeneLayout layout = parseRootSequence(opt.rootSeq, opt.genes);
+    const int        nSites = layout.nSites();
+
+    std::vector<RawNode> raw;
+    std::string          rootS;
+    Tree t = loadTree(opt, layout, rootS, &raw);
+
+    size_t nsMut = 0, missingMut = 0;
+    for (size_t i = 1; i < raw.size(); ++i) {
+        nsMut += raw[i].mut.size();
+        for (const Mutation& m : raw[i].mut) {
+            if (isMissing(m.from) || isMissing(m.to)) ++missingMut;
+        }
+    }
+
+    AlleleSets sets = computeAlleleSets(t, rootS, nSites);
+
+    size_t active = 0;
+    for (int s = 0; s < nSites; ++s) if (sets.siteActive[s]) ++active;
+    size_t deltas = 0, nodesWithDelta = 0;
+    for (int i = 0; i < t.size(); ++i) {
+        deltas += sets.delta[i].size();
+        if (!sets.delta[i].empty()) ++nodesWithDelta;
+    }
+
+    std::printf("allele sets  : %zu of %d sites carry more than one allele (the rest are\n",
+                active, nSites);
+    std::printf("               a single fixed state everywhere, at zero storage cost)\n");
+    std::printf("               parsimony score %lld changes, against %zu Nextstrain\n",
+                sets.parsimonyScore, nsMut);
+    std::printf("               mutations on the same tree (%zu of them touch missing data,\n",
+                missingMut);
+    std::printf("               which is free here)\n");
+    std::printf("               %zu set-deltas over %zu of %d nodes, %zu bytes of payload\n",
+                deltas, nodesWithDelta, t.size(), deltas * sizeof(SetDelta));
+    size_t v12s = 0, nodesWithV12 = 0;
+    for (int i = 0; i < t.size(); ++i) {
+        v12s += sets.v12[i].size();
+        if (!sets.v12[i].empty()) ++nodesWithV12;
+    }
+    std::printf("               %zu V1/V2 entries over %zu nodes, %zu bytes of payload\n",
+                v12s, nodesWithV12, v12s * sizeof(V12Delta));
+
+    // Materialise every node to check the sets and count the ambiguity. The
+    // observations must be inside their own sets; Nextstrain's genotype at a free
+    // node is an inference this tree does not honour, so how often it lands inside
+    // the set is a statistic, not a check.
+    const std::vector<std::string> nsGeno = nextstrainGenotypes(raw, rootS, nSites);
+    size_t ambigPairs = 0, ambigNodes = 0, violations = 0, nsOutside = 0, nsOutsideNodes = 0;
+    size_t hist[kMaxStates + 1] = {0};
+    std::vector<std::string> examples;
+    walkMaterialised(t, sets, [&](int node, const AaSet* cur) {
+        size_t here = 0, outside = 0;
+        for (int s = 0; s < nSites; ++s) {
+            int n = setSize(cur[s]);
+            ++hist[n];
+            if (n > 1) {
+                ++here;
+                if (examples.size() < 6) {
+                    examples.push_back("node " + std::to_string(node) + " site " +
+                                       std::to_string(s + 1) + " = {" + setToString(cur[s]) +
+                                       "}, Nextstrain says " + std::string(1, nsGeno[node][s]));
+                }
+            }
+            if (t.observed(node)) {
+                const char a = alleleAt(t, node, s + 1, rootS);
+                if (!isMissing(a) && !(cur[s] & aaBit(a))) ++violations;
+            }
+            const char g = nsGeno[node][s];
+            if (!isMissing(g) && !(cur[s] & aaBit(g))) ++outside;
+        }
+        ambigPairs += here;
+        if (here) ++ambigNodes;
+        nsOutside += outside;
+        if (outside) ++nsOutsideNodes;
+    });
+
+    std::printf("ambiguity    : %zu of %lld (node, site) pairs admit more than one allele\n",
+                ambigPairs, static_cast<long long>(t.size()) * nSites);
+    std::printf("               spread over %zu of %d nodes\n", ambigNodes, t.size());
+    std::printf("               set sizes:");
+    for (int n = 1; n <= numStates(); ++n) if (hist[n]) std::printf("  %d:%zu", n, hist[n]);
+    std::printf("\n");
+    for (const std::string& e : examples) std::printf("                 %s\n", e.c_str());
+    std::printf("check        : %zu observations outside their own allele set\n", violations);
+    std::printf("               %zu (node, site) pairs where Nextstrain's own reconstruction\n",
+                nsOutside);
+    std::printf("               is outside the set, over %zu nodes -- a statistic: the interior\n",
+                nsOutsideNodes);
+    std::printf("               is free here, so that reconstruction is not binding\n");
+
+    if (!opt.outExamples.empty()) {
+        writeExamplesPerSeed(t, sets, rootS, opt, exampleOptions(opt, raw));
+    }
+
+    if (!opt.outTree.empty()) {
+        writeTree(t, opt.outTree);
+        std::printf("wrote        : %s\n", opt.outTree.c_str());
+    }
+    if (!opt.out.empty()) {
+        writeAlleleSets(t, sets, opt.out);
+        std::printf("wrote        : %s\n", opt.out.c_str());
+    }
+    return 0;
+}
+
+
+int runPrepare(const Options& opt) {
+    const GeneLayout layout = parseRootSequence(opt.rootSeq, opt.genes);
+    reportGenes(layout);
+    PrepareConfig cfg;
+    cfg.fasta         = opt.fasta;
+    cfg.geneLength    = layout.length;
+    cfg.metadata      = opt.metadata;
+    cfg.nSites        = layout.nSites();
+    cfg.rootSeq       = layout.seq;
+    cfg.cutoff        = static_cast<int32_t>(opt.dateCutoff);
+    cfg.dateImputeDay = opt.dateImputeDay;
+    cfg.gapsAreStates = opt.alphabet == 22;
+    cfg.maxGapRun     = opt.maxGapRun < 0 ? kDefaultMaxGapRun : opt.maxGapRun;
+    cfg.useClock      = !opt.noClock;
+    cfg.keepOrder     = opt.keepOrder;
+    if (opt.minCovered >= 0) cfg.minCoveredFrac = opt.minCovered;
+    if (opt.clockTol   >= 0) cfg.clockTolMonths = opt.clockTol;
+    if (opt.clockSlack >= 0) cfg.clockSlack     = opt.clockSlack;
+
+    const auto    t0 = std::chrono::steady_clock::now();
+    PrepareStats  st;
+    ClockEnvelope env;
+    PreparedSet   set = prepareSequences(cfg, &st, &env);
+
+    if (cfg.cutoff) {
+        std::printf("metadata     : %lld rows, %lld dated, %lld before %d\n", st.metadataRows,
+                    st.dated, st.beforeCutoff, cfg.cutoff);
+    } else {
+        std::printf("metadata     : %lld rows, %lld dated, no date cutoff\n", st.metadataRows,
+                    st.dated);
+    }
+    if (cfg.fasta.size() > 1) {
+        std::printf("fasta        : %lld records over %zu files, joined by strain into %lld\n",
+                    st.fastaRecords, cfg.fasta.size(), st.joined);
+        std::printf("               dated sequences (%lld of them missing a gene, which is\n"
+                    "               missing data), %lld in the date window\n",
+                    st.partial, st.beforeCutoff);
+    } else {
+        std::printf("fasta        : %lld records, %lld of them dated, %lld in the date window\n",
+                    st.fastaRecords, st.matched, st.beforeCutoff);
+    }
+    if (st.badLength) std::printf("               %lld of a length other than their gene's\n",
+                                  st.badLength);
+    if (cfg.gapsAreStates) {
+        const GapCalls& g = st.gaps;
+        std::printf("gaps         : %lld runs of '-' read as deletions (%lld sites, longest\n"
+                    "               run allowed %d)\n",
+                    g.keptRuns, g.keptSites, cfg.maxGapRun);
+        std::printf("               %lld masked to X at a gene's end (%lld sites), %lld masked\n"
+                    "               as too long to be one (%lld sites)\n",
+                    g.terminalRuns, g.terminalSites, g.longRuns, g.longSites);
+    }
+    std::printf("filters      : %lld fail coverage (<%d of %d sites, %.0f%%)\n",
+                st.failCoverage, cfg.minCovered(), cfg.nSites, 100.0 * cfg.minCoveredFrac);
+    if (cfg.useClock) {
+        std::printf("               %lld too diverged for their date, %lld too ancestral\n",
+                    st.failClockHigh, st.failClockLow);
+        std::printf("clock        : %d months of calibration, +-%d months of tolerance,\n"
+                    "               %d substitutions of slack on the upper edge\n",
+                    env.empty() ? 0 : static_cast<int>(env.hi.size()), cfg.clockTolMonths,
+                    cfg.clockSlack);
+    } else {
+        std::printf("               the clock is off\n");
+    }
+    std::printf("attached     : %lld (%.2f%%)\n", st.kept,
+                st.beforeCutoff
+                    ? 100.0 * static_cast<double>(st.kept) / static_cast<double>(st.beforeCutoff)
+                    : 0.0);
+    if (!opt.outClock.empty() && !env.empty()) {
+        writeClockEnvelope(env, opt.outClock);
+        std::printf("wrote        : %s\n", opt.outClock.c_str());
+    }
+    if (st.kept) {
+        std::printf("missing sites: mean %.2f, %lld of the kept are fully covered (%.1f%%)\n",
+                    static_cast<double>(st.missingTotal) / static_cast<double>(st.kept),
+                    st.fullyCovered,
+                    100.0 * static_cast<double>(st.fullyCovered) / static_cast<double>(st.kept));
+    }
+    std::printf("read         : %.1f s\n", secondsSince(t0));
+
+    if (!opt.outCounts.empty()) {
+        // The kept set is already in memory, so this is a pass over it rather
+        // than a second pass over the FASTA.
+        ResidueCounts counts;
+        counts.init(set.nSites);
+        for (size_t i = 0; i < set.size(); ++i) counts.add(set.seq(i));
+        reportCounts(counts);
+        writeResidueCounts(counts, opt.outCounts);
+        std::printf("wrote        : %s\n", opt.outCounts.c_str());
+    }
+
+    if (!opt.outMsa.empty()) {
+        writeMsa(set, opt.outMsa);
+        std::printf("msa          : %zu sequences x %d sites, as they arrived\n", set.size(),
+                    set.nSites);
+        std::printf("wrote        : %s\n", opt.outMsa.c_str());
+    }
+
+    if (!opt.out.empty()) {
+        writePrepared(set, opt.out);
+        std::printf("wrote        : %s\n", opt.out.c_str());
+    }
+    return 0;
+}
+
+// Everything known about one (node, site), from both the incremental state and
+// the recompute, so a verification failure says what actually diverged.
+void dumpSite(const Tree& t, const AlleleSets& a, const AlleleSets& b, int n, int site1,
+              const std::string& rootS) {
+    auto wOf = [&](const AlleleSets& st, int node) {
+        AaSet w = st.rootSet[site1 - 1];
+        std::vector<int> up;
+        for (int x = node; x != -1; x = t.parent[x]) up.push_back(x);
+        for (size_t i = up.size(); i-- > 0;) {
+            for (const SetDelta& d : st.delta[up[i]]) if (d.site == site1) w = d.set;
+        }
+        return w;
+    };
+    auto v12Of = [&](const AlleleSets& st, int node) {
+        for (const V12Delta& d : st.v12[node]) {
+            if (d.site == site1) return std::string("{") + setToString(d.v1) + "}/{" +
+                                        setToString(d.v2) + "}";
+        }
+        return std::string("{") + setToString(aaBit(alleleAt(t, node, site1, rootS))) +
+               "}/{} (default)";
+    };
+    auto line = [&](int node) {
+        std::printf("    node %7d  parent %7d  kids %2zu  %s %c  "
+                    "W %-6s vs %-6s  V1/V2 %-28s vs %s\n",
+                    node, t.parent[node], t.children[node].size(),
+                    t.observed(node) ? "obs" : "free", alleleAt(t, node, site1, rootS),
+                    setToString(wOf(a, node)).c_str(), setToString(wOf(b, node)).c_str(),
+                    v12Of(a, node).c_str(), v12Of(b, node).c_str());
+    };
+    std::printf("  site %d, incremental vs recomputed:\n", site1);
+    if (t.parent[n] >= 0) {
+        if (t.parent[t.parent[n]] >= 0) line(t.parent[t.parent[n]]);
+        line(t.parent[n]);
+        for (int c : t.children[t.parent[n]]) if (c != n) line(c);
+    }
+    line(n);
+    for (int c : t.children[n]) line(c);
+}
+
+// Every stored value, not just the W sets: v12 is what lets the next placement
+// resume the upward pass, so a drift there is a real defect even when W agrees.
+bool sameSets(const AlleleSets& a, const AlleleSets& b, std::string& why, int& badNode,
+              int& badSite) {
+    badNode = -1;
+    badSite = -1;
+    char buf[256];
+    if (a.rootSet != b.rootSet) { why = "root sets differ"; return false; }
+    if (a.parsimonyScore != b.parsimonyScore) {
+        std::snprintf(buf, sizeof buf, "score %lld incremental vs %lld recomputed",
+                      a.parsimonyScore, b.parsimonyScore);
+        why = buf;
+        return false;
+    }
+    if (a.delta.size() != b.delta.size()) { why = "node counts differ"; return false; }
+    for (size_t i = 0; i < a.delta.size(); ++i) {
+        if (a.delta[i].size() != b.delta[i].size()) {
+            {
+                const std::vector<SetDelta>& big =
+                    a.delta[i].size() > b.delta[i].size() ? a.delta[i] : b.delta[i];
+                const SetDelta& e = big[std::min(a.delta[i].size(), b.delta[i].size())];
+                std::snprintf(buf, sizeof buf,
+                              "node %zu: %zu deltas vs %zu; first extra at site %u = {%s} "
+                              "(active %d/%d)",
+                              i, a.delta[i].size(), b.delta[i].size(), e.site,
+                              setToString(e.set).c_str(), (int)a.siteActive[e.site - 1],
+                              (int)b.siteActive[e.site - 1]);
+                badNode = static_cast<int>(i);
+                badSite = e.site;
+            }
+            why = buf;
+            return false;
+        }
+        for (size_t k = 0; k < a.delta[i].size(); ++k) {
+            if (a.delta[i][k].site != b.delta[i][k].site ||
+                a.delta[i][k].set != b.delta[i][k].set) {
+                std::snprintf(buf, sizeof buf, "node %zu site %u: {%s} vs {%s}", i,
+                              a.delta[i][k].site, setToString(a.delta[i][k].set).c_str(),
+                              setToString(b.delta[i][k].set).c_str());
+                badNode = static_cast<int>(i);
+                badSite = a.delta[i][k].site;
+                why = buf;
+                return false;
+            }
+        }
+    }
+    for (size_t i = 0; i < a.v12.size(); ++i) {
+        for (size_t k = 0; k < a.v12[i].size() && k < b.v12[i].size(); ++k) {
+            if (a.v12[i][k].site != b.v12[i][k].site || a.v12[i][k].v1 != b.v12[i][k].v1 ||
+                a.v12[i][k].v2 != b.v12[i][k].v2) {
+                std::snprintf(buf, sizeof buf,
+                              "node %zu site %u vs %u: V1={%s} V2={%s} vs V1={%s} V2={%s} (active %d/%d)",
+                              i, a.v12[i][k].site, b.v12[i][k].site,
+                              setToString(a.v12[i][k].v1).c_str(),
+                              setToString(a.v12[i][k].v2).c_str(),
+                              setToString(b.v12[i][k].v1).c_str(),
+                              setToString(b.v12[i][k].v2).c_str(),
+                              (int)a.siteActive[a.v12[i][k].site - 1],
+                              (int)b.siteActive[b.v12[i][k].site - 1]);
+                badNode = static_cast<int>(i);
+                badSite = a.v12[i][k].site;
+                why = buf;
+                return false;
+            }
+        }
+        if (a.v12[i].size() != b.v12[i].size()) {
+            {
+                const std::vector<V12Delta>& big =
+                    a.v12[i].size() > b.v12[i].size() ? a.v12[i] : b.v12[i];
+                const V12Delta& e = big[std::min(a.v12[i].size(), b.v12[i].size())];
+                std::snprintf(buf, sizeof buf,
+                              "node %zu: %zu V1/V2 entries vs %zu; first extra at site %u "
+                              "V1={%s} V2={%s} (active %d/%d)",
+                              i, a.v12[i].size(), b.v12[i].size(), e.site,
+                              setToString(e.v1).c_str(), setToString(e.v2).c_str(),
+                              (int)a.siteActive[e.site - 1], (int)b.siteActive[e.site - 1]);
+                badNode = static_cast<int>(i);
+                badSite = e.site;
+            }
+            why = buf;
+            return false;
+        }
     }
     return true;
 }
 
-bool is_dataset_type(const std::string& arg) {
-    return arg == "sc2" || arg == "sc2_nuc" || arg == "sc2_spike_nuc" || arg == "toy" || arg == "h3n2" || arg == "rsv_a" || arg == "rsv_b" || arg == "denv2";
-}
+int runPlace(const Options& opt) {
+    const GeneLayout layout = parseRootSequence(opt.rootSeq, opt.genes);
+    const int        nSites = layout.nSites();
 
-std::string infer_legacy_sc2_json_path(const std::filesystem::path& fasta_dir, const std::string& filename) {
-    std::vector<std::filesystem::path> candidates = {
-        fasta_dir / filename,
-        std::filesystem::current_path() / filename,
-        std::filesystem::path("/home/ivan.specht/antiGen/antiGen-data") / filename,
-    };
-    for (const auto& path : candidates) {
-        if (std::filesystem::exists(path)) return path.string();
+    std::vector<RawNode> raw;
+    std::string          rootS;
+    Tree       t    = loadTree(opt, layout, rootS, &raw);
+    AlleleSets sets = computeAlleleSets(t, rootS, nSites);
+    std::printf("allele sets  : parsimony score %lld over %d nodes\n", sets.parsimonyScore,
+                t.size());
+
+    PreparedSet queue = readPrepared(opt.prepared);
+    if (queue.nSites != nSites) throw std::runtime_error("prepared sites do not match the tree");
+    // The queue's residues only mean what the alphabet that read them says they
+    // mean, and nothing downstream could notice the mismatch on its own.
+    if (queue.alphabet != gAlphabet) {
+        throw std::runtime_error("the prepared file was written under alphabet '" +
+                                 queue.alphabet + "', this run is '" + gAlphabet + "'");
     }
-    return (fasta_dir / filename).string();
-}
+    std::printf("prepared     : %zu sequences, %s .. %s\n", queue.size(),
+                queue.size() ? std::to_string(queue.rec.front().dateCode).c_str() : "-",
+                queue.size() ? std::to_string(queue.rec.back().dateCode).c_str() : "-");
 
-void print_usage(const char* program) {
-    std::cerr << "Usage: " << program
-              << " <output_dir> <cutoff> <dataset_type> <ref_json> <tree_json> <metadata_tsv> <alignment_files...> [max_seqs]"
-              << " [--cache path] [--force-rebuild-cache] [--no-cache] [--grid N] [--grid-interior] [--grid-output-dir dir]"
-              << std::endl;
-    std::cerr << "Legacy SC2 usage: " << program
-              << " <output_dir> <cutoff> <spike_fasta> <metadata_tsv> [max_seqs]"
-              << " [--cache path] [--force-rebuild-cache] [--no-cache] [--grid N] [--grid-interior]"
-              << std::endl;
-    std::cerr << "  dataset_type: 'sc2', 'h3n2', 'rsv_a', 'rsv_b', or 'denv2'" << std::endl;
-}
-
-std::vector<char> sequence_from_root_or_ref(
-    const DatasetConfig& config,
-    const json& ref,
-    const json& tree_data
-) {
-    std::vector<char> root_protein_seq;
-    if (tree_data.contains("root_sequence")) {
-        std::cout << "Using root sequence from tree file" << std::endl;
-        auto root_seq = tree_data["root_sequence"];
-        if (config.type == "sc2") {
-            std::string spike_str = root_seq["S"].get<std::string>();
-            root_protein_seq = std::vector<char>(spike_str.begin(), spike_str.end() - 1);
-        } else if (config.type == "sc2_nuc" || config.type == "sc2_spike_nuc") {
-            std::string nuc_str = root_seq["nuc"].get<std::string>();
-            root_protein_seq = std::vector<char>(nuc_str.begin(), nuc_str.end()); // nucleotide: no stop codon
-        } else if (config.type == "toy") {
-            std::string aa_str = root_seq["protein"].get<std::string>();
-            root_protein_seq = std::vector<char>(aa_str.begin(), aa_str.end()); // toy protein: full sequence
-        } else if (config.type == "h3n2") {
-            std::string concat = root_seq["SigPep"].get<std::string>() +
-                                 root_seq["HA1"].get<std::string>() +
-                                 root_seq["HA2"].get<std::string>();
-            root_protein_seq = std::vector<char>(concat.begin(), concat.end());
-        } else if (config.type == "denv2") {
-            std::string e_str = root_seq["E"].get<std::string>();
-            root_protein_seq = std::vector<char>(e_str.begin(), e_str.end());
-        } else {
-            std::string f_str = root_seq["F"].get<std::string>();
-            root_protein_seq = std::vector<char>(f_str.begin(), f_str.end() - 1);
-        }
+    // Chronological, with the order inside one collection day shuffled: the file
+    // is already sorted by date, so only the equal-date runs need permuting.
+    std::vector<size_t> order(queue.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    if (opt.keepOrder) {
+        std::printf("order        : the prepared file's own order, unshuffled\n");
     } else {
-        std::cout << "Using reference sequence from ref.json" << std::endl;
-        if (config.type == "sc2") {
-            std::string spike_str = ref["S"].get<std::string>();
-            root_protein_seq = std::vector<char>(spike_str.begin(), spike_str.end() - 1);
-        } else if (config.type == "sc2_nuc" || config.type == "sc2_spike_nuc") {
-            std::string nuc_str = ref["nuc"].get<std::string>();
-            root_protein_seq = std::vector<char>(nuc_str.begin(), nuc_str.end()); // nucleotide: no stop codon
-        } else if (config.type == "toy") {
-            std::string aa_str = ref["protein"].get<std::string>();
-            root_protein_seq = std::vector<char>(aa_str.begin(), aa_str.end()); // toy protein: full sequence
-        } else if (config.type == "h3n2") {
-            std::string concat = ref["SigPep"].get<std::string>() +
-                                 ref["HA1"].get<std::string>() +
-                                 ref["HA2"].get<std::string>();
-            root_protein_seq = std::vector<char>(concat.begin(), concat.end());
-        } else if (config.type == "denv2") {
-            std::string e_str = ref["E"].get<std::string>();
-            root_protein_seq = std::vector<char>(e_str.begin(), e_str.end());
-        } else {
-            std::string f_str = ref["F"].get<std::string>();
-            root_protein_seq = std::vector<char>(f_str.begin(), f_str.end() - 1);
+        std::mt19937_64 rng(opt.seed);
+        size_t i = 0;
+        while (i < order.size()) {
+            size_t j = i;
+            while (j < order.size() && queue.rec[order[j]].dateCode == queue.rec[order[i]].dateCode)
+                ++j;
+            std::shuffle(order.begin() + i, order.begin() + j, rng);
+            i = j;
         }
     }
 
-    auto root_node = tree_data["tree"];
-    if (root_node.contains("branch_attrs") && root_node["branch_attrs"].contains("mutations")) {
-        std::cout << "Applying root mutations to get true phylogenetic root" << std::endl;
-        auto root_mutations = root_node["branch_attrs"]["mutations"];
-        for (const std::string& segment : config.segment_names) {
-            if (!root_mutations.contains(segment) || root_mutations[segment].empty()) continue;
-            for (const auto& m : root_mutations[segment]) {
-                std::string mut_str = m.get<std::string>();
-                Mutation mut = parse_mutation(mut_str);
-                int translated_pos = translate_mutation_position(config, segment, mut.pos);
-                if (mut.from == config.ambig_char || mut.to == config.ambig_char) continue;
-                if (translated_pos >= 0 && translated_pos < (int)root_protein_seq.size()) {
-                    if (root_protein_seq[translated_pos] != mut.from) {
-                        std::cerr << "Warning: Root mutation " << segment << ":" << mut_str
-                                  << " expects " << mut.from << " at position " << translated_pos
-                                  << " but found " << root_protein_seq[translated_pos] << std::endl;
-                    } else {
-                        root_protein_seq[translated_pos] = mut.to;
+    // Resolved before the loop rather than at step 4, because the variant root
+    // and the cutoff list are what the per-cutoff matrices are keyed by and the
+    // matrices are filled as the queue is consumed. It is the same object step 4
+    // gets, built from the same arguments, so the two cannot disagree about
+    // which node is the variant root or which dates the cutoffs are.
+    const ExampleOptions eo = exampleOptions(opt, raw);
+
+    VariantCounts variantCounts;
+    const bool    wantVariantCounts = !opt.outVariantCounts.empty();
+    if (wantVariantCounts) {
+        if (eo.variantRoot < 0) throw std::runtime_error("--out-variant-counts needs --variant");
+        variantCounts.init(t, eo.variantRoot, eo.cutoffs, nSites);
+        std::printf("variant counts: one matrix per cutoff over the sequences placed at or\n"
+                    "               below node %d, into %s\n",
+                    eo.variantRoot, opt.outVariantCounts.c_str());
+    }
+
+    Placer     placer(t, sets, rootS,
+                      opt.tieSeed < 0 ? opt.seed : static_cast<uint64_t>(opt.tieSeed),
+                      !opt.attachMatches, static_cast<int>(opt.threads));
+    if (opt.threads > 1) {
+        std::printf("threads      : %lld on the placement scan; the written tree does not\n"
+                    "               depend on how many\n", opt.threads);
+    }
+
+    // The sequences that are not attached are still provenance: where each one
+    // matched is written as it goes, so nothing has to be held in memory.
+    std::FILE* matchesFile = nullptr;
+    if (!opt.outMatches.empty()) {
+        matchesFile = std::fopen(opt.outMatches.c_str(), "wb");
+        if (!matchesFile) throw std::runtime_error("cannot write " + opt.outMatches);
+        std::fprintf(matchesFile, "#strain\tnode\n");
+    }
+
+    // The alignment is written as the queue is consumed, for the same reason:
+    // it is the input to this run, record by record, and nothing has to be held.
+    std::FILE* msaFile = nullptr;
+    if (!opt.outMsa.empty()) {
+        msaFile = std::fopen(opt.outMsa.c_str(), "wb");
+        if (!msaFile) throw std::runtime_error("cannot write " + opt.outMsa);
+    }
+
+    // Counted over the queue as it is consumed, so --limit cuts the matrix at
+    // the same place it cuts the run.
+    ResidueCounts counts;
+    counts.init(nSites);
+
+    const auto t0      = std::chrono::steady_clock::now();
+    long long  costSum = 0;
+    size_t     done    = 0;
+    const size_t total =
+        opt.limit < 0 ? order.size() : std::min<size_t>(order.size(), static_cast<size_t>(opt.limit));
+
+    for (size_t k = 0; k < total; ++k) {
+        const size_t    i = order[k];
+        if (!opt.outCounts.empty()) counts.add(queue.seq(i));
+        if (msaFile) writeMsaRecord(msaFile, queue.rec[i].strain, queue.seq(i), nSites);
+        const Placement p = placer.place(queue.seq(i), queue.rec[i].strain,
+                                              decimalYear(queue.rec[i].dateCode));
+        if (wantVariantCounts) {
+            variantCounts.grow(t);
+            variantCounts.add(p.attached >= 0 ? p.attached : p.matchedNode,
+                              queue.rec[i].dateCode, queue.seq(i));
+        }
+        costSum += p.cost;
+        ++done;
+        if (matchesFile && p.skipped) {
+            std::fprintf(matchesFile, "%s\t%d\n", queue.rec[i].strain.c_str(), p.matchedNode);
+        }
+
+        if (opt.verify) {
+            AlleleSets  ref = computeAlleleSets(t, rootS, nSites);
+            std::string why;
+            int         badNode = -1, badSite = -1;
+            const std::string descWhy = placer.checkDesc();
+            if (!descWhy.empty()) {
+                std::printf("VERIFY FAILED after %zu placements (%s): search-bound mask %s\n",
+                            done, queue.rec[i].strain.c_str(), descWhy.c_str());
+                return 1;
+            }
+            if (!sameSets(sets, ref, why, badNode, badSite)) {
+                std::printf("VERIFY FAILED after %zu placements (%s, cost %d, attached %d,%s): %s\n",
+                            done, queue.rec[i].strain.c_str(), p.cost, p.attached,
+                            p.split ? " split" : (p.skipped ? " skipped" : (p.exactMatch ? " exact" : "")),
+                            why.c_str());
+                if (badNode >= 0 && badSite > 0) dumpSite(t, sets, ref, badNode, badSite, rootS);
+                return 1;
+            }
+        }
+        if (!opt.verify && (done % static_cast<size_t>(opt.progressEvery) == 0)) {
+            std::printf("  %7zu placed, %d nodes, score %lld, %.1f s\n", done, t.size(),
+                        sets.parsimonyScore, secondsSince(t0));
+            std::fflush(stdout);
+        }
+    }
+
+    if (matchesFile) {
+        std::fclose(matchesFile);
+        std::printf("wrote        : %s\n", opt.outMatches.c_str());
+    }
+    if (msaFile) {
+        const bool bad = std::ferror(msaFile) != 0;
+        std::fclose(msaFile);
+        if (bad) throw std::runtime_error("write failed: " + opt.outMsa);
+        std::printf("wrote        : %s\n", opt.outMsa.c_str());
+    }
+
+    const Placer::Stats& st = placer.stats();
+    std::printf("placed       : %lld sequences in %.1f s, tree now %d nodes\n", st.placements,
+                secondsSince(t0), t.size());
+    if (opt.attachMatches) {
+        std::printf("               %lld split a branch, %lld hung straight off a node whose\n"
+                    "               allele sets were already the sequence's own;\n",
+                    st.splits, st.placements - st.splits);
+    } else {
+        std::printf("               %lld split a branch, %lld carried allele sets a node\n"
+                    "               already had and were counted there, not attached;\n",
+                    st.splits, st.skipped);
+    }
+    std::printf("               largest multifurcation now %lld\n", st.maxDegree);
+    std::printf("               added %lld to the parsimony score (mean %.3f per sequence)\n",
+                costSum, done ? static_cast<double>(costSum) / static_cast<double>(done) : 0.0);
+    std::printf("scan         : %lld node visits (%.0f per placement), %lld subtrees cut by\n"
+                "               the search bound\n", st.scanned,
+                done ? static_cast<double>(st.scanned) / static_cast<double>(done) : 0.0,
+                st.pruned);
+    {
+        const long long scans = st.seeded;
+        std::printf("               bound seeded at %.2f on average; a recent placement beat\n"
+                    "               the root's cost on %lld of %lld scans\n",
+                    scans > 0 ? static_cast<double>(st.seedSum) / static_cast<double>(scans) : 0.0,
+                    st.seedFromHint, scans);
+        std::printf("               %.1f task groups per scan, %.1f spine nodes scored inline;\n"
+                    "               %.0f deltas re-applied per scan moving workers between items\n",
+                    scans > 0 ? static_cast<double>(st.tasks) / static_cast<double>(scans) : 0.0,
+                    scans > 0 ? static_cast<double>(st.spine) / static_cast<double>(scans) : 0.0,
+                    scans > 0 ? static_cast<double>(st.pathSteps) / static_cast<double>(scans) : 0.0);
+        std::printf("time         : %.1f s before the scan, %.1f s scan serial, %.1f s scan\n"
+                    "               parallel, %.1f s merge, %.1f s attaching and refreshing\n",
+                    st.tPre, st.tScanSerial, st.tScanPar, st.tMerge, st.tPost);
+        std::printf("balance      : the largest group did %.1f%% of a scan's parallel node visits\n"
+                    "               (all groups %.0f per scan, the largest %.0f)\n",
+                    st.workTotal ? 100.0 * static_cast<double>(st.workMaxGroup) /
+                                       static_cast<double>(st.workTotal) : 0.0,
+                    scans > 0 ? static_cast<double>(st.workTotal) / static_cast<double>(scans) : 0.0,
+                    scans > 0 ? static_cast<double>(st.workMaxGroup) / static_cast<double>(scans) : 0.0);
+    }
+    std::printf("update       : %lld upward and %lld downward (node, site) steps, %lld set writes\n",
+                st.upSteps, st.downSteps, st.setWrites);
+    std::printf("               %lld ancestors actually moved, longest chain %lld\n",
+                st.upHops, st.upHopsMax);
+    const double pc = done ? 100.0 / static_cast<double>(done) : 0.0;
+    std::printf("ties         : %lld placements matched an existing node exactly (%.2f%%)\n",
+                st.exactHits, st.exactHits * pc);
+    if (!opt.attachMatches) {
+        std::printf("               %lld of those were settled by the match cache without a\n"
+                    "               scan, over %lld probes (%.2f%% of probes hit)\n",
+                    st.cacheHits, st.cacheProbes,
+                    st.cacheProbes ? 100.0 * static_cast<double>(st.cacheHits) /
+                                         static_cast<double>(st.cacheProbes) : 0.0);
+    }
+    // The draw statistics describe the placements that were actually drawn for:
+    // a match is not a draw at all under the skip rule.
+    const long long drawn = st.placements - (opt.attachMatches ? 0 : st.skipped);
+    const double    dpc   = drawn ? 100.0 / static_cast<double>(drawn) : 0.0;
+    std::printf("               of the %lld that did not match:\n", drawn);
+    std::printf("               %lld had a single best candidate (%.2f%%)\n",
+                st.unique, st.unique * dpc);
+    std::printf("               %lld tied, but every candidate hangs the leaf in one place (%.2f%%)\n",
+                st.tieOneAnchor, st.tieOneAnchor * dpc);
+    std::printf("               %lld tied between different places (%.2f%%)\n",
+                st.tieAnchors, st.tieAnchors * dpc);
+    // The anchor is parent(v) for a tied branch, v itself for an exact match.
+    std::printf("               draw size mean %.1f max %lld; distinct anchors mean %.3f max %lld\n",
+                drawn ? static_cast<double>(st.candSum) / static_cast<double>(drawn) : 0.0,
+                st.candMax,
+                drawn ? static_cast<double>(st.anchorSum) / static_cast<double>(drawn) : 0.0,
+                st.anchorMax);
+    if (opt.verify) std::printf("verify       : every placement matches a full recompute\n");
+    if (opt.verifyFinal) {
+        // One recompute of the whole tree as it stands, against what the
+        // incremental updates arrived at: cheap enough for any run size, where
+        // --verify is per placement and only for a small --limit.
+        AlleleSets  ref = computeAlleleSets(t, rootS, nSites);
+        std::string why;
+        int         badNode = -1, badSite = -1;
+        const bool  same = sameSets(sets, ref, why, badNode, badSite);
+        const std::string descWhy = placer.checkDesc();
+        std::printf("verify-final : incremental score %lld, recomputed %lld; sets %s; search-bound\n"
+                    "               masks %s\n",
+                    sets.parsimonyScore, ref.parsimonyScore,
+                    same ? "identical" : ("DIFFER: " + why).c_str(),
+                    descWhy.empty() ? "all cover their subtrees" : descWhy.c_str());
+        if (!same || sets.parsimonyScore != ref.parsimonyScore || !descWhy.empty()) return 1;
+    }
+
+    // Same materialised walk as 'sets', over the tree as it stands after placement.
+    // Only the active sites are looked at: a site with exactly one allele observed
+    // anywhere holds that one allele at every node, so it can only add to the
+    // size-1 count, and it adds exactly one per node. A site observed nowhere at
+    // all is inactive too but holds every state everywhere, so it is kept -- its
+    // root set is not a single state. At 30k nucleotide sites and a million nodes
+    // the full scan is most of a minute; the counts and the examples, which are
+    // listed in site order, come out the same.
+    std::vector<int> activeSites;
+    for (int s = 0; s < nSites; ++s) {
+        if (sets.siteActive[s] || setSize(sets.rootSet[s]) != 1) activeSites.push_back(s);
+    }
+    const size_t inactive = static_cast<size_t>(nSites) - activeSites.size();
+    size_t ambigPairs = 0, ambigNodes = 0, ambigLabelled = 0;
+    size_t hist[kMaxStates + 1] = {0};
+    std::vector<std::string> examples;
+    walkMaterialised(t, sets, [&](int node, const AaSet* cur) {
+        size_t here = 0;
+        hist[1] += inactive;
+        for (int s : activeSites) {
+            int n = setSize(cur[s]);
+            ++hist[n];
+            if (n > 1) {
+                ++here;
+                if (examples.size() < 12)
+                    examples.push_back("node " + std::to_string(node) + " site " +
+                                       std::to_string(s + 1) + " = {" + setToString(cur[s]) + "}");
+            }
+        }
+        ambigPairs += here;
+        if (here) {
+            ++ambigNodes;
+            if (t.observed(node)) ++ambigLabelled;
+        }
+    });
+    const long long pairs = static_cast<long long>(t.size()) * nSites;
+    std::printf("ambiguity    : %zu of %lld (node, site) pairs admit more than one allele (%.6f%%)\n",
+                ambigPairs, pairs,
+                pairs ? 100.0 * static_cast<double>(ambigPairs) / static_cast<double>(pairs) : 0.0);
+    std::printf("               spread over %zu of %d nodes (%zu of them observed)\n", ambigNodes,
+                t.size(), ambigLabelled);
+    std::printf("               set sizes:");
+    for (int n = 1; n <= numStates(); ++n) if (hist[n]) std::printf("  %d:%zu", n, hist[n]);
+    std::printf("\n");
+    for (const std::string& e : examples) std::printf("                 %s\n", e.c_str());
+
+    if (!opt.outExamples.empty()) {
+        writeExamplesPerSeed(t, sets, rootS, opt, eo);
+    }
+
+    if (wantVariantCounts) variantCounts.finish(opt.outVariantCounts);
+
+    if (!opt.outCounts.empty()) {
+        reportCounts(counts);
+        writeResidueCounts(counts, opt.outCounts);
+        std::printf("wrote        : %s\n", opt.outCounts.c_str());
+    }
+
+    if (!opt.outTree.empty()) {
+        writeTree(t, opt.outTree);
+        std::printf("wrote        : %s\n", opt.outTree.c_str());
+    }
+    if (!opt.out.empty()) {
+        writeAlleleSets(t, sets, opt.out);
+        std::printf("wrote        : %s\n", opt.out.c_str());
+    }
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc < 2 || std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0) {
+        std::fputs(kUsage, stdout);
+        return argc < 2 ? 1 : 0;
+    }
+
+    Options opt;
+    opt.command = argv[1];
+    if (opt.command != "tree" && opt.command != "sets" && opt.command != "prepare" &&
+        opt.command != "place") {
+        std::fprintf(stderr, "error: unknown command '%s'\n\n%s", opt.command.c_str(), kUsage);
+        return 1;
+    }
+    for (int i = 2; i < argc; ++i) {
+        std::string a = argv[i];
+        bool ok = true;
+        if      (a == "--tree")      ok = needValue(argc, argv, i++, "--tree", opt.tree);
+        else if (a == "--root-seq")  ok = needValue(argc, argv, i++, "--root-seq", opt.rootSeq);
+        else if (a == "--out")       ok = needValue(argc, argv, i++, "--out", opt.out);
+        else if (a == "--out-tree")  ok = needValue(argc, argv, i++, "--out-tree", opt.outTree);
+        else if (a == "--gene") {
+            std::string v;
+            ok = needValue(argc, argv, i++, "--gene", v);
+            if (ok) opt.genes = splitCommas(v);
+        }
+        else if (a == "--fasta") {
+            std::string v;
+            ok = needValue(argc, argv, i++, "--fasta", v);
+            if (ok) opt.fasta = splitCommas(v);
+        }
+        else if (a == "--metadata")  ok = needValue(argc, argv, i++, "--metadata", opt.metadata);
+        else if (a == "--prepared")  ok = needValue(argc, argv, i++, "--prepared", opt.prepared);
+        else if (a == "--out-examples")
+            ok = needValue(argc, argv, i++, "--out-examples", opt.outExamples);
+        else if (a == "--out-matches")
+            ok = needValue(argc, argv, i++, "--out-matches", opt.outMatches);
+        else if (a == "--attach-matches") opt.attachMatches = true;
+        else if (a == "--no-clock")  opt.noClock = true;
+        else if (a == "--keep-order") opt.keepOrder = true;
+        else if (a == "--min-covered") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--min-covered", val);
+            if (ok) {
+                char* end = nullptr;
+                opt.minCovered = std::strtod(val.c_str(), &end);
+                if (end == val.c_str() || *end || opt.minCovered < 0 || opt.minCovered > 1) {
+                    std::fprintf(stderr, "error: --min-covered wants a fraction in 0..1\n");
+                    return 1;
+                }
+            }
+        }
+        else if (a == "--progress-every") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--progress-every", val);
+            if (ok) opt.progressEvery = std::atoll(val.c_str());
+            if (ok && opt.progressEvery < 1) {
+                std::fprintf(stderr, "error: --progress-every wants a positive count\n");
+                return 1;
+            }
+        }
+        else if (a == "--threads") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--threads", val);
+            if (ok) opt.threads = std::atoll(val.c_str());
+            if (ok && opt.threads < 1) {
+                std::fprintf(stderr, "error: --threads wants a positive count\n");
+                return 1;
+            }
+        }
+        else if (a == "--clock-tol") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--clock-tol", val);
+            if (ok) opt.clockTol = std::atoll(val.c_str());
+        }
+        else if (a == "--clock-slack") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--clock-slack", val);
+            if (ok) opt.clockSlack = std::atoll(val.c_str());
+        }
+        else if (a == "--out-clock") ok = needValue(argc, argv, i++, "--out-clock", opt.outClock);
+        else if (a == "--out-counts")
+            ok = needValue(argc, argv, i++, "--out-counts", opt.outCounts);
+        else if (a == "--out-variant-counts")
+            ok = needValue(argc, argv, i++, "--out-variant-counts", opt.outVariantCounts);
+        else if (a == "--out-msa")
+            ok = needValue(argc, argv, i++, "--out-msa", opt.outMsa);
+        else if (a == "--variant")   ok = needValue(argc, argv, i++, "--variant", opt.variant);
+        else if (a == "--post-cutoff") {
+            std::string v;
+            ok = needValue(argc, argv, i++, "--post-cutoff", v);
+            // Repeatable as well as comma-separated: 24 quarterly cutoffs are
+            // one `cut -f1 ... | paste -sd,` away, so the shell need not loop.
+            if (ok) {
+                for (const std::string& d : splitCommas(v)) opt.postCutoffs.push_back(d);
+            }
+        }
+        else if (a == "--alphabet") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--alphabet", val);
+            if (ok) {
+                if      (val == "20")  opt.alphabet = 20;
+                else if (val == "22")  opt.alphabet = 22;
+                else if (val == "nuc") opt.alphabet = 4;
+                else {
+                    std::fprintf(stderr, "error: --alphabet wants '20', '22' or 'nuc'\n");
+                    return 1;
+                }
+            }
+        }
+        else if (a == "--max-gap-run") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--max-gap-run", val);
+            if (ok) {
+                opt.maxGapRun = std::atoi(val.c_str());
+                if (opt.maxGapRun < 0) {
+                    std::fprintf(stderr, "error: --max-gap-run wants a count, got '%s'\n",
+                                 val.c_str());
+                    return 1;
+                }
+            }
+        }
+        else if (a == "--date-impute") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--date-impute", val);
+            if (ok) {
+                if      (val == "month") opt.dateImputeDay = 15;
+                else if (val == "none")  opt.dateImputeDay = 0;
+                else {
+                    std::fprintf(stderr, "error: --date-impute wants 'month' or 'none'\n");
+                    return 1;
+                }
+            }
+        }
+        else if (a == "--date-cutoff") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--date-cutoff", val);
+            if (ok) {
+                if (val == "none" || val == "None" || val == "0") opt.dateCutoff = 0;
+                else {
+                    const int32_t d = parseDateCode(val.c_str(), val.size());
+                    if (!d) {
+                        std::fprintf(stderr, "error: --date-cutoff wants YYYY-MM-DD or 'none'\n");
+                        return 1;
                     }
+                    opt.dateCutoff = d;
                 }
             }
         }
-    }
-    return root_protein_seq;
-}
-
-std::vector<std::string> dataset_variants(const DatasetConfig& config) {
-    if (config.type == "sc2") return {"21L (BA.2)", "25C (XFG)"};
-    if (config.type == "sc2_nuc" || config.type == "sc2_spike_nuc" || config.type == "toy") return {}; // nucleotide benchmark: no variant PSSMs
-    if (config.type == "h3n2") return {"J", "K"};
-    if (config.type == "rsv_b") return {"B.D.E.1"};
-    if (config.type == "rsv_a") return {"A.D.1.6"};
-    return {"2II_F.1.1.2_annotated"};
-}
-
-std::string variant_dir_name(std::string vname) {
-    size_t paren = vname.find('(');
-    if (paren != std::string::npos) {
-        vname = vname.substr(paren + 1);
-        if (!vname.empty() && vname.back() == ')') vname.pop_back();
-    }
-    return vname;
-}
-
-AttachedTree build_attached_tree(
-    const DatasetConfig& config,
-    const CliOptions& opts
-) {
-    std::ifstream rf(opts.ref_json_path);
-    if (!rf.is_open()) throw std::runtime_error("Could not open " + opts.ref_json_path);
-    json ref = json::parse(rf);
-
-    std::ifstream tree_file(opts.tree_json_path);
-    if (!tree_file.is_open()) throw std::runtime_error("Could not open " + opts.tree_json_path);
-    json tree_data = json::parse(tree_file);
-
-    std::vector<char> root_protein_seq = sequence_from_root_or_ref(config, ref, tree_data);
-    std::cout << "Protein sequence length: " << root_protein_seq.size() << std::endl;
-    std::cout << "Alignment files: ";
-    for (const auto& file : opts.alignment_files) std::cout << file << " ";
-    std::cout << std::endl;
-    std::cout << "Metadata: " << opts.metadata_path << std::endl;
-
-    Node* root = build_tree(tree_data["tree"], nullptr, config);
-    double root_time = tree_data["tree"]["node_attrs"]["num_date"]["value"].get<double>();
-    std::cout << "Root time: " << root_time << std::endl;
-
-    set_times_rel_root(root, root_time);
-
-    int total = 0, leaves = 0;
-    count_nodes(root, total, leaves);
-    std::cout << "Total nodes: " << total << std::endl;
-    std::cout << "Leaf nodes: " << leaves << std::endl;
-
-    prune_branches_without_mutations(root);
-    int new_node_count = 0;
-    int new_leaf_count = 0;
-    check_prune(root, new_node_count, new_leaf_count);
-    std::cout << "Pruning succeeded; tree now has " << new_node_count
-              << " nodes and " << new_leaf_count << " leaves" << std::endl;
-
-    std::cout << "Generating sequence at each node..." << std::endl;
-    root->seq = root_protein_seq;
-    assign_spike_sequences(root);
-    std::cout << "Succeeded" << std::endl;
-
-    std::cout << "Loading date map from metadata TSV..." << std::endl;
-    auto date_map = load_date_map(opts.metadata_path);
-
-    std::cout << "Reading protein alignment(s)..." << std::endl;
-    ProcessedFasta fasta;
-    if (config.segment_names.size() == 1) {
-        fasta = read_and_process_fasta(opts.alignment_files[0], date_map, config.total_length, opts.max_seqs);
-    } else {
-        fasta = read_multiple_alignments(opts.alignment_files, config.segment_lengths, date_map, opts.max_seqs);
-    }
-
-    double min_date = INFINITY, max_date = -INFINITY;
-    int valid_dates = 0;
-    for (int i = 0; i < fasta.n_seqs; i++) {
-        double d = fasta.decimal_dates[i];
-        if (std::isfinite(d)) {
-            if (d < min_date) min_date = d;
-            if (d > max_date) max_date = d;
-            valid_dates++;
-        }
-    }
-    if (valid_dates == 0) throw std::runtime_error("No finite sequence dates found");
-    std::cout << "Dates: " << valid_dates << "/" << fasta.n_seqs << " valid, range: "
-              << min_date << " - " << max_date << std::endl;
-
-    std::cout << "Example dates:" << std::endl;
-    for (int i = 0; i < std::min(10, fasta.n_seqs); i++) {
-        std::cout << "  seq " << i << ": \"" << fasta.dates[i] << "\" -> " << fasta.decimal_dates[i] << std::endl;
-    }
-
-    std::cout << "Sorting sequences by date..." << std::endl;
-    sort_by_date(fasta);
-    std::cout << "Sorted. First 5 dates:";
-    for (int i = 0; i < std::min(5, fasta.n_seqs); i++) std::cout << " " << fasta.dates[i];
-    std::cout << std::endl;
-
-    std::vector<double> est_times(fasta.decimal_dates.size());
-    for (int i = 0; i < (int)est_times.size(); i++) {
-        est_times[i] = fasta.decimal_dates[i] - root_time;
-    }
-
-    std::vector<char> protein_aa = flatten_protein_aa(fasta);
-    long long L = root_protein_seq.size();
-    long long N = new_node_count;
-    long long M = N + (2 * (long long)fasta.n_seqs);
-
-    int idx = 0;
-    std::map<int, Node*> idx_to_node;
-    index_nodes(root, idx, idx_to_node);
-
-    // Decide GPU vs CPU: honor --cpu, else use a GPU only if one is actually present.
-    // A build without CUDA (no nvcc) has no GPU path at all and always uses the CPU.
-    bool use_gpu = !opts.force_cpu;
-#ifdef USE_CUDA
-    if (use_gpu) {
-        int ndev = 0;
-        if (cudaGetDeviceCount(&ndev) != cudaSuccess || ndev == 0) {
-            std::cout << "No CUDA device detected — falling back to the CPU attachment path." << std::endl;
-            use_gpu = false;
-        }
-        cudaGetLastError();  // clear the no-device sticky error so nothing downstream trips on it
-    } else {
-        std::cout << "--cpu requested — using the CPU attachment path." << std::endl;
-    }
-#else
-    use_gpu = false;  // built without CUDA (nvcc not available at build time)
-    std::cout << "Built without CUDA — using the CPU attachment path." << std::endl;
-#endif
-
-    // Build the host sequence buffer (M*L): guide-tree sequences at their node indices,
-    // then the N sequences to attach starting at row N. attach_sequences mirrors this to
-    // the device internally when use_gpu is true.
-    long long seq_bytes = L * M;
-    char* h_sequences = (char*)malloc(seq_bytes);
-    if (h_sequences == nullptr) throw std::runtime_error("malloc h_sequences failed");
-
-    std::vector<int> h_parent(M, -1);
-    spike_seqs_to_host(root, h_sequences, h_parent, L);
-    std::memcpy(h_sequences + (L * N), protein_aa.data(), protein_aa.size() * sizeof(char));
-
-    std::cout << "Root spike: ";
-    for (long long j = 0; j < std::min(80LL, L); j++) std::cout << root_protein_seq[j];
-    std::cout << "..." << std::endl;
-
-    for (int i = 0; i < std::min(10, fasta.n_seqs); i++) {
-        std::cout << "Seq " << i << " (date=" << fasta.dates[i] << "): ";
-        for (long long j = 0; j < std::min(80LL, L); j++) {
-            std::cout << protein_aa[i * L + j];
-        }
-        std::cout << "..." << std::endl;
-    }
-
-    auto attach_t0 = std::chrono::high_resolution_clock::now();
-    h_sequences = attach_sequences(h_sequences, h_parent, L, N, M, est_times, idx_to_node, config.ambig_char, false, use_gpu);
-    if (h_sequences == nullptr) throw std::runtime_error("attach_sequences failed");
-    auto attach_t1 = std::chrono::high_resolution_clock::now();
-    double attach_ms = std::chrono::duration_cast<std::chrono::milliseconds>(attach_t1 - attach_t0).count();
-    std::cout << "AUGMENTATION_WALL_CLOCK_MS: " << (long long)attach_ms
-              << "  (n_seqs=" << fasta.n_seqs << ", guide_nodes=" << N << ", L=" << L << ")" << std::endl;
-
-    check_branches_have_mutations(root, h_sequences, L);
-    std::cout << "Attachment wasn't the problem" << std::endl;
-
-    std::cout << "Resetting node times to min of downstream leaf times..." << std::endl;
-    set_node_times(root);
-    std::cout << "Done resetting node times" << std::endl;
-
-    AttachedTree attached;
-    attached.root = root;
-    attached.h_sequences = h_sequences;
-    attached.L = L;
-    attached.node_count = M;
-    attached.root_time = root_time;
-    attached.min_date = min_date;
-    attached.max_date = max_date;
-    compact_tree_indices(attached);
-    std::cout << "Compacted attached tree to " << attached.node_count << " cached nodes" << std::endl;
-    check_branches_have_mutations(attached.root, attached.h_sequences, attached.L);
-    return attached;
-}
-
-void write_pssms(
-    const std::string& output_dir,
-    long long L,
-    double timestep,
-    double pssm_start_time,
-    const std::vector<std::string>& variants,
-    const std::vector<int>& pssm_root,
-    const std::vector<std::vector<std::vector<int>>>& pssm_variants
-) {
-    int n_aas = ALLOWED_AAS.size();
-    std::string pssm_dir = output_dir + "/pssms";
-    std::filesystem::create_directories(pssm_dir);
-
-    std::string root_path = pssm_dir + "/root.csv";
-    std::ofstream root_out(root_path);
-    root_out << "pos";
-    for (int a = 0; a < n_aas; a++) root_out << "," << ALLOWED_AAS[a];
-    root_out << std::endl;
-    for (int pos = 0; pos < L; pos++) {
-        root_out << pos;
-        for (int a = 0; a < n_aas; a++) root_out << "," << pssm_root[pos * n_aas + a];
-        root_out << std::endl;
-    }
-    std::cout << "Wrote " << root_path << std::endl;
-
-    for (int v = 0; v < (int)variants.size(); v++) {
-        std::string var_dir = pssm_dir + "/" + variant_dir_name(variants[v]);
-        std::filesystem::create_directories(var_dir);
-        int n_steps = pssm_variants[v].size();
-        for (int i = 0; i < n_steps; i++) {
-            std::ostringstream fname;
-            fname << var_dir << "/time_" << std::fixed << std::setprecision(1)
-                  << pssm_start_time + i * timestep << ".csv";
-            std::ofstream vout(fname.str());
-            vout << "pos";
-            for (int a = 0; a < n_aas; a++) vout << "," << ALLOWED_AAS[a];
-            vout << std::endl;
-            for (int pos = 0; pos < L; pos++) {
-                vout << pos;
-                for (int a = 0; a < n_aas; a++) vout << "," << pssm_variants[v][i][pos * n_aas + a];
-                vout << std::endl;
+        else if (a == "--verify")    opt.verify = true;
+        else if (a == "--verify-final") opt.verifyFinal = true;
+        else if (a == "--examples-seed") {
+            std::string val;
+            ok = needValue(argc, argv, i++, "--examples-seed", val);
+            if (ok) {
+                for (const std::string& v : splitCommas(val)) {
+                    if (v.empty() || v.find_first_not_of("0123456789") != std::string::npos) {
+                        std::fprintf(stderr, "error: --examples-seed wants non-negative integers\n");
+                        return 1;
+                    }
+                    opt.examplesSeeds.push_back(std::strtoull(v.c_str(), nullptr, 10));
+                }
             }
         }
-        std::cout << "Wrote " << n_steps << " PSSM files to " << var_dir << std::endl;
-    }
-}
-
-void generate_cutoff_outputs(
-    const AttachedTree& attached,
-    const DatasetConfig& config,
-    const std::string& output_dir,
-    double cutoff
-) {
-    std::filesystem::create_directories(output_dir);
-    Node* root = clone_tree(attached.root);
-    char* h_sequences = attached.h_sequences;
-    long long L = attached.L;
-
-    std::vector<std::string> variants = dataset_variants(config);
-    set_variant_descendants(root, variants);
-
-    double timestep = 0.1;
-    double pssm_start_time = 0.0;
-    // SC2/H3N2 variant PSSMs are cumulative from root; newer datasets window after the cutoff.
-    bool variant_pssms_post_cutoff = false;
-    int num_timesteps;
-    double max_time_rel = attached.max_date - attached.root_time;
-    if (config.type == "h3n2") {
-        num_timesteps = 190;
-    } else if (config.type == "rsv_b" || config.type == "rsv_a" || config.type == "denv2") {
-        pssm_start_time = cutoff;
-        variant_pssms_post_cutoff = true;
-        num_timesteps = (int)std::ceil((max_time_rel - cutoff) / timestep) + 1;
-        if (num_timesteps < 1) num_timesteps = 1;
-    } else {
-        num_timesteps = (int)std::ceil(max_time_rel / timestep) + 1;
-        if (num_timesteps < 60) num_timesteps = 60;
-    }
-    std::cout << "PSSM timesteps: " << num_timesteps
-              << " starting at " << pssm_start_time
-              << " (step " << timestep << ")" << std::endl;
-
-    std::vector<int> blank_pssm(L * ALLOWED_AAS.size(), 0);
-    std::vector<int> pssm_root = blank_pssm;
-    std::vector<std::vector<int>> blank_pssms(num_timesteps, blank_pssm);
-    std::vector<std::vector<std::vector<int>>> pssm_variants(variants.size(), blank_pssms);
-
-    compile_pssms(root, h_sequences, pssm_root, pssm_variants, cutoff, L, variants, timestep, num_timesteps, pssm_start_time, variant_pssms_post_cutoff);
-    write_pssms(output_dir, L, timestep, pssm_start_time, variants, pssm_root, pssm_variants);
-
-    std::vector<Node*> pruned_roots;
-    std::cout << "Pruning tree at cutoff " << cutoff << "..." << std::endl;
-    prune_tree(root, pruned_roots, cutoff);
-    std::cout << "Done pruning tree, " << pruned_roots.size() << " pruned roots" << std::endl;
-
-    check_branches_have_mutations(root, h_sequences, L);
-    for (Node* n : pruned_roots) check_branches_have_mutations(n, h_sequences, L);
-
-    std::cout << "Cleaning up pruned tree..." << std::endl;
-    cleanup_pruned_tree(root);
-    std::cout << "Done cleaning up" << std::endl;
-
-    check_branches_have_mutations(root, h_sequences, L);
-    for (Node* n : pruned_roots) check_branches_have_mutations(n, h_sequences, L);
-
-    std::mt19937 rng(123);
-    std::cout << "Setting mutation pos order..." << std::endl;
-    set_mutation_pos_order(root, h_sequences, L, rng);
-    for (Node* n : pruned_roots) set_mutation_pos_order(n, h_sequences, L, rng);
-    std::cout << "Done setting mutation pos order" << std::endl;
-
-    std::ostringstream cutoff_ss;
-    cutoff_ss << cutoff;
-    std::string txt_path = output_dir + "/examples_cutoff_" + cutoff_ss.str() + ".txt";
-
-    std::ofstream txt_out(txt_path);
-    if (!txt_out.is_open()) throw std::runtime_error("Could not open " + txt_path + " for writing");
-
-    int example_id = 0;
-    write_training_examples(root, h_sequences, txt_out, L, false, example_id, variants);
-    for (Node* n : pruned_roots) {
-        write_training_examples(n, h_sequences, txt_out, L, true, example_id, variants);
-    }
-    txt_out.close();
-    std::cout << "Wrote " << txt_path << std::endl;
-
-    delete_tree(root);
-    for (Node* n : pruned_roots) delete_tree(n);
-}
-
-CliOptions parse_cli(int argc, char* argv[]) {
-    if (argc < 5) {
-        print_usage(argv[0]);
-        throw std::runtime_error("not enough arguments");
-    }
-
-    CliOptions opts;
-    opts.output_dir = argv[1];
-    opts.cutoff = std::atof(argv[2]);
-
-    if (!is_dataset_type(argv[3])) {
-        opts.dataset_type = "sc2";
-        std::filesystem::path fasta_path(argv[3]);
-        std::filesystem::path data_dir = fasta_path.parent_path();
-        if (data_dir.empty()) data_dir = ".";
-        opts.ref_json_path = infer_legacy_sc2_json_path(data_dir, "ref.json");
-        opts.tree_json_path = infer_legacy_sc2_json_path(data_dir, "tree.json");
-        opts.metadata_path = argv[4];
-        opts.alignment_files.push_back(argv[3]);
-
-        for (int i = 5; i < argc; i++) {
-            std::string arg = argv[i];
-            if (arg == "--cache") {
-                if (++i >= argc) throw std::runtime_error("--cache requires a path");
-                opts.cache_path = argv[i];
-            } else if (arg == "--force-rebuild-cache") {
-                opts.force_rebuild_cache = true;
-            } else if (arg == "--no-cache") {
-                opts.no_cache = true;
-            } else if (arg == "--cpu") {
-                opts.force_cpu = true;
-            } else if (arg == "--grid") {
-                if (++i >= argc) throw std::runtime_error("--grid requires a count");
-                opts.grid_count = std::atoi(argv[i]);
-            } else if (arg == "--grid-interior") {
-                opts.grid_interior = true;
-            } else if (arg == "--grid-output-dir") {
-                if (++i >= argc) throw std::runtime_error("--grid-output-dir requires a directory");
-                opts.grid_output_dir = argv[i];
-            } else if (is_integer_arg(arg)) {
-                opts.max_seqs = std::atoi(arg.c_str());
-            } else {
-                throw std::runtime_error("Unexpected legacy argument: " + arg);
+        else if (a == "--seed" || a == "--limit" || a == "--tie-seed") {
+            std::string val;
+            ok = needValue(argc, argv, i++, a.c_str(), val);
+            if (ok) {
+                if      (a == "--seed")     opt.seed = std::strtoull(val.c_str(), nullptr, 10);
+                else if (a == "--tie-seed") opt.tieSeed = std::strtoll(val.c_str(), nullptr, 10);
+                else                        opt.limit = std::strtoll(val.c_str(), nullptr, 10);
             }
         }
-
-        if (opts.grid_count < 0) throw std::runtime_error("--grid must be non-negative");
-        if (opts.grid_count > 0 && opts.grid_output_dir.empty()) opts.grid_output_dir = opts.output_dir;
-        std::cout << "Using legacy SC2 CLI; inferred ref_json=" << opts.ref_json_path
-                  << " tree_json=" << opts.tree_json_path << std::endl;
-        return opts;
+        else {
+            std::fprintf(stderr, "error: unknown argument '%s'\n\n%s", a.c_str(), kUsage);
+            return 1;
+        }
+        if (!ok) return 1;
     }
-
-    if (argc < 8) {
-        print_usage(argv[0]);
-        throw std::runtime_error("not enough arguments for dataset-aware CLI");
+    if (opt.rootSeq.empty()) {
+        std::fprintf(stderr, "error: --root-seq is required\n\n%s", kUsage);
+        return 1;
     }
-
-    opts.dataset_type = argv[3];
-    opts.ref_json_path = argv[4];
-    opts.tree_json_path = argv[5];
-    opts.metadata_path = argv[6];
-
-    DatasetConfig config = create_dataset_config(opts.dataset_type);
-    int expected_files = (int)config.segment_names.size();
-
-    for (int i = 7; i < argc; i++) {
-        std::string arg = argv[i];
-        if (arg == "--cache") {
-            if (++i >= argc) throw std::runtime_error("--cache requires a path");
-            opts.cache_path = argv[i];
-        } else if (arg == "--force-rebuild-cache") {
-            opts.force_rebuild_cache = true;
-        } else if (arg == "--no-cache") {
-            opts.no_cache = true;
-        } else if (arg == "--cpu") {
-            opts.force_cpu = true;
-        } else if (arg == "--grid") {
-            if (++i >= argc) throw std::runtime_error("--grid requires a count");
-            opts.grid_count = std::atoi(argv[i]);
-        } else if (arg == "--grid-interior") {
-            opts.grid_interior = true;
-        } else if (arg == "--grid-output-dir") {
-            if (++i >= argc) throw std::runtime_error("--grid-output-dir requires a directory");
-            opts.grid_output_dir = argv[i];
-        } else if (is_integer_arg(arg) && (int)opts.alignment_files.size() >= expected_files) {
-            opts.max_seqs = std::atoi(arg.c_str());
-        } else {
-            opts.alignment_files.push_back(arg);
+    if (opt.command != "prepare" && opt.tree.empty()) {
+        std::fprintf(stderr, "error: --tree is required for '%s'\n\n%s", opt.command.c_str(),
+                     kUsage);
+        return 1;
+    }
+    if (opt.genes.empty()) {
+        std::fprintf(stderr, "error: --gene wants at least one CDS name\n\n%s", kUsage);
+        return 1;
+    }
+    if (opt.command == "prepare" && (opt.fasta.empty() || opt.metadata.empty())) {
+        std::fprintf(stderr, "error: --fasta and --metadata are required for 'prepare'\n\n%s",
+                     kUsage);
+        return 1;
+    }
+    // One FASTA per gene, in the order the genes were named: the files are what
+    // the concatenation is assembled from, so a count that does not line up is a
+    // frame error and there is no sane guess to make about which gene is which.
+    if (opt.command == "prepare" && opt.fasta.size() != opt.genes.size()) {
+        std::fprintf(stderr, "error: --fasta wants one path per --gene, %zu genes and %zu paths\n",
+                     opt.genes.size(), opt.fasta.size());
+        return 1;
+    }
+    // The gap rule is a property of how the queue is read, and the queue is only
+    // read once, by 'prepare'. It is also meaningless while '-' is missing data.
+    if (opt.maxGapRun >= 0 && opt.command != "prepare") {
+        std::fprintf(stderr, "error: --max-gap-run is for 'prepare', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (opt.maxGapRun >= 0 && opt.alphabet != 22) {
+        std::fprintf(stderr, "error: --max-gap-run needs --alphabet 22; at 20 every '-' is\n"
+                             "       missing data already\n\n%s", kUsage);
+        return 1;
+    }
+    if (opt.minCovered >= 0 && opt.command != "prepare") {
+        std::fprintf(stderr, "error: --min-covered is for 'prepare', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (opt.keepOrder && opt.command != "prepare" && opt.command != "place") {
+        std::fprintf(stderr, "error: --keep-order is for 'prepare' and 'place', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (opt.dateImputeDay && opt.command != "prepare") {
+        std::fprintf(stderr, "error: --date-impute is for 'prepare', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (opt.command == "place" && opt.prepared.empty()) {
+        std::fprintf(stderr, "error: --prepared is required for 'place'\n\n%s", kUsage);
+        return 1;
+    }
+    // The matrix counts sequences, and 'tree' and 'sets' read none: silently
+    // writing an all-zero one would be worse than saying so.
+    if (!opt.outCounts.empty() && opt.command != "prepare" && opt.command != "place") {
+        std::fprintf(stderr, "error: --out-counts is for 'prepare' and 'place', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    // Only the placement scan is threaded, so asking for cores anywhere else is
+    // a misunderstanding worth naming rather than ignoring.
+    if (opt.threads > 1 && opt.command != "place") {
+        std::fprintf(stderr, "error: --threads is for 'place', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (!opt.outClock.empty() && opt.command != "prepare") {
+        std::fprintf(stderr, "error: --out-clock is for 'prepare', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    if (!opt.outMsa.empty() && opt.command != "prepare" && opt.command != "place") {
+        std::fprintf(stderr, "error: --out-msa is for 'prepare' and 'place', not '%s'\n\n%s",
+                     opt.command.c_str(), kUsage);
+        return 1;
+    }
+    // Both halves of the matrix's definition are arguments: which sequences are
+    // in it is --variant, and which matrix a sequence lands in is --post-cutoff.
+    // Without either there is nothing to write, and writing nothing quietly is
+    // the failure mode this whole option exists to avoid.
+    if (!opt.outVariantCounts.empty()) {
+        if (opt.command != "place") {
+            std::fprintf(stderr, "error: --out-variant-counts is for 'place', not '%s'\n\n%s",
+                         opt.command.c_str(), kUsage);
+            return 1;
+        }
+        if (opt.variant.empty() || opt.postCutoffs.empty()) {
+            std::fprintf(stderr,
+                         "error: --out-variant-counts needs --variant and --post-cutoff\n\n%s",
+                         kUsage);
+            return 1;
         }
     }
 
-    if ((int)opts.alignment_files.size() != expected_files) {
-        throw std::runtime_error(config.type + " requires " + std::to_string(expected_files) +
-                                 " alignment file(s), got " + std::to_string(opts.alignment_files.size()));
-    }
-    if (opts.grid_count < 0) throw std::runtime_error("--grid must be non-negative");
-    if (opts.grid_count > 0 && opts.grid_output_dir.empty()) opts.grid_output_dir = opts.output_dir;
-    return opts;
-}
+    // Before any parse: aaBit, isMissing and every loop bound below read this.
+    setAlphabet(opt.alphabet == 22  ? AlphabetKind::Aa22
+                : opt.alphabet == 4 ? AlphabetKind::Nuc
+                                    : AlphabetKind::Aa20);
+    std::printf("alphabet     : %d tokens, %s%s\n", numStates(), gAlphabet,
+                opt.alphabet == 22  ? " -- only X is missing data"
+                : opt.alphabet == 4 ? " -- N, '-' and IUPAC partial codes are missing data"
+                                    : " -- '-', '*' and X are all missing data");
 
-int main(int argc, char* argv[]) {
     try {
-        CliOptions opts = parse_cli(argc, argv);
-        DatasetConfig config = create_dataset_config(opts.dataset_type);
-
-        // Point the alphabet used by aa_to_index / PSSM code at this dataset's
-        // alphabet (protein by default, nucleotide for sc2_nuc).
-        ALLOWED_AAS = config.alphabet;
-
-        std::cout << "Cutoff: " << opts.cutoff << std::endl;
-        std::cout << "Dataset: " << config.type << std::endl;
-        bool use_cache = !opts.no_cache && !opts.cache_path.empty();
-        if (use_cache) std::cout << "Attached-tree cache: " << opts.cache_path << std::endl;
-
-        AttachedTree attached;
-        CacheManifest requested_manifest = make_cache_manifest(
-            config.type,
-            config.total_length,
-            opts.max_seqs,
-            opts.ref_json_path,
-            opts.tree_json_path,
-            opts.metadata_path,
-            opts.alignment_files
-        );
-
-        bool loaded_cache = false;
-        if (use_cache && !opts.force_rebuild_cache) {
-            CacheManifest saved_manifest;
-            std::string reason;
-            if (load_cache_manifest(opts.cache_path, saved_manifest, reason) &&
-                cache_manifest_matches(saved_manifest, requested_manifest, reason)) {
-                if (load_attached_tree_cache(opts.cache_path, attached, saved_manifest, reason)) {
-                    loaded_cache = true;
-                    std::cout << "Loaded attached-tree cache with " << attached.node_count << " nodes" << std::endl;
-                    check_branches_have_mutations(attached.root, attached.h_sequences, attached.L);
-                } else {
-                    std::cout << "Cache payload unusable, rebuilding: " << reason << std::endl;
-                }
-            } else {
-                std::cout << "Cache miss, rebuilding: " << reason << std::endl;
-            }
-        }
-
-        if (!loaded_cache) {
-            attached = build_attached_tree(config, opts);
-            if (use_cache) {
-                populate_cache_runtime_metadata(requested_manifest, attached);
-                std::string reason;
-                if (!save_attached_tree_cache(opts.cache_path, attached, requested_manifest, reason)) {
-                    throw std::runtime_error("Could not save attached-tree cache: " + reason);
-                }
-                std::cout << "Saved attached-tree cache to " << opts.cache_path << std::endl;
-            }
-        }
-
-        // Benchmark mode: time only the augmentation phase (measured inside
-        // build_attached_tree); skip downstream PSSM / training-example output.
-        if (const char* bench = std::getenv("ANTIGEN_BENCH_ATTACH_ONLY")) {
-            if (bench[0] != '\0' && bench[0] != '0') {
-                std::cout << "ANTIGEN_BENCH_ATTACH_ONLY set; skipping downstream output." << std::endl;
-                free(attached.h_sequences);
-                delete_tree(attached.root);
-                return 0;
-            }
-        }
-
-        if (opts.grid_count > 0) {
-            double start = attached.min_date - attached.root_time;
-            double end = attached.max_date - attached.root_time;
-            if (opts.grid_count == 1) {
-                double cutoff = opts.grid_interior ? start + (end - start) / 2.0 : start;
-                generate_cutoff_outputs(attached, config, opts.grid_output_dir + "/cutoff_" + std::to_string(cutoff), cutoff);
-            } else {
-                for (int i = 0; i < opts.grid_count; i++) {
-                    double fraction = opts.grid_interior
-                        ? ((double)(i + 1) / (double)(opts.grid_count + 1))
-                        : ((double)i / (double)(opts.grid_count - 1));
-                    double cutoff = start + (end - start) * fraction;
-                    std::ostringstream cutoff_ss;
-                    cutoff_ss << std::fixed << std::setprecision(3) << cutoff;
-                    std::string output_dir = opts.grid_output_dir + "/cutoff_" + cutoff_ss.str();
-                    generate_cutoff_outputs(attached, config, output_dir, cutoff);
-                }
-            }
-        } else {
-            generate_cutoff_outputs(attached, config, opts.output_dir, opts.cutoff);
-        }
-
-        free(attached.h_sequences);
-        delete_tree(attached.root);
-        return 0;
+        if (opt.command == "tree") return runTree(opt);
+        if (opt.command == "sets")     return runSets(opt);
+        if (opt.command == "prepare")  return runPrepare(opt);
+        return runPlace(opt);
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::fprintf(stderr, "error: %s\n", e.what());
         return 1;
     }
 }

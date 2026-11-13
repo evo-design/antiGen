@@ -35,7 +35,7 @@ exec sbatch --job-name=bg_aa20_topup --partition="${PARTITION:-gpu_batch}" \
     --wrap "set -e; cd $REPO
 $PYTHON antiGen/background_discrimination.py \
     --dataset sc2 \
-    --tree-json $REPO/antiGen-data/tree.json --ref-json $REPO/antiGen-data/ref.json \
+    --tree-json $REPO/data/mutation-annotated-trees/sc2_guide.json --ref-json $REPO/data/mutation-annotated-trees/sc2_guide_ref.json \
     --checkpoint-dir $STORE/ckpt_stage_aa20 --output-dir $SIDE --baselines-only \
     --alphabet ACDEFGHIKLMNPQRSTVWY \
     --train-examples $REVISED/sc2-2021/train/examples_2021_cur.txt \

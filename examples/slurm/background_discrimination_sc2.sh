@@ -62,8 +62,8 @@ PY
 # corpus too and its flags are not the discrimination pass's.
 DATA_DIR=${DATA_DIR-/home/ivan.specht/antiGen-data/output1}
 CKPT_DIR=${CKPT_DIR:-/large_storage/hielab/ispecht/fitness-inference}
-TREE_JSON=${TREE_JSON:-$REPO/antiGen-data/tree.json}
-REF_JSON=${REF_JSON:-$REPO/antiGen-data/ref.json}
+TREE_JSON=${TREE_JSON:-$REPO/data/mutation-annotated-trees/sc2_guide.json}
+REF_JSON=${REF_JSON:-$REPO/data/mutation-annotated-trees/sc2_guide_ref.json}
 DATA_ARG=(); [ -n "$DATA_DIR" ] && DATA_ARG=(--data-dir "$DATA_DIR")
 read -r -a CONTRAST_ARGS <<< "${CONTRAST_EXTRA:-}"
 echo "data-dir  = ${DATA_DIR:-<none: named explicitly in EXTRA>}"

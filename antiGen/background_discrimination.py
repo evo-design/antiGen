@@ -47,7 +47,7 @@ report.
 Usage:
     python antiGen/background_discrimination.py \\
         --data-dir /home/ivan.specht/antiGen-data/output1 \\
-        --tree-json antiGen-data/tree.json --ref-json antiGen-data/ref.json \\
+        --tree-json data/mutation-annotated-trees/sc2_guide.json --ref-json data/mutation-annotated-trees/sc2_guide_ref.json \\
         --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \\
         --output-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_background
 """

@@ -45,7 +45,7 @@ Usage:
     python antiGen/backbone_list_eval.py \\
         --background-dir .../evals_sc2_background \\
         --data-dir /home/ivan.specht/antiGen-data/output1 \\
-        --tree-json antiGen-data/tree.json --ref-json antiGen-data/ref.json \\
+        --tree-json data/mutation-annotated-trees/sc2_guide.json --ref-json data/mutation-annotated-trees/sc2_guide_ref.json \\
         --mutation-list coguk=data/mutation_lists/coguk.csv \\
         --output-dir .../evals_sc2_lists_macro_backbone
 """

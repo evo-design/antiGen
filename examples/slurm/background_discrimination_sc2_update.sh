@@ -10,7 +10,7 @@
 
 # background_discrimination_sc2.sh, re-pointed at a NEWER guide tree.
 #
-# WHY. The published backbone control is built on antiGen-data/tree.json, whose
+# WHY. The published backbone control is built on data/mutation-annotated-trees/sc2_guide.json, whose
 # post-cutoff RBD branches carry only 56 of CoG-UK's 247 listed cells (20 de novo).
 # That is not a sampling accident that more models would fix: the whole tree, over
 # its entire history, only ever produces 69 of the 247, because it is a subsampled
@@ -83,7 +83,7 @@ python "$REPO/antiGen/background_discrimination.py" \
     --dataset sc2 \
     --data-dir /home/ivan.specht/antiGen-data/output1 \
     --tree-json "$TREE" \
-    --ref-json "$REPO/antiGen-data/ref.json" \
+    --ref-json "$REPO/data/mutation-annotated-trees/sc2_guide_ref.json" \
     --cutoff "$CUTOFF" \
     --checkpoint-dir "$CKPT_DIR" \
     --output-dir "$OUT" \
