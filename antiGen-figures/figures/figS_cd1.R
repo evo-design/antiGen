@@ -12,7 +12,7 @@
 ## codon of the wild type -> any codon of the mutant at Hamming distance 1: 150 of 380
 ## substitutions), so the genetic code's reachability no longer separates candidates.
 ## Data: list_macro.py --cd1-variants (evals_cd1_2023-01-01, evals_cd1_2021), staged by
-## experiments/multitree/stage_cd1_2023.sh (ARM=2023 / ARM=2021).
+## reproduce/stage/stage_cd1_2023.sh (ARM=2023 / ARM=2021).
 ## ---------------------------------------------------------------------------
 source("R/common.R")
 suppressPackageStartupMessages(library(cowplot))

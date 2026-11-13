@@ -766,7 +766,7 @@ def substrate_from_args(args):
     if args.substrate == 'backbone' and ungrounded != 'score':
         raise SystemExit(
             "--ungrounded-queries only applies to --substrate list: the backbone row "
-            "ranks a cell across queries against a query-INDEPENDENT pool (NOTES s39), "
+            "ranks a cell across queries against a query-INDEPENDENT pool, "
             "and a per-query mask would put the confound back")
     sub = Substrate(maps_dir=maps_dir, aa_eval=aa_eval, targets=T, seen=seen,
                     in_full=in_full, observed=observed, eval_range=eval_range,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Stage the whole-spike codon-distance-1 run for supp_fullspike's second row (NOTES s178).
+"""Stage the whole-spike codon-distance-1 run for supp_fullspike's second row.
 
 Source: STORE/evals_sc2_lists_macro_aa20_2023-01-01_allcells_fullspike_cd1, a fresh
 run of the published whole-spike command (train-only fits, ANTIGEN_TOPQ_LEGACY=1) with

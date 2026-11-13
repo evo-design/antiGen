@@ -193,8 +193,7 @@ def main():
                          "bars are simply absent from G-J while the rest of the figure "
                          "carries them. NO GPU IS NEEDED: the variant root is already "
                          "one of the dumped queries, so a rule's map at that genotype is "
-                         "arithmetic over cached members (NOTES s50 established the same "
-                         "for the published figure).")
+                         "arithmetic over cached members.")
     ap.add_argument('--common-pool', action='store_true',
                     help="Score every model against the SAME candidate set: the whole "
                          "eval range less the query's own residue, with a cell a model "
@@ -202,7 +201,7 @@ def main():
                          "pool is each model's own emission set, so n_valid -- which is "
                          "this metric's DENOMINATOR -- varies by model and a model that "
                          "abstains on part of the RBD is scored against a smaller top "
-                         "decile (NOTES s51). The published arm gets this from a "
+                         "decile. The published arm gets this from a "
                          "rescore_common_pool.py pass instead; passing it here does the "
                          "same thing in one step, and fig_coguk_list.R refuses a CSV "
                          "whose n_selected varies.")

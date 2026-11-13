@@ -23,7 +23,7 @@
 #
 # RESUME: a seed whose directory already holds a _best.pt is skipped.
 #
-# USAGE: sbatch --array=0-9 examples/slurm/train_valsel_seed.sh 2023-10-01
+# USAGE: sbatch --array=0-9 reproduce/slurm/train_valsel_seed.sh 2023-10-01
 set -uo pipefail
 
 echo "Job started at: $(date)"
@@ -50,7 +50,7 @@ echo "examples = $EXAMPLES"
 mkdir -p "$OUT_ROOT"
 
 REV="$REV" EXAMPLES="$EXAMPLES" OUT_ROOT="$OUT_ROOT" N="$N" EPOCHS="$EPOCHS" \
-    SEEDS="$SEED" bash "$REPO/examples/slurm/train_antigen_valsel10.sh"
+    SEEDS="$SEED" bash "$REPO/reproduce/slurm/train_antigen_valsel10.sh"
 rc=$?
 
 echo "Job finished at: $(date)"

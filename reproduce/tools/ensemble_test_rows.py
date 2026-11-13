@@ -6,7 +6,7 @@
 list figure solves this with `ensemble_report.py` over `list_score_maps_aa20`, but that
 cache holds the 11,523 CoG-UK-list-carrying queries and `sc2_results`' recall panels
 score all 71,704 post-cutoff test records. `eval.py --dump-scores` writes the cache this
-reads (NOTES s68); this script turns it into rows.
+reads; this script turns it into rows.
 
 **Both metrics, on one pass of the cache.**
 
@@ -29,7 +29,7 @@ Scoring that against each model's own emission set would give the ensemble a top
 different size from its own members', which is the comparison the bars exist to make.
 
 Usage:
-    python experiments/multitree/ensemble_test_rows.py \
+    python reproduce/tools/ensemble_test_rows.py \
         --maps-dir  /large_storage/.../test_score_maps_aa20 \
         --rules     /large_storage/.../ensembles9_aa20/rules_drawn5.json \
         --root-counts    .../sc2-2021/train/counts_2021_cur.tsv \
@@ -163,7 +163,7 @@ def main():
             + "\n  ".join(missing)
             + "\n\nThe nine mean-rule members come off the main eval's "
               "--dump-models; vs10Antigen_s* and hybridWxwPssm_s* need their own "
-              "pass (NOTES s68).")
+              "pass.")
     print(f"{len(rules)} rule(s) over {len(members)} distinct member(s), "
           f"{N} queries x {R} positions x {E} residues")
     for rule, label, _ in rules:

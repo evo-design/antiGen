@@ -368,7 +368,7 @@ def load_counts_matrix(path, allowed_aas):
     both handled here rather than by the caller:
 
     * **Sites are 1-indexed**, matching the mutation positions of the same generator
-      (NOTES s53). They come back 0-indexed, which is the frame the rest of antiGen
+. They come back 0-indexed, which is the frame the rest of antiGen
       works in.
     * **The column order is the file's, not the alphabet's.** The header is read and
       each column placed at its index in ``allowed_aas``, so a 20-column file read
@@ -480,8 +480,8 @@ def require_train_corpus(examples, what="training"):
     TRAIN corpus: an earlier tree plus the sequences dated before the cutoff, built by
     its own antiGen-data run. A file holding any post-cutoff record is a test tree, and
     none of its records is training data, pre-cutoff ones included: the later tree and
-    the sequences placed on it carry information from after the cutoff (docs/NOTES.md
-    s163, s181). Raises SystemExit naming the offending file(s); returns ``examples``.
+    the sequences placed on it carry information from after the cutoff. Raises
+    SystemExit naming the offending file(s); returns ``examples``.
     """
     bad = sorted({e.test_tree for e in examples if e.test_tree})
     if bad:

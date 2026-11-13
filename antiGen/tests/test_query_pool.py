@@ -1,6 +1,6 @@
 """The query-dependent half of the pool: no model may predict `-123A` either.
 
-``real_substitution_mask`` (NOTES s51) drops the gap and stop COLUMNS, so no model can
+``real_substitution_mask`` drops the gap and stop COLUMNS, so no model can
 pick ``A123-``. It says nothing about the source residue, so until s52 a position whose
 query residue was a gap carried a full 20 candidates -- one MORE than a normal
 position's 19, because the wild-type ``scatter_`` removes nothing when the query's own

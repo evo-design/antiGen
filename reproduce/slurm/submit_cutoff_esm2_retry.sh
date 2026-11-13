@@ -47,5 +47,5 @@ for D in $CUTOFFS; do
     [ -f "$ex" ] || { echo "[skip]  $D: no examples at $ex" >&2; continue; }
     DATA_DIR="$REVISED/sc2-$D/train" OUT_DIR="$out" \
     sbatch --job-name="esm2_$D" --time=16:00:00 --exclude=GPUCACE \
-        examples/slurm/train_esm2_partial.sh --examples "$ex"
+        reproduce/slurm/train_esm2_partial.sh --examples "$ex"
 done

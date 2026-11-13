@@ -52,7 +52,7 @@ options(
   sc2.mtb_dir    = "data/evals_sc2_mtb_absent_on_this_arm",
 
   ## The five drawn combination rules, scored off the test-set map cache by
-  ## experiments/multitree/ensemble_test_rows.py. Rows are `ens_<rule_id>` and nothing
+  ## reproduce/tools/ensemble_test_rows.py. Rows are `ens_<rule_id>` and nothing
   ## else; the drawer refuses the file if it re-reports a rung.
   sc2.ensemble_dir = "data/evals_sc2_aa20",
   ## The same two groups, labels and colours `fig_coguk_list_aa20.R` uses, because the

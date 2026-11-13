@@ -1,4 +1,4 @@
-"""Mutation histories and the history transformer (NOTES s156).
+"""Mutation histories and the history transformer.
 
 A query is no longer a genotype but the ORDERED list of mutations from the root of the
 tree down to the node: each token one mutation (position, ancestral allele, derived

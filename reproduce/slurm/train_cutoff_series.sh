@@ -55,7 +55,7 @@
 # RESUME, DO NOT REDO. Both halves skip work already on disk, so a cancelled job or a
 # cutoff whose runs came from an earlier submission costs nothing to re-submit.
 #
-# USAGE: sbatch examples/slurm/train_cutoff_series.sh 2022-07-01
+# USAGE: sbatch reproduce/slurm/train_cutoff_series.sh 2022-07-01
 
 echo "Job started at: $(date)"
 echo "Running on node: $(hostname)"
@@ -105,14 +105,14 @@ if ls "$ROOT/base"/fitness_*.pt >/dev/null 2>&1; then
     echo "  already trained; skipping (delete $ROOT/base to redo it)"
 else
     DATA_DIR="$REV" OUT_DIR="$ROOT/base" \
-        bash "$REPO/examples/slurm/train_transformer.sh" --examples "$EXAMPLES" \
+        bash "$REPO/reproduce/slurm/train_transformer.sh" --examples "$EXAMPLES" \
         || { echo "BASE FAILED"; rc=1; }
 fi
 
 echo ""
 echo "=== 2. the $N val-selected runs ==="
 REV="$REV" EXAMPLES="$EXAMPLES" OUT_ROOT="$ROOT/valsel" N="$N" EPOCHS="$EPOCHS" \
-    bash "$REPO/examples/slurm/train_antigen_valsel10.sh" \
+    bash "$REPO/reproduce/slurm/train_antigen_valsel10.sh" \
     || { echo "VALSEL FAILED"; rc=1; }
 
 echo ""

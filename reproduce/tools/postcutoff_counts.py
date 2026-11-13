@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""All-lineage post-cutoff PFMs from the placed test corpus (NOTES s160).
+"""All-lineage post-cutoff PFMs from the placed test corpus.
 
 `antigen place --out-variant-counts` writes, per cutoff D, the residue counts of the
 placed sequences dated >= D -- but only INSIDE the --variant (BA.2) subtree. At

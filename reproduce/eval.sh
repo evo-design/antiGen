@@ -12,13 +12,13 @@
 # `bash reproduce/stage_checkpoints.sh` first: the steps read the checkpoint dirs it
 # lays out.
 #
-# THE TOP-q RULE. Most of the published outputs were produced before the s161 change to
+# THE TOP-q RULE. Most of the published outputs were produced before a later change to
 # how ties at the top-q boundary are counted, and are reproduced with
-# ANTIGEN_TOPQ_LEGACY=1; the steps marked [s161 rule] were run after it and are
-# reproduced without. Every step sets this for you (docs/NOTES.md s161, s163).
+# ANTIGEN_TOPQ_LEGACY=1; the steps marked [current rule] were run after it and are
+# reproduced without. Every step sets this for you.
 #
 # FITTED BASELINES (substitution, where x which, PSSM, codon, mcm, ...) are fitted on the
-# train corpus only, the same data the checkpoints were trained on (docs/NOTES.md s163).
+# train corpus only, the same data the checkpoints were trained on.
 #
 # list_macro steps write list_macro_summary.csv (+ list_macro_percell.csv) and RESUME
 # from it: resubmitting a step that was cut short scores only the missing models.
@@ -50,7 +50,7 @@ submit() {
         --output="$LOGS/rp_${name}_%j.out" --error="$LOGS/rp_${name}_%j.err" "$script"
 }
 
-# list_macro.py exactly as examples/slurm/eval_sc2_list_macro.sh ran it:
+# list_macro.py exactly as reproduce/slurm/eval_sc2_list_macro.sh ran it:
 #   lm RANGE CKPT_DIR OUT_DIR [list_macro args...]
 lm() {
     local range=$1 ck=$2 out=$3; shift 3
@@ -82,7 +82,7 @@ $(lm default "$CKPT/ckpt_stage_vs10_aa20" "$OUT/list2021_vs10" $ARM2021 --skip-b
 
 # The DMS panels' per-model predictions at the BA.2 clade root, from list2021's maps.
 dms_dumps() {
-    local d="$PYTHON experiments/multitree/dump_variant_root_predictions.py --maps-dir $OUT/list2021_maps --examples $TEST_2021"
+    local d="$PYTHON reproduce/tools/dump_variant_root_predictions.py --maps-dir $OUT/list2021_maps --examples $TEST_2021"
     submit dms_dumps 02:00:00 cpu 1 "$d --output-dir $OUT/dms_dumps/models
 $d --output-dir $OUT/dms_dumps/ensembles --rule-json $REPO/reproduce/rules/rules_vs10_2021.json"
 }
@@ -94,7 +94,7 @@ cd1_2021() {
         --ensemble-dir "$CKPT/ckpt_stage_vs10_aa20" --ensemble-name ens_vs10_2021)"
 }
 
-# 2021 arm, every RBD cell, 1-nt variants. [s161 rule]
+# 2021 arm, every RBD cell, 1-nt variants. [current rule]
 cd1_2021_allcells() {
     submit cd1_2021_allcells 06:00:00 gpu 0 "$(lm default "$CKPT/evals_cd1_2021/ckpt" "$OUT/cd1_2021_allcells" \
         $ARM2021 --mutation-list allcells=$RBD_CELLS --multitree-baselines --counted-baselines --cd1-variants \
@@ -164,7 +164,7 @@ cutoff_spike() {
     done
 }
 
-# 1-nt series, de novo cells (supp_cd1_series, de novo arm; 2020-04-01 .. 2021-10-01). [s161 rule]
+# 1-nt series, de novo cells (supp_cd1_series, de novo arm; 2020-04-01 .. 2021-10-01). [current rule]
 cd1_series_denovo() {
     for D in "$@"; do
         submit cd1dn_$D 12:00:00 gpu 0 "$(lm default "$CKPT/cutoff_stage_aa20/$D" "$OUT/cd1_series_denovo/$D" \
@@ -174,7 +174,7 @@ cd1_series_denovo() {
 }
 
 # 1-nt series, cells seen in < 100 training sequences (supp_cd1_series rare arm, and
-# supp_lm_cd1 from the same runs' unmasked 1-nt variant). [s161 rule]
+# supp_lm_cd1 from the same runs' unmasked 1-nt variant). [current rule]
 cd1_series_rare100() {
     for D in "$@"; do
         submit cd1r_$D 12:00:00 gpu 0 "$(lm default "$CKPT/cutoff_stage_aa20/$D" "$OUT/cd1_series_rare100/$D" \
@@ -185,7 +185,7 @@ cd1_series_rare100() {
 
 # Post-cutoff residue counts over all lineages, the >= 100-sequence masks of the cd1 series.
 postcutoff_counts() {
-    submit postcutoff_counts 04:00:00 cpu 0 "$PYTHON experiments/multitree/postcutoff_counts.py $OUT/postcutoff_counts"
+    submit postcutoff_counts 04:00:00 cpu 0 "$PYTHON reproduce/tools/postcutoff_counts.py $OUT/postcutoff_counts"
 }
 
 # Background discrimination + contrast (supp_query_adapt), 2021 arm.
@@ -200,8 +200,8 @@ background_2021() {
     --ensemble-dir $CKPT/ckpt_stage_vs10_aa20 --ensemble-name ens_8a91fbbf88
 $PYTHON -u antiGen/background_contrast.py --background-dir $o --root-counts $COUNTS_2021 \
     --mutation-list coguk=$COGUK --reference-query 0 --min-hosts 1 --min-controls 1
-$PYTHON experiments/multitree/background_event_weighted.py --background-dir $o --output-dir $o/check_unweighted --weight none --check
-$PYTHON experiments/multitree/background_event_weighted.py --background-dir $o --output-dir ${o}_eventwtd --weight hosts
+$PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir $o/check_unweighted --weight none --check
+$PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir ${o}_eventwtd --weight hosts
 cp $o/background_cellsets.csv ${o}_eventwtd/"
 }
 
@@ -216,14 +216,14 @@ background_2023() {
 REF=\$($PYTHON -I -c \"import json; q=json.load(open('$o/backbone_manifest.json'))['variant_root_query']; assert q >= 0, q; print(q)\")
 $PYTHON -u antiGen/background_contrast.py --background-dir $o --root-counts $(counts $D) \
     --mutation-list coguk=$COGUK --reference-query \$REF --min-hosts 1 --min-controls 1
-$PYTHON experiments/multitree/background_event_weighted.py --background-dir $o --output-dir $o/check_unweighted --weight none --check
-$PYTHON experiments/multitree/background_event_weighted.py --background-dir $o --output-dir ${o}_eventwtd --weight hosts
+$PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir $o/check_unweighted --weight none --check
+$PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir ${o}_eventwtd --weight hosts
 cp $o/background_cellsets.csv ${o}_eventwtd/"
 }
 
 # Fixed train/test splits (supp_fixed_split_revised2): the base antiGen of cutoff D
 # against the fixed external maps, COG-UK list. At 2024-10-01 the per-query CoVFit maps
-# join if built (experiments/multitree/submit_covfit_perquery.sh STAGE=gate|score|eval).
+# join if built (reproduce/slurm/submit_covfit_perquery.sh STAGE=gate|score|eval).
 fixedsplit() {
     for D in "$@"; do
         local q=""; [ -f "$OUT/covfit_perquery_$D/covfit_query.npz" ] && q="--query-maps CoVFit_query=$OUT/covfit_perquery_$D/covfit_query.npz"
@@ -235,7 +235,7 @@ fixedsplit() {
 
 # Training-set size per cutoff in three units (supp_gate_units' x axes).
 gate_units() {
-    submit gate_units 02:00:00 cpu 0 "mkdir -p $OUT/gate_units; $PYTHON experiments/multitree/training_size_by_cutoff.py \
+    submit gate_units 02:00:00 cpu 0 "mkdir -p $OUT/gate_units; $PYTHON reproduce/tools/training_size_by_cutoff.py \
         --data $CORPORA --cutoffs $(echo $CUTOFFS | tr ' ' ,) --out $OUT/gate_units/training_size_by_cutoff.csv"
 }
 
@@ -243,9 +243,9 @@ gate_units() {
 panel_b() {
     local ck; ck=$(ls "$CKPT"/cutoff_stage_aa20/2023-01-01/fitness_simple_d128_n2_lr0.0001_*.pt)
     submit panel_b 01:00:00 cpu 0 "mkdir -p $OUT/panel_b
-$PYTHON experiments/multitree/rank_path_cells.py --path-csv antiGen-figures/data/ba286_to_kp3_path.csv \
+$PYTHON reproduce/tools/rank_path_cells.py --path-csv antiGen-figures/data/ba286_to_kp3_path.csv \
     --examples $TEST_2021 --checkpoint $ck --output $OUT/panel_b/ba286_to_kp3_ranks_2023-01-01.csv
-$PYTHON experiments/multitree/draw_path_panel.py --ranks $OUT/panel_b/ba286_to_kp3_ranks_2023-01-01.csv \
+$PYTHON reproduce/tools/draw_path_panel.py --ranks $OUT/panel_b/ba286_to_kp3_ranks_2023-01-01.csv \
     --pdb antiGen-figures/ref/6M0J.pdb --output $OUT/panel_b/ba286_to_kp3.png"
 }
 

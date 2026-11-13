@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Stage the de novo, codon-distance-1, >= 100 post-cutoff-sequence series (NOTES s162).
+"""Stage the de novo, codon-distance-1, >= 100 post-cutoff-sequence series.
 
 Per cutoff D (STORE/evals_cd1_series/<D>):
   * per-cell rows of variant list_allcells_unseen_cd1_fullpool: the one-nucleotide pool

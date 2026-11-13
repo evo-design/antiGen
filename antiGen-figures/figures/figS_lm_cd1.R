@@ -10,7 +10,7 @@
 ## Every model is fitted on the train tree only (s163), under the s161 top-q rule.
 ## B is list_macro's per-mutation (micro) column, M's quantity through the same
 ## accumulator as A (they agree identically on the full pool, s111).
-## Data: experiments/multitree/stage_lm_cd1.py -> data/gating_macro_aa20_cd1/<D>/.
+## Data: reproduce/stage/stage_lm_cd1.py -> data/gating_macro_aa20_cd1/<D>/.
 ## ---------------------------------------------------------------------------
 source("R/common.R")
 suppressPackageStartupMessages(library(cowplot))

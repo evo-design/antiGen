@@ -50,5 +50,5 @@ while IFS='|' read -r name recipe time extra; do
     sbatch --job-name="$jn" --partition=gpu_batch --exclude=GPUCACE --time="$time" \
         --mem=256G --gres=gpu:1 --cpus-per-task=8 --export=ALL \
         --output="logs/${jn}_%j.out" --error="logs/${jn}_%j.err" \
-        "examples/slurm/$recipe" "${COMMON[@]}" "${X[@]}"
+        "reproduce/slurm/$recipe" "${COMMON[@]}" "${X[@]}"
 done <<< "$JOBS"

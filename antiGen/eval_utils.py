@@ -123,7 +123,7 @@ def topq_boundary(p, q, dim=-1):
     the k-th largest non-NaN value. Then the cells strictly above it number at most
     ``k - 1 < q * n`` and, with its tied block, at least ``k >= q * n``, so
     ``frac = (q * n - n_above) / n_at`` lies in [0, 1] and the selection holds exactly
-    ``q * n`` cells (NOTES s161).
+    ``q * n`` cells.
 
     It replaces ``torch.nanquantile(p, 1 - q, interpolation='lower')``, which is the
     value at ascending index ``floor((1 - q) * (n - 1))``. That one can leave MORE than
@@ -136,7 +136,7 @@ def topq_boundary(p, q, dim=-1):
 
     ``ANTIGEN_TOPQ_LEGACY=1`` restores the pre-s161 boundary, exactly as it was called.
     It is for one purpose only: rescoring a few rows into a run whose other rows were
-    scored under that rule, so one panel never mixes the two (NOTES s163).
+    scored under that rule, so one panel never mixes the two.
     """
     if os.environ.get("ANTIGEN_TOPQ_LEGACY") == "1":
         return torch.nanquantile(p, 1.0 - q, dim=dim, keepdim=True, interpolation='lower')
@@ -938,7 +938,7 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
     a cell inside the pool that the map cannot score is filled one step below the
     minimum -- it ranks LAST, stays in ``n_valid``, and is never selected. Same
     treatment as ``list_variant_recall.top_q_weights``, which is where it was first
-    measured (NOTES s51); carried here by s68.
+    measured; carried here by s68.
 
     The pool is the caller's to build, and it must be exactly this spec's candidate
     set: every restriction the caller expressed by writing NaN into ``prob_2d`` (the
@@ -1003,7 +1003,7 @@ def build_special_mask(seq_len, E, gap_idx, stop_idx):
 
     ``gap_idx`` / ``stop_idx`` of None mean the alphabet carries no such column, which
     is the 20-letter frame antiGen-data-revised writes: nothing is special, so the mask
-    is all-False and every downstream exclusion becomes a no-op (NOTES s54).
+    is all-False and every downstream exclusion becomes a no-op.
     """
     special_mask = torch.zeros(seq_len, E, dtype=torch.bool)
     if gap_idx is not None:
@@ -1022,7 +1022,7 @@ def build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx):
 
     ``gap_idx`` / ``stop_idx`` may be None, which is what a 20-letter alphabet gives:
     there is no column to mask, so the question of whether a model emits it legitimately
-    does not arise and the mask is all-False (NOTES s53).
+    does not arise and the mask is all-False.
     """
     mask = torch.zeros(seq_len, E, dtype=torch.bool)
     if gap_idx is not None and not model.OUTPUTS_LEGITIMATE_GAP:
@@ -1061,7 +1061,7 @@ class MeanLogProbEnsemble(torch.nn.Module):
     A ONE-member ensemble is therefore a no-op on ranks, which is the gate:
     ``test_one_member_is_a_no_op`` pins it.
 
-    **The first precondition is stronger than it needs to be** (NOTES s123). A member's
+    **The first precondition is stronger than it needs to be**. A member's
     log-softmax is its logits minus ONE constant per query, whichever positions it is
     normalised over, so the arith mean is the mean logit minus one constant per query
     and its within-query ranks are the same under either range. What differs is only

@@ -92,7 +92,7 @@ def test_eval_range_matches_the_cached_map_rule():
     """With eval_range, the rung equals logsoftmax/arith over the cached (range) slice.
 
     That is the rule `ensemble_report` applies to `--dump-scores` maps, which hold only
-    the eval-range positions (NOTES s123). Outside the range the output is -inf.
+    the eval-range positions. Outside the range the output is -inf.
     """
     torch.manual_seed(2)
     a, b = torch.randn(3, 9, 5), torch.randn(3, 9, 5) * 3

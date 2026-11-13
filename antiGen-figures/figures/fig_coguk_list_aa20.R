@@ -55,7 +55,7 @@
 ##
 ## ONE PREDICTOR HERE IS NOT ON THE PUBLISHED FIGURE AT ALL: `BA2_escape_LYCoV1404`,
 ## the LY-CoV1404 (bebtelovimab) antibody-escape DMS on a BA.2 background, built from
-## `data/mutation_lists/escape.csv` by `experiments/multitree/make_escape_baseline.py` and drawn in the Deep
+## `data/mutation_lists/escape.csv` by `reproduce/tools/make_escape_baseline.py` and drawn in the Deep
 ## Mutational Scans group (NOTES s64). Read its panels C/D against its neighbours and its
 ## panels E/F with the coverage caveat beside its label in `fig_coguk_list.R`: it measures
 ## half the candidate pool, which caps its recall curve at 0.8391 and so its AUC.

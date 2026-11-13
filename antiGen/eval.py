@@ -355,10 +355,10 @@ def parse_args():
                              'log N[i,a], the training-window event count of each cell '
                              '(statistical_baselines "frequency"). The N that the MCM '
                              'interpolation blends with its factored prior. Own flag '
-                             'for the same reason as --counted-baselines (NOTES s121).')
+                             'for the same reason as --counted-baselines.')
     parser.add_argument('--substitution-seed', type=int, default=0,
                         help="Seed for fit_substitution_baseline's minibatch sampler. "
-                             "NOTES s14 found it saturates by K=2, so one fit is "
+                             "It saturates by K=2, so one fit is "
                              "enough here; the multitree arm averages three only "
                              "because its ESM-2 rungs are seed-ensembled too.")
     parser.add_argument('--eval-range', choices=('default', 'full'), default='default',
@@ -411,16 +411,15 @@ def parse_args():
                              'one row per position OF THE BUILD THEY WERE MADE FOR. A '
                              'corpus built to a different convention -- the revised '
                              'H3N2 is HA1+HA2 with no signal peptide, 550 residues '
-                             'against the published 566 -- needs maps re-keyed to it '
-                             '(experiments/multitree/rekey_dms_to_mature.py), not the '
-                             'originals indexed at an offset.')
+                             'against the published 566 -- needs maps re-keyed to it, '
+                             'not the originals indexed at an offset.')
     parser.add_argument('--skip-baselines', action='store_true', default=False,
                         help="Skip the test-set baseline sweep. It is one pass over "
                              "the test set scoring 13 fixed maps against every "
                              "variant and quantile -- the single most expensive thing "
                              "in the run, ~4 h here -- and it is pure waste for a job "
                              "whose output is a score-map cache rather than a CSV "
-                             "(the ensemble MEMBER pass, NOTES s68). The baseline "
+                             "(the ensemble MEMBER pass). The baseline "
                              "ROWS are then absent from the hit-rate CSVs, so do not "
                              "pass this for a run anything reads.")
     parser.add_argument('--dump-scores', default=None, metavar='DIR',
@@ -440,7 +439,7 @@ def parse_args():
                         help="Score every rung against its OWN emission set rather "
                              "than a common candidate pool -- the published "
                              "behaviour, and what the committed evals_sc2 CSVs were "
-                             "written with. Off by default since NOTES s68: without "
+                             "written with. Off by default: without "
                              "a common pool 'the top 10%%' is 10%% of a set whose size "
                              "varies by model (3,801-4,221 across this roster), so a "
                              "map that declines to score part of the range selects "
@@ -727,9 +726,8 @@ def main():
             f"Baseline(s) of the wrong length for this corpus (seq_len={seq_len}): "
             + ", ".join(f"{n}={ln}" for n, ln in wrong)
             + f"\n  baseline_dir = {baseline_dir}"
-            + "\n  Re-key them to this build (experiments/multitree/"
-              "rekey_dms_to_mature.py) and pass --baseline-dir, or leave the rung off."
-              " Do not assume the offset.")
+            + "\n  Re-key them to this build and pass --baseline-dir, or leave the"
+              " rung off. Do not assume the offset.")
 
     # Loaders
     test_loader = DataLoader(

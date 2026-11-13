@@ -1,4 +1,4 @@
-"""antiGen-train never trains on a test tree (docs/NOTES.md s181).
+"""antiGen-train never trains on a test tree.
 
 A file that holds any post-cutoff record is a test tree: its pre-cutoff records sit on a
 later tree with sequences from after the cutoff placed below them, so none of them is

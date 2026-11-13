@@ -132,7 +132,7 @@ def main():
                     help="each model's own emission set, i.e. the published convention")
     ap.add_argument("--ungrounded-queries", choices=list(es.UNGROUNDED), default=None,
                     help="what to do with a cell like `-123A`, at a position whose "
-                         "QUERY residue is a gap or a stop (NOTES s52). 'score' is the "
+                         "QUERY residue is a gap or a stop. 'score' is the "
                          "pre-s52 convention and leaves it a candidate; 'keep' drops it "
                          "from the pool but keeps its target events in the denominator; "
                          "'drop' (the default, and 'score' under --legacy-pool) removes "

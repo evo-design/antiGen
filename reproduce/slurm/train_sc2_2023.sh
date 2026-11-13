@@ -55,7 +55,7 @@ run() {   # run <label> <recipe script> [extra args]
     local label=$1 recipe=$2; shift 2
     echo ""
     echo "=== $label ==="
-    DATA_DIR="$REV" OUT_DIR="$OUT_DIR" bash "$REPO/examples/slurm/$recipe" \
+    DATA_DIR="$REV" OUT_DIR="$OUT_DIR" bash "$REPO/reproduce/slurm/$recipe" \
         --examples "$EXAMPLES" "$@" || { echo "$label FAILED"; rc=1; }
 }
 

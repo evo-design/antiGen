@@ -4,7 +4,7 @@
 ## 2023-01-01 cutoff (NOTES s160). The per-query pool and top decile are supp_cd1's
 ## unchanged; only which (position, residue) cells are averaged moves. Mask: the PFM
 ## sc2-test/counts_ba2/counts_2023-01-01.tsv. Data staged by
-## experiments/multitree/stage_cd1_min100.py from the supp_cd1 run's per-cell output.
+## reproduce/stage/stage_cd1_min100.py from the supp_cd1 run's per-cell output.
 ## ---------------------------------------------------------------------------
 source("R/common.R")
 suppressPackageStartupMessages(library(cowplot))

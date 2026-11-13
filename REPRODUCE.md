@@ -27,6 +27,20 @@ Paths and partitions are set in [`reproduce/config.sh`](reproduce/config.sh): `C
 ggplot2, ggtext, magick, reshape2, scales, tibble and tidyr. Everything it reads is
 committed.
 
+### Where things are
+
+| path | what |
+|---|---|
+| `reproduce/config.sh` | paths and partitions for everything below |
+| `reproduce/train_commands.py` | the `antiGen-train` command behind every checkpoint |
+| `reproduce/checkpoints.tsv`, `stage_checkpoints.sh` | the checkpoint directories the evals read |
+| `reproduce/eval.sh` | every evaluation, one named step per figure family |
+| `reproduce/stage.sh`, `compare_staged.py` | eval outputs → `antiGen-figures/data/`, and a value-level check against the committed data |
+| `reproduce/rules/` | the ensemble rule definitions |
+| `reproduce/slurm/` | the training recipes and their submitters (one per model family, the cutoff series, the CV ×10 ensembles, the 2023 fine-tunes, the data-seed replicates), and the external-baseline runs |
+| `reproduce/stage/` | the stagers `stage.sh` calls |
+| `reproduce/tools/` | producers the steps call (post-cutoff masks, host-weighted background, DMS dumps, training sizes, panel B) and the builders of two external maps in `data/baselines/` |
+
 ## 1. Figures, their data and the step behind each
 
 | figure (`figs/<name>.png`) | staged data (`antiGen-figures/data/`) | `eval.sh` step(s) |
@@ -63,15 +77,15 @@ without submitting it. Each submitted job's script is kept as `logs/rp_<step>.sh
 | `list2021` | list_macro, 2021-01-01 arm, COG-UK list, whole roster; dumps score maps | `ckpt_stage_aa20`, `ckpt_stage_vs10_aa20` | legacy | `evals_sc2_lists_macro_aa20`, `list_score_maps_aa20` | ~1 h |
 | `dms_dumps` | each model's prediction at the BA.2 clade root, from those maps (CPU) | — | — | written straight into `data/sc2_aa20{,_extra}` | min |
 | `cd1_2021` | 2021 arm, COG-UK list, + 1-nt variants | `evals_cd1_2021/ckpt` | legacy | `evals_cd1_2021/out` | ~30 min |
-| `cd1_2021_allcells` | 2021 arm, every RBD cell, + 1-nt variants | `evals_cd1_2021/ckpt` | s161 | `evals_cd1_2021_allcells/out` | ~30 min |
+| `cd1_2021_allcells` | 2021 arm, every RBD cell, + 1-nt variants | `evals_cd1_2021/ckpt` | current | `evals_cd1_2021_allcells/out` | ~30 min |
 | `rbd_2023` | 2023-01-01, every RBD cell, full roster with fine-tunes + CV ×10, + 1-nt | `ckpt_stage_rbd_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_cd1_2023-01-01/out_trainonly` | ~1 h |
 | `ens8_2023` | the three mean-rule ensembles of eight members | `ckpt_stage_ens8_2023-01-01` | legacy | `ensembles8_aa20_2023-01-01/report` | ~1 h |
 | `fullspike_2023` | 2023-01-01, whole spike, + 1-nt | `ckpt_stage_bg_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_sc2_lists_macro_aa20_2023-01-01_allcells_fullspike_cd1` | ~50 min |
 | `cutoff_eval <D>` | antiGen-eval per cutoff (per mutation) | `cutoff_stage_aa20/<D>` | legacy | `cutoff_evals_aa20_trainonly/<D>` | 4 min – 1.3 h |
 | `cutoff_rbd <D>` | list_macro per cutoff, every RBD cell | `cutoff_stage_aa20/<D>` | legacy | `evals_sc2_lists_macro_aa20_<D>_allcells_pooled_trainonly` | 30 min – 1 h |
 | `cutoff_spike <D>` | the same on the whole spike | `cutoff_stage_aa20/<D>` (2023-01-01: `ckpt_stage_bg_…` + CV ×10) | legacy | `evals_sc2_lists_macro_aa20_<D>_allcells_fullspike_trainonly` | ~1 h |
-| `cd1_series_denovo <D>` | 1-nt, de novo cells | `cutoff_stage_aa20/<D>` | s161 | `evals_cd1_series_trainonly/<D>` | ~30 min |
-| `cd1_series_rare100 <D>` | 1-nt, cells seen < 100 times in training | `cutoff_stage_aa20/<D>` | s161 | `evals_cd1_series_rare100_trainonly/<D>` | ~30 min |
+| `cd1_series_denovo <D>` | 1-nt, de novo cells | `cutoff_stage_aa20/<D>` | current | `evals_cd1_series_trainonly/<D>` | ~30 min |
+| `cd1_series_rare100 <D>` | 1-nt, cells seen < 100 times in training | `cutoff_stage_aa20/<D>` | current | `evals_cd1_series_rare100_trainonly/<D>` | ~30 min |
 | `postcutoff_counts` | all-lineage residue counts dated ≥ each cutoff (the ≥ 100 masks; CPU) | — | — | `postcutoff_counts` | min |
 | `background_2021` | background discrimination + contrast, then the host-weighted summary | `ckpt_stage_aa20`, `ckpt_stage_vs10_aa20` | legacy | `evals_sc2_background_aa20` (+ `_topup`, see §5) | ~2.5 h |
 | `background_2023` | the same at 2023-01-01 | `ckpt_stage_bg_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_sc2_background_aa20_2023-01-01_trainonly` | hours |
@@ -79,14 +93,14 @@ without submitting it. Each submitted job's script is kept as `logs/rp_<step>.sh
 | `gate_units` | training-set size per cutoff in three units (CPU) | — | — | — | ~2 min |
 | `panel_b` | ranks of each BA.2.86 → KP.3 step, and the panel image (CPU) | `cutoff_stage_aa20/2023-01-01` base | — | — | ~20 s |
 
-**The top-q rule.** The s161 change fixed how ties at the top-q boundary are counted.
+**The top-q rule.** A later change fixed how ties at the top-q boundary are counted.
 Most published outputs predate it and are reproduced with `ANTIGEN_TOPQ_LEGACY=1` (the
 "legacy" rows); `eval.sh` sets the flag per step. Regenerating everything under the
-current rule is a follow-up (docs/NOTES.md s161, s163).
+current rule is a follow-up.
 
 **Fitted baselines** (substitution, where × which, PSSM, codon, site × substitution, the
 MCM rungs) are fitted on the train corpus only, the data every checkpoint was trained
-on (s163). Each step's test set is the test tree's records after the cutoff.
+on. Each step's test set is the test tree's records after the cutoff.
 
 **The model roster** of a step is whatever checkpoints its directory holds, plus the
 statistical rungs and the fixed external maps in `data/baselines/` (globbed by every
@@ -111,14 +125,14 @@ pick one, `--sh` for bare commands). The families:
 Inputs beyond a plain `antiGen-train` call:
 
 * **The gate** (`gated_static_xfmr_pssm`) takes the cutoff's root PSSM as a CSV:
-  `examples/slurm/train_cutoff_gate.sh <D>` runs `experiments/multitree/counts_to_pssm_csv.py`
+  `reproduce/slurm/train_cutoff_gate.sh <D>` runs `reproduce/tools/counts_to_pssm_csv.py`
   on `counts_<D>_cur.tsv` and then trains (`submit_cutoff_gates.sh` does all sixteen).
 * **EVE and Tranception** train on the cutoff's alignment, built by antiGen-data
   (`slurm/run_2021.sbatch --out-msa`, `slurm/msa_2023-01-01.sbatch`). The 2023 models use
-  `--max-seqs 351410` (s125).
-* **CV ×10**: `examples/slurm/train_antigen_valsel10.sh` (2021, 96 epochs) and
+  `--max-seqs 351410`.
+* **CV ×10**: `reproduce/slurm/train_antigen_valsel10.sh` (2021, 96 epochs) and
   `train_valsel_seed.sh 2023-01-01` (EPOCHS=256); `best_epoch.py` picks each split's epoch.
-* **Fine-tunes at 2023-01-01**: `experiments/multitree/submit_finetunes_2023.sh`.
+* **Fine-tunes at 2023-01-01**: `reproduce/slurm/submit_finetunes_2023.sh`.
 
 The evals read checkpoint **directories of symlinks** into the training outputs.
 [`reproduce/checkpoints.tsv`](reproduce/checkpoints.tsv) lists every link (directory, file
@@ -130,11 +144,11 @@ targets before linking.
 
 | input | producer |
 |---|---|
-| `data/baselines/CoVFit.csv` | `examples/slurm/eval_covfit.sh` (CoVFit CLI, XFG, fold 0) |
-| `data/baselines/MSA_Transformer{,_BA2,_XFG}.csv` | `examples/slurm/msa_transformer_spike{,_ba2,_xfg}.sh` |
-| `data/baselines/BloomNeher_2023-10-01.csv` | `experiments/multitree/bloom_neher_to_baseline.py` (s101) |
-| `data/baselines/BA2_escape_LYCoV1404.csv` | `experiments/multitree/make_escape_baseline.py` (s64) |
-| CoVFit per-query maps (fixed split 2024-10-01) | `experiments/multitree/submit_covfit_perquery.sh` with `STAGE=gate`, `score`, `eval` |
+| `data/baselines/CoVFit.csv` | `reproduce/slurm/eval_covfit.sh` (CoVFit CLI, XFG, fold 0) |
+| `data/baselines/MSA_Transformer{,_BA2,_XFG}.csv` | `reproduce/slurm/msa_transformer_spike{,_ba2,_xfg}.sh` |
+| `data/baselines/BloomNeher_2023-10-01.csv` | `reproduce/tools/bloom_neher_to_baseline.py` |
+| `data/baselines/BA2_escape_LYCoV1404.csv` | `reproduce/tools/make_escape_baseline.py` |
+| CoVFit per-query maps (fixed split 2024-10-01) | `reproduce/slurm/submit_covfit_perquery.sh` with `STAGE=gate`, `score`, `eval` |
 | `reproduce/rules/rules_drawn5.json`, `rules_mean3_8.json` | the ensemble rule definitions (the members and how they combine); `rules_vs10_2021.json` is the CV ×10 rule alone, for `dms_dumps` |
 | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (`run_n.sbatch` per size, then `bench/plot.py`) |
 | `ref/all_{rbd,spike}_cells_aa20_incl_ref.csv` | every (site, residue) cell, reference allele included |
@@ -153,7 +167,7 @@ in `data/baselines/`; `data/ba286_to_kp3_path.csv` (the case-study path);
   byte for byte, and `gate_units` reproduces its table exactly. GPU spot checks through
   `eval.sh`: `cd1_2021_allcells` reproduces every row exactly, `cutoff_eval 2020-04-01`
   every row to 1e-8, `cutoff_rbd 2020-04-01` 1,796 of 1,800 rows exactly and the other
-  four (mcm_interpolation on the COG-UK variants, not drawn) within 5e-5 (docs/NOTES.md s180).
+  four (mcm_interpolation on the COG-UK variants, not drawn) within 5e-5.
 * **Rendering.** `render_all.sh` on the committed data reproduces every PNG byte for byte.
 * **The 2021 background** was assembled from three runs (the roster, a top-up adding
   mcm and Bloom-Neher, and a separate gate contrast run) whose rows were merged by hand.
@@ -161,7 +175,8 @@ in `data/baselines/`; `data/ba286_to_kp3_path.csv` (the case-study path);
   rows come from the native `--ensemble-dir` path, which has been checked against the
   published rule for list_macro only.
 * **The DMS dumps** (`dms_dumps`) were not recorded when they were first made; the step is
-  the reconstruction s153 checked byte for byte on `site_substitution`.
+  a reconstruction, checked byte for byte on `site_substitution`.
 * **Not drawn, not reproduced here:** `evals_sc2_aa20/` (the 2021 per-mutation eval) and
   `evals_sc2_lists_varrecall_aa20/` are read by figure code that no current figure
-  draws. Their fitted rows predate s163 (pooled), so a re-run will not match them.
+  draws. Their fitted rows predate the train-only fits (they were fitted on the test tree's
+  pre-cutoff records too), so a re-run will not match them.

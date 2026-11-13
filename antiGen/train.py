@@ -116,7 +116,7 @@ def parse_args():
                              'val, which is not a held-out estimate.')
     parser.add_argument('--val-sources', type=str, nargs='+', default=None, metavar='NAME',
                         help='With --val-mode random: hold out only from these sources; every '
-                             'other source goes wholly to training (NOTES s155: a joint run '
+                             'other source goes wholly to training (e.g. a joint run '
                              'selected on SARS-CoV-2 alone, related trees training-only). '
                              'Each listed source draws the SAME holdout it would alone, since '
                              'the split is seeded per source name. Default: every source.')
@@ -137,7 +137,7 @@ def parse_args():
                              'only the final epoch is kept, which is typically well past '
                              'the best epoch.')
     parser.add_argument('--resume-state', type=str, default=None, metavar='PATH',
-                        help='Resumable training (NOTES s155). After every epoch the model, '
+                        help='Resumable training. After every epoch the model, '
                              'optimizer, scheduler, RNG and validation history are written '
                              'here (atomically); if the file exists at start, training '
                              'resumes after its epoch under the same run prefix. The batch '
@@ -203,7 +203,7 @@ def parse_args():
     # The `pssm` partner reads a CSV in the `pssms/root.csv` shape. The published
     # corpora ship one; antiGen-data-revised keeps the same numbers as a counts TSV,
     # which every other reader takes via --root-counts. This points the partner at a
-    # converted copy (experiments/multitree/counts_to_pssm_csv.py) rather than giving
+    # converted copy (reproduce/tools/counts_to_pssm_csv.py) rather than giving
     # the predictor a second format to parse or writing into the data repo.
     parser.add_argument('--pssm-path', type=str, default=None, metavar='CSV',
                         help="explicit pssms/root.csv-shaped file for the pssm model "

@@ -7,18 +7,18 @@
 # The model was trained on the phylogeny of sequences dated before **2023-01-01**, months
 # before BA.2.86 was first sampled. Everything runs on a CPU in a few seconds.
 #
-# The same cells are in [`tutorial.ipynb`](https://github.com/evo-design/antiGen/blob/main/tutorial.ipynb)
-# (Jupyter, or [open it in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial.ipynb))
-# and [`tutorial.py`](https://github.com/evo-design/antiGen/blob/main/tutorial.py)
+# The same cells are in [`tutorial/tutorial.ipynb`](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb)
+# (Jupyter, or [open it in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb))
+# and [`tutorial/tutorial.py`](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py)
 # (`python tutorial.py`, or cell by cell in an editor that understands `# %%`).
 #
 # **The query.** Download
 # **[BA.2.86_spike.fasta](https://github.com/evo-design/antiGen/releases/latest/download/BA.2.86_spike.fasta)**
-# and save it in a folder named `queries` inside the directory you run the tutorial
-# from, as `queries/BA.2.86_spike.fasta`. In a clone of the repository it is already
-# there. It is the BA.2.86 spike aligned to the 1,273-residue Wuhan-Hu-1 frame (position
-# *i* is spike position *i*), in the 20-letter amino-acid alphabet, exactly as the paper
-# scored it.
+# (in a clone of the repository it is `tutorial/BA.2.86_spike.fasta`) and save it in a
+# folder named `queries` inside the directory you run the tutorial from, as
+# `queries/BA.2.86_spike.fasta`. It is the BA.2.86 spike aligned to the 1,273-residue
+# Wuhan-Hu-1 frame (position *i* is spike position *i*), in the 20-letter amino-acid
+# alphabet, exactly as the paper scored it.
 
 # %% [markdown]
 # ## 1. Install

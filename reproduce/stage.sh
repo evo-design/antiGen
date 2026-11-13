@@ -14,7 +14,7 @@
 set -euo pipefail
 . "$(dirname "$0")/config.sh"
 cd "$REPO"
-X=experiments/multitree
+X=reproduce/stage
 export FIGDATA CORPORA
 
 have() { [ -e "$1" ] || { echo "  skip: no $1 (run its eval.sh step)"; return 1; }; }

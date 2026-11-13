@@ -6,7 +6,7 @@ it, is an average over mutation *events*: every (example, position, residue) tar
 the test set counts once, so a cell that arises on 972 branches counts 972 times and a
 cell that arises once counts once. On a curated list that weighting dominates the
 result -- CoG-UK's 247 in-RBD cells carry 26,491 test events, median 46 per cell, and
-81% of those events sit on the 104 cells the model already saw in training (NOTES s31).
+81% of those events sit on the 104 cells the model already saw in training.
 
 This script scores each listed mutation **once**:
 
@@ -80,7 +80,7 @@ PERCELL = "list_macro_percell.csv"
 def build_variants(lists, seen_mask, reach1=None):
     """(suffix, score_mask, target_mask, reach1) per list variant. Masks are True =
     exclude. ``reach1`` (E, E) bool, when given, adds the codon-distance-1 variants
-    (NOTES s159): pool AND targets further restricted, per query, to the cells one
+: pool AND targets further restricted, per query, to the cells one
     nucleotide change away from that query's own wild-type residue."""
     variants = []
     for label, in_full in lists:
@@ -270,7 +270,7 @@ def main():
                          'every map. The default is the 22-token frame every '
                          'published checkpoint and cached score map was written in. '
                          'Pass STANDARD_AAS (ACDEFGHIKLMNPQRSTVWY) to score the '
-                         '20-letter arm (NOTES s53): a checkpoint of the other width '
+                         '20-letter arm: a checkpoint of the other width '
                          'then fails on shape rather than scoring wrongly.')
     ap.add_argument('--train-examples', action='append', default=None, metavar='PATH',
                     help='Examples file(s) to take the TRAINING pool from -- only the '
@@ -316,7 +316,7 @@ def main():
     ap.add_argument('--qtiles', default='0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9')
     ap.add_argument('--legacy-pool', action='store_true',
                     help="Score in each MODEL's own emission set, which is what every "
-                         "published CSV before NOTES s51 used. The default is the common "
+                         "early published CSV used. The default is the common "
                          "candidate pool: the 20 real amino-acid columns, identical for "
                          "every model, so 'the top decile' is the same size for all of "
                          "them. Under the published convention it was not -- n_valid ran "
@@ -338,27 +338,27 @@ def main():
                          '((N + kappa*s*M)/(N_total+kappa), kappa=N_total). Separate '
                          'from --multitree-baselines so an existing roster does not '
                          'change: the figures key rows by name and an unknown model '
-                         'collapses into an NA group (NOTES s-note).')
+                         'collapses into an NA group.')
     ap.add_argument('--ensemble-dir', default=None, metavar='DIR',
                     help='add one rung: every fitness_*.pt in DIR combined by the '
                          'published "Mean of log-probs" rule (ensemble_rules '
                          'logsoftmax/arith), each member normalised over the EVAL '
-                         'RANGE as the cached-map rule does (NOTES s123). Port of '
+                         'RANGE as the cached-map rule does. Port of '
                          'eval.py --ensemble-dir, which instead needs the full range.')
     ap.add_argument('--ensemble-name', default='antigen_valsel',
                     help='row name for --ensemble-dir')
     ap.add_argument('--history-model', action='append', default=[], metavar='NAME=PT',
-                    help='a HistoryTransformer checkpoint (antiGen.history, NOTES s156): '
+                    help='a HistoryTransformer checkpoint (antiGen.history): '
                          'each scored query is its mutation history from the root of the '
                          'tree it came from, rebuilt from its own examples file.')
     ap.add_argument('--query-maps', action='append', default=[], metavar='NAME=NPZ',
-                    help='a precomputed PER-QUERY map rung (NOTES s151): an NPZ with '
+                    help='a precomputed PER-QUERY map rung: an NPZ with '
                          '`aa` (Nq, L) int8 genotypes, `eval_range` and `scores` '
                          '(Nq, R, E). Each scored query is looked up by genotype; a '
                          'query the NPZ lacks is an error, not a skip.')
     ap.add_argument('--mix-dir', default=None, metavar='DIR',
                     help='a SECOND ensemble directory (fitness_*.pt), mixed with --ensemble-dir '
-                         'by --mix (NOTES s157)')
+                         'by --mix')
     ap.add_argument('--mix-dir2', default=None, metavar='DIR',
                     help='an optional THIRD ensemble directory for --mix NAME=W:W2')
     ap.add_argument('--mix', action='append', default=[], metavar='NAME=W[:W2[:W3...]]',
@@ -368,18 +368,18 @@ def main():
                          'over the eval range as ens_vs10_2023 is. Repeatable.')
     ap.add_argument('--seen-min-count', type=int, default=1,
                     help='training-window sequence count at which a cell counts as seen '
-                         '(default 1: unseen = de novo). NOTES s162 uses 100.')
+                         '(default 1: unseen = de novo). The paper\'s rare-cell series uses 100.')
     ap.add_argument('--cd1-variants', action='store_true',
                     help='add list_<l>_cd1_fullpool and list_<l>_unseen_cd1_fullpool: pool '
                          'and targets restricted, per query, to substitutions one nucleotide '
-                         'change from the query\'s own wild-type residue (NOTES s159)')
+                         'change from the query\'s own wild-type residue')
     ap.add_argument('--mix-baseline', action='append', default=[], metavar='NAME',
                     choices=['codon', 'mcm_interpolation', 'site_substitution'],
                     help='an untrained / counted model as a further --mix component, fitted '
-                         'on this run\'s training examples (NOTES s158)')
+                         'on this run\'s training examples')
     ap.add_argument('--mcm-baseline', action='store_true',
                     help='add the mutation count matrix alone, "mcm": log N[i,a] '
-                         '(statistical_baselines "frequency"). NOTES s121.')
+                         '(statistical_baselines "frequency").')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--skip-baselines', action='store_true',
                     help='Score only the checkpoints. The CSV baselines are fixed maps '
@@ -690,7 +690,7 @@ def main():
             # A member that NaN-masks gap/stop would need a NaN-aware logsumexp to
             # match the cached rule's union_min; not needed for aa20, so refused.
             raise SystemExit("--ensemble-dir is implemented for the 20-letter alphabet "
-                             "only (no gap/stop columns); see NOTES s123")
+                             "only (no gap/stop columns).")
 
         def _ensemble():
             mems = []
@@ -732,7 +732,7 @@ def main():
                           if args.mix_dir2 else [])
 
             def _baseline(name):
-                """A --mix-baseline component (NOTES s158): codon is untrained; the
+                """A --mix-baseline component: codon is untrained; the
                 counted ones are fitted on this run's training examples."""
                 if name == 'codon':
                     bm = create_model(ModelConfig(

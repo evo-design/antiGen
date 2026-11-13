@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Training-set size at each cutoff, in the three units of figS_gate_units (NOTES s122).
+"""Training-set size at each cutoff, in the three units of figS_gate_units.
 
 For each cutoff D, from the files the cutoff-series models train on
 (antiGen-data-revised/output/sc2-D/train/):

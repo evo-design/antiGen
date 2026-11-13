@@ -1,4 +1,4 @@
-"""ANTIGEN_TOPQ_LEGACY=1 must reproduce the pre-s161 boundary exactly (NOTES s163)."""
+"""ANTIGEN_TOPQ_LEGACY=1 must reproduce the pre-s161 boundary exactly."""
 import torch
 
 from antiGen.eval_utils import topq_boundary

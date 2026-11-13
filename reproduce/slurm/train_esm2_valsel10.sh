@@ -40,7 +40,7 @@
 # ALL N IN ONE JOB, sequentially: the queue costs more than a 35M run does.
 #
 # USAGE
-#   sbatch [--time=...] examples/slurm/train_esm2_valsel10.sh ARM [extra antiGen-train args]
+#   sbatch [--time=...] reproduce/slurm/train_esm2_valsel10.sh ARM [extra antiGen-train args]
 # where ARM is one of
 #   35m_frozen  35m_partial  35m_full  650m_frozen  650m_partial  650m_full
 # Extra arguments are appended AFTER the val-selection flags and therefore after the
@@ -77,7 +77,7 @@ case "$ARM" in
     650m_full)    RECIPE=train_esm2_650m_full.sh;    STEM=Esm650Full ;;
     *) echo "ABORT: unknown ARM '$ARM'"; exit 1 ;;
 esac
-RECIPE_PATH="$REPO/examples/slurm/$RECIPE"
+RECIPE_PATH="$REPO/reproduce/slurm/$RECIPE"
 [ -f "$RECIPE_PATH" ] || { echo "ABORT: no recipe at $RECIPE_PATH"; exit 1; }
 [ -f "$EXAMPLES" ] || { echo "ABORT: no examples file at $EXAMPLES"; exit 1; }
 

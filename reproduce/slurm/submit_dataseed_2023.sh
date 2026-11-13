@@ -43,7 +43,7 @@ cd "$REPO"; mkdir -p "$W/empty" logs
 
 eval_cmd() {   # $1 = members dir, $2 = output dir, $3 = rung name
   echo "export DATA_DIR='' CKPT_DIR=$W/empty OUTDIR=$2
-bash examples/slurm/eval_sc2_list_macro.sh default \
+bash reproduce/slurm/eval_sc2_list_macro.sh default \
     --alphabet ACDEFGHIKLMNPQRSTVWY \
     --train-examples $REVISED/sc2-$D/train/examples_${D}_cur.txt \
     --test-examples $REVISED/sc2-test/examples_all_cur.txt \
@@ -81,7 +81,7 @@ train)
     jt=$(sbatch --parsable "${SB[@]}" --job-name=dseed${k}_train --time=12:00:00 --array=${ARRAY:-0-9} \
       --output=logs/dseed${k}_train_%A_%a.out --error=logs/dseed${k}_train_%A_%a.err \
       --export=ALL,REV=$REVISED/sc2-$D/train,EXAMPLES=$EX,OUT_ROOT=$ROOT/valsel,N=10,EPOCHS=256 \
-      --wrap "cd $REPO; SEEDS=\$SLURM_ARRAY_TASK_ID bash examples/slurm/train_antigen_valsel10.sh")
+      --wrap "cd $REPO; SEEDS=\$SLURM_ARRAY_TASK_ID bash reproduce/slurm/train_antigen_valsel10.sh")
     je=$(sbatch --parsable "${SB[@]}" --job-name=dseed${k}_eval --time=04:00:00 \
       --dependency=afterany:$jt \
       --output=logs/dseed${k}_eval_%j.out --error=logs/dseed${k}_eval_%j.err --wrap "set -e; cd $REPO
@@ -91,7 +91,7 @@ for i in 0 1 2 3 4 5 6 7 8 9; do
   fin=\$(find \$d -maxdepth 1 -name 'fitness_*.pt' ! -name '*_best.pt' | wc -l)
   best=\$(ls \$d/fitness_*_best.pt)
   [ \"\$fin\" = 1 ] || { echo \"s\$i: no final checkpoint; refusing\"; exit 1; }
-  echo \"s\$i: \$($PY -I examples/slurm/best_epoch.py \$d)\"
+  echo \"s\$i: \$($PY -I reproduce/slurm/best_epoch.py \$d)\"
   ln -s \$best $ROOT/stage/fitness_vs10Antigen_s\$i.pt
 done
 $(eval_cmd $ROOT/stage $ROOT/eval ens_vs10_2023_dseed$k)")

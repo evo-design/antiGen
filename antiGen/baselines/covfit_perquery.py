@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CoVFit scored on EACH QUERY'S OWN BACKGROUND (NOTES s151).
+"""CoVFit scored on EACH QUERY'S OWN BACKGROUND.
 
 `covfit.py` builds one static (L, E) map from the single mutants of XFG and the eval
 applies it to every query whatever its residues. On the 2024-10-01 fixed-split arm that

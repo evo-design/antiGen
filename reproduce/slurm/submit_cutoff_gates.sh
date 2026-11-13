@@ -43,7 +43,7 @@ for D in $CUTOFFS; do
     fi
     sbatch --job-name="gate_$D" --partition="$PARTITION" --nice="$NICE" \
         --time "$TIME" \
-        examples/slurm/train_cutoff_gate.sh "$D" >/dev/null
+        reproduce/slurm/train_cutoff_gate.sh "$D" >/dev/null
     echo "[sub]   $D"
     n_sub=$((n_sub + 1))
 done

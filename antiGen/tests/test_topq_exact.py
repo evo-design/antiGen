@@ -1,4 +1,4 @@
-"""The top-q selection holds EXACTLY q * n cells (NOTES s161)."""
+"""The top-q selection holds EXACTLY q * n cells."""
 import torch
 
 from antiGen.eval_utils import compute_hit_rate, topq_boundary

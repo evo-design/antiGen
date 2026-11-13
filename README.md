@@ -6,9 +6,9 @@ Welcome to antiGen, a model that predicts future mutations to viral proteins bas
 scores every substitution of a SARS-CoV-2 spike (BA.2.86 in the example) with the
 pretrained 2023-01-01 antiGen that ships with the package, and lists the top-decile RBD
 mutations, in a few chunks of Python. It is also a
-[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial.ipynb)
-([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial.ipynb))
-and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial.py). CPU
+[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb)
+([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb))
+and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py). CPU
 only; no model download.
 
 ## Install
@@ -232,7 +232,7 @@ antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type eve \
     --variant BA.2 --ignore-dead-ends
 
 # gated blend of a from-scratch transformer and the root PSSM of the train corpus
-# (pssm_root.csv from experiments/multitree/counts_to_pssm_csv.py on counts_2023-01-01_cur.tsv)
+# (pssm_root.csv from reproduce/tools/counts_to_pssm_csv.py on counts_2023-01-01_cur.tsv)
 antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type gated \
     --gate-partner-b pssm --pssm-path pssm_root.csv --d-model 128 --num-layers 2 \
     --epochs 32 --batch-size 64 --variant BA.2 --ignore-dead-ends
@@ -305,7 +305,7 @@ bash reproduce/stage.sh                      # outputs -> antiGen-figures/data/
 [`REPRODUCE.md`](REPRODUCE.md) maps every figure to its staged data, the step that
 produces it, the checkpoints it reads and the published output it reproduces.
 `python reproduce/train_commands.py` prints the `antiGen-train` command behind every
-checkpoint. The training recipes are in [`examples/slurm/`](examples/slurm/).
+checkpoint. The training recipes are in [`reproduce/slurm/`](reproduce/slurm/).
 
 ---
 

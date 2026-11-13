@@ -69,7 +69,7 @@ fig_name <- function(n) paste0(FIG_PREFIX, n)
 
 ## Cached-map combination rules are not checkpoints, so `eval.py` cannot score them;
 ## they arrive as `<metric>_ensemble.csv` holding `ens_*` rows and nothing else
-## (experiments/multitree/ensemble_test_rows.py). NULL means the figure has no bars.
+## (reproduce/tools/ensemble_test_rows.py). NULL means the figure has no bars.
 ENSEMBLE_DIR <- getOption("sc2.ensemble_dir", NULL)
 
 ## The three query-dependent baselines from the cross-tree experiment (codon,
@@ -229,7 +229,7 @@ stopifnot(length(all_models) == length(longform_names))
 ## across the curve panels (NOTES s72).
 ##
 ## The names come from `ensemble_figure_rows.tsv`, the sidecar
-## `experiments/multitree/ensemble_test_rows.py` writes beside the CSVs -- read from
+## `reproduce/tools/ensemble_test_rows.py` writes beside the CSVs -- read from
 ## disk rather than hand-copied here, because the row ids are blake2b digests of the
 ## rule definitions and a stale copy would silently label one rule as another.
 ##

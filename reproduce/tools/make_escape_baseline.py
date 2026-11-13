@@ -31,7 +31,7 @@ THREE THINGS THIS FILE HAS TO GET RIGHT, and each is checked rather than assumed
 
 Writes E = 22 columns, the legacy frame the other maps in that directory use: read under
 a 20-letter alphabet the trailing stop and gap columns are dropped by ``load_baselines``
-(NOTES s53), so one file serves both frames.
+, so one file serves both frames.
 """
 from __future__ import annotations
 

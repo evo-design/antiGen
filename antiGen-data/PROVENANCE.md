@@ -5,7 +5,7 @@ Phylogeny inputs, kept as files rather than re-fetched on demand.
 ## `data/ncov_global@2020-12-29.json`
 
 The Nextstrain `/ncov/global` build as it stood just before 2021-01-01, for the
-D = 2021-01-01 arm (antiGen NOTES s27 / s29).
+D = 2021-01-01 arm.
 
 **It does not come from Charon.** The ncov archive floor is **2022-05-01** — a
 `getDataset` for 2022-04-29 returns 404, bisected. No 2021 snapshot exists there, and
@@ -47,7 +47,8 @@ python3 -I guard.py data/ncov_global@2020-12-29.json
 | tip `num_date` range | 2019.9849 .. **2020.9768** |
 | tips at or after 2021.0 | **0** |
 
-All four match what NOTES s27 recorded for this tree, independently of this fetch.
+All four match what was recorded for this tree when the 2021 arm was built,
+independently of this fetch.
 
 ### The sidecar is a different date, on purpose
 
@@ -57,8 +58,8 @@ carries no post-cutoff information: `nuc` is 29,903 nt and `S` is 1,274 aa
 (1,273 + stop), beginning `MFVFLVLLPLVSSQCVNLTTRTQLPPAYTN` and ending `*`.
 
 Against today's reference it differs at **exactly one S residue, 943 (F here, S
-today)** — which is the single "from-base mismatch on the train side" NOTES s27
-reports for this arm, and so is expected rather than a fetch error. `nuc` differs at
+today)** — which is the single "from-base mismatch on the train side" this arm
+shows, and so is expected rather than a fetch error. `nuc` differs at
 114 of 29,903 sites, concentrated at the masked ends. The 2020 build also carries
 `ORF10` and `ORF14`, which today's does not.
 
@@ -143,13 +144,8 @@ resolved edge of 27 mutations against 5 — that one is Omicron's branch.
 
 ## Not included
 
-The derived training examples this tree produced are already in the main repo and are
-what the 2021 arm actually consumed:
-
-```
-antiGen/experiments/multitree/data/forecast2021/examples_ncov@2021-01-01_{train,test,novel}.txt
-antiGen/experiments/multitree/data/forecast2021/examples_ncov@2021-01-01_test_novelty.json
-```
+The corpora built from this tree are not committed: they are written to
+`output/sc2-2021/{train,test}/` by `slurm/run_2021.sbatch` and `slurm/place_full.sbatch`.
 
 ## `data/trees/` — the quarterly cutoff series
 
@@ -336,7 +332,7 @@ ancestor sits off that reference says so as **branch mutations on the root node
 itself**. The two historical snapshots and the denv2 pair carry none; the
 current `~/h3n2/tree.json` carries 13 on HA1+HA2 and the current
 `~/rsv-a/tree.json` carries 7 on F. ncov's root never does, which is why this
-surfaced only here — see NOTES, `pinnedRoot`.
+surfaced only here (see `pinnedRoot` in `src/`).
 
 **From mid-2024 the sidecar is inside the tree.** Nextstrain stopped publishing
 `<key>_root-sequence.json` during 2024 — dengue's last version is 2024-01-16 and

@@ -373,11 +373,11 @@ def main():
                          '(antiGen/statistical_baselines.py)')
     ap.add_argument('--mcm-baseline', action='store_true',
                     help='add the mutation count matrix alone, "mcm": log N[i,a], as '
-                         'list_macro.py --mcm-baseline (NOTES s121)')
+                         'list_macro.py --mcm-baseline')
     ap.add_argument('--ensemble-dir', default=None,
                     help="score the MeanLogProbEnsemble of every fitness_*.pt in this "
                          "directory as one rung, as list_macro.py --ensemble-dir does "
-                         "(NOTES s123)")
+                         "")
     ap.add_argument('--ensemble-name', default='ens_dir')
     ap.add_argument('--substitution-seed', type=int, default=14)
     ap.add_argument('--seed', type=int, default=0)
@@ -568,7 +568,7 @@ def main():
             raise SystemExit(f"--ensemble-dir {args.ensemble_dir} has no fitness_*.pt")
         if gap_idx is not None or stop_idx is not None:
             raise SystemExit("--ensemble-dir is implemented for the 20-letter alphabet "
-                             "only (no gap/stop columns); see NOTES s123")
+                             "only (no gap/stop columns).")
 
         def _ensemble():
             mems = []

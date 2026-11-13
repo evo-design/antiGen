@@ -68,8 +68,7 @@ MUTATIONS_TO_CHILDREN:
 * the **test tree** is a *later* tree plus the sequences collected up to a later date,
   placed with `--post-cutoff` listing the cutoffs. The test set at D is its records that
   list D. A test tree's other records are **not training data at any cutoff**: the later
-  tree and the sequences below them carry information from after D (s163 of
-  docs/NOTES.md). `antiGen-train` refuses any file that holds a post-cutoff record.
+  tree and the sequences below them carry information from after D. `antiGen-train` refuses any file that holds a post-cutoff record.
 
 Reading a test tree needs the split named: `--split-date D` on `antiGen-eval`,
 `antiGen-validate-examples` and the list evals. Every model, statistical baselines
@@ -123,4 +122,3 @@ same way. `check_examples.py` and `check_variant_counts.py` audit a corpus;
 `seed_study.py` rebuilds one under other seeds; `bench/` is the placement benchmark
 behind `antiGen-figures/figs/usher_benchmark.png`.
 
-`NOTES.md` is this pipeline's own running record of design decisions.

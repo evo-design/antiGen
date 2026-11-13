@@ -8,6 +8,8 @@ authors:
   - family-names: Park
     given-names: Soyoon
     affiliation: "Stanford University, Stanford, CA, USA; Arc Institute, Palo Alto, CA, USA"
+  - family-names: Vermani
+    given-names: Aakarsh
   - family-names: Chithrananda
     given-names: Seyone
     affiliation: "Stanford University, Stanford, CA, USA; Arc Institute, Palo Alto, CA, USA"
@@ -36,6 +38,8 @@ preferred-citation:
       given-names: Ivan
     - family-names: Park
       given-names: Soyoon
+    - family-names: Vermani
+      given-names: Aakarsh
     - family-names: Chithrananda
       given-names: Seyone
     - family-names: Driscoll

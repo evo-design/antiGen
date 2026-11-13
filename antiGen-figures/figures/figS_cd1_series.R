@@ -12,7 +12,7 @@
 ## cells seen in >= 100 sequences (all lineages) dated >= D. Per-cutoff roster as in L/M:
 ## antiGen is the SINGLE base model trained at each cutoff. Cutoffs are drawn up to the
 ## last one with >= 30 such cells and >= 300 events (the stopping rule, fixed before any
-## model's result was read). Data: experiments/multitree/stage_cd1_series.py ->
+## model's result was read). Data: reproduce/stage/stage_cd1_series.py ->
 ## data/gating_cd1_dn_min100/<D>/. Fixed top-q rule (s161).
 ## ---------------------------------------------------------------------------
 source("R/common.R")

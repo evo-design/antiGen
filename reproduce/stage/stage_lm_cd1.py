@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Stage sc2_results_revised2 L/M at codon distance 1 (NOTES s164).
+"""Stage sc2_results_revised2 L/M at codon distance 1.
 
 Source: the per-cutoff series runs of s162/s163 (STORE/evals_cd1_series_rare100_trainonly),
 which carry `list_allcells_cd1_fullpool` -- every RBD cell, the pool AND the targets

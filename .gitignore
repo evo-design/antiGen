@@ -85,19 +85,15 @@ plan_optimizations.md
 # Per-session context notes (not tracked)
 context/
 
-# Multi-tree / forecasting experiment artifacts (branch is-multitree).
-# All regenerable, and too large to track: fetch_trees.py and fetch_snapshots.py
-# re-download the builds, generate_all.py and make_forecast_testset.py rebuild the
-# example files byte-identically, and checkpoints are ~224 MB each.
+# Local artifacts of earlier experiments (Nextstrain pulls, training runs).
 nextstrain/
 runs/
 tree_pulled_*.json
-experiments/multitree/data/**/*.txt
-# Analysis intermediates from the s14 scripts (rank_agreement, gate_search,
-# fuse_*, seed_curve, zeroshot_eval). Every one is reproduced by rerunning its
-# script; the numbers that matter are transcribed into NOTES.md, and the only
-# arrays the figure needs are in antiGen-figures/data/multitree/.
-experiments/multitree/out/
-# The Bundibugyo build zeroshot_eval.py scores, pulled from Nextstrain like the
-# rest of the trees above.
 recent.json
+
+# Your own tutorial queries (TUTORIAL.md: queries/<name>.fasta in the run directory).
+queries/
+
+# Working notes and agent instructions (Claude Code): kept locally, not published.
+CLAUDE.md
+NOTES.md

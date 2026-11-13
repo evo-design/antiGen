@@ -52,7 +52,7 @@ exec sbatch --job-name=ens9_2023 --partition=gpu_batch --exclude=GPUCACE \
     --time=12:00:00 --cpus-per-task=8 --mem=192G --gres=gpu:1 --export=ALL \
     --output=logs/ens9_2023_%j.out --error=logs/ens9_2023_%j.err \
     --wrap "set -e; cd $REPO
-bash examples/slurm/eval_sc2_list_macro.sh default \
+bash reproduce/slurm/eval_sc2_list_macro.sh default \
     --alphabet ACDEFGHIKLMNPQRSTVWY \
     --train-examples $REVISED/sc2-$D/train/examples_${D}_cur.txt \
     --test-examples $REVISED/sc2-test/examples_all_cur.txt \

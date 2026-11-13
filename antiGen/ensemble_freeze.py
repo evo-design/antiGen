@@ -134,7 +134,7 @@ def main():
     if not qualifiers:
         chosen_id, chosen_st, verdict = rule0_id, s0, "rule0_unbeaten"
         print("\nFROZEN: Rule 0. Nothing in the grid beat a plain uniform average on the "
-              "selection cells.\nThat is the NOTES s14 result reproduced, not a failure "
+              "selection cells.\nThat is the expected result (plain averaging wins), not a failure "
               "of the sweep.")
     else:
         qualifiers.sort(key=lambda t: (-t[0],

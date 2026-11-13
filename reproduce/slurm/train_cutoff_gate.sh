@@ -35,7 +35,7 @@
 #
 # RESUME: a cutoff whose gate checkpoint is already on disk is skipped.
 #
-# USAGE: sbatch examples/slurm/train_cutoff_gate.sh 2022-07-01
+# USAGE: sbatch reproduce/slurm/train_cutoff_gate.sh 2022-07-01
 set -uo pipefail
 
 echo "Job started at: $(date)"
@@ -64,7 +64,7 @@ fi
 mkdir -p "$OUT"
 
 echo ""; echo "=== the PSSM partner, converted and checked ==="
-"$PYTHON" "$REPO/experiments/multitree/counts_to_pssm_csv.py" \
+"$PYTHON" "$REPO/reproduce/tools/counts_to_pssm_csv.py" \
     --root-counts "$COUNTS" --output "$PSSM_CSV" || {
     echo "ABORT: the partner is not the pssm_root rung"; exit 1; }
 

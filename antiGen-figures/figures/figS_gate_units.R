@@ -10,7 +10,7 @@
 ## Every point is one of the sixteen quarterly cutoffs, so each line is C or D with its
 ## x axis re-spaced; nothing is re-scored. Sizes are over the files the cutoff-series
 ## models train on (examples_D_cur.txt, counts_D_cur.tsv), computed by
-## experiments/multitree/training_size_by_cutoff.py.
+## reproduce/tools/training_size_by_cutoff.py.
 ##
 ## Output: figs/supp_gate_units.png + figs_vector/supp_gate_units.pdf
 ## ---------------------------------------------------------------------------

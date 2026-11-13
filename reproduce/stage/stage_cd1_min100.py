@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""supp_cd1_min100 (NOTES s160): supp_cd1's all-RBD row (main figure C-F at codon
+"""supp_cd1_min100: supp_cd1's all-RBD row (main figure C-F at codon
 distance 1) with the SCORED cells further limited to those observed in >= MIN sequences
 dated on or after the 2023-01-01 cutoff.
 
