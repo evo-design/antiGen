@@ -90,6 +90,11 @@ if (VARIANT == "main") {
   m21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021"),
                     c("REVISED2_ARM=cd1min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1",
                       "REVISED2_T4=dn_pc=De novo, 1 nt, per cell;dn_evt=De novo, 1 nt, per mutation"))
+  ## The same >= 100-sequence de novo set on the FULL pool (supp_min100_2021's C/D,
+  ## NOTES s166): with m21 it makes the 2021 row a full-pool / 1-nt split (s167).
+  message("  [7/7] exporting the >= 100-sequence de novo panels, full pool (2021) ...")
+  f21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021_full"),
+                    c("REVISED2_ARM=min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1"))
 }
 
 ## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
@@ -114,7 +119,7 @@ for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
 NEW_KEYS <- c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt",
               "decile_dn_pc_named")
 if (VARIANT == "main") for (k in NEW_KEYS) {
-  c1[[k]] <- relabel_grob(c1[[k]]); m21[[k]] <- relabel_grob(m21[[k]])
+  c1[[k]] <- relabel_grob(c1[[k]]); m21[[k]] <- relabel_grob(m21[[k]]); f21[[k]] <- relabel_grob(f21[[k]])
 }
 ## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
 ## somewhere the walk misses, or carries a label the table does not list would still
@@ -125,7 +130,7 @@ left <- grep(REVISED2_STALE,
                                   "decile_dn_evt", "legend")],
                              ca[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
                                   "decile_dn_evt")],
-                             if (VARIANT == "main") c(c1[NEW_KEYS], m21[NEW_KEYS])), grob_text)),
+                             if (VARIANT == "main") c(c1[NEW_KEYS], m21[NEW_KEYS], f21[NEW_KEYS])), grob_text)),
              value = TRUE, perl = TRUE)
 if (length(left)) stop("old names survived the relabel: ",
                        paste(unique(left), collapse = "; "))
@@ -325,9 +330,12 @@ if (VARIANT == "main") {
   row3b <- with_header("All RBD, 1 nt, 2023 cutoff", bar_block_h(
     list(c1$decile_all_pc, c1$decile_all_evt, c1$decile_dn_pc, c1$decile_dn_evt),
     LETTERS[7:10], "All mutations, 1 nt", "De novo mutations, 1 nt", PANEL_IN[["rbd"]]))
-  row4 <- with_header("2021 cutoff", bar_block_h(
-    list(m21$decile_dn_pc_named, m21$decile_dn_evt, cg$decile_dn_pc, cg$decile_dn_evt),
-    LETTERS[11:14], "All RBD: \u2265100 seqs after cutoff, 1 nt", "Escape: de novo",
+  ## THE 2021 ROW (user, s167): de novo RBD cells seen in >= 100 sequences after the
+  ## cutoff, on the full pool (K/L) and within one nucleotide (M/N). The COG-UK escape
+  ## panels are no longer in the main figure.
+  row4 <- with_header("De novo, \u2265100 seqs, 2021", bar_block_h(
+    list(f21$decile_dn_pc_named, f21$decile_dn_evt, m21$decile_dn_pc, m21$decile_dn_evt),
+    LETTERS[11:14], "All substitutions", "Within 1 nt",
     PANEL_IN[["esc"]] + 0.15))
   ROW_IN[3] <- PANEL_IN[["rbd"]] + SUBHDR_IN
   ROW_IN[4] <- PANEL_IN[["esc"]] + 0.15 + SUBHDR_IN

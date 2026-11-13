@@ -14033,3 +14033,15 @@ learns that multi-nt substitutions almost never happen. The codon table alone go
 0.157 -> 0.385. So the statistical models pass antiGen there (0.70 vs 0.67). Within the
 1-nt pool, where that signal is removed, antiGen leads (0.45/0.48 vs 0.35/0.36). This is
 the reason for the 1-nt filter (s159).
+
+## 167. sc2_results_revised2's 2021 row: de novo >= 100 seqs, full pool vs 1 nt (2026-11-12)
+
+User: K/L <- supp_min100_2021's C/D (full pool, s166) and M/N <- the previous K/L
+(supp_cd1_min100_2021's C/D, 1 nt). The row is now one comparison: all-RBD de novo
+cells seen in >= 100 sequences after the 2021-01-01 cutoff (91 / 90 cells), with only
+the pool changing. Row header "De novo, >=100 seqs, 2021"; sub-headers "All
+substitutions" / "Within 1 nt". K/L: S×S 1st, S×S-MCM 2nd, antiGen 3rd (0.67/0.71 vs
+0.70/0.74). M/N: antiGen 1st (0.45/0.48), EVEscape 2nd, S×S 3rd (0.35/0.36). The COG-UK
+de novo escape pair leaves the main figure; it remains in coguk_list_aa20, supp_cd1 E-H
+and sc2_results_revised2_supp. The full-pool pair is a new export (`f21`, arm
+min100_2021, own x range, named leading panel).
