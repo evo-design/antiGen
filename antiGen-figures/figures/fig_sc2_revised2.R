@@ -54,9 +54,10 @@ BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
 } else c("REVISED2_FULL=1",   # finetunes + the three mean rules (NOTES s141)
          ## FOR NOW (user, s173): the ESM-2 650M full FT is still training at 2023, so
-         ## it is hidden at both cutoffs and the mean rules are over the other 8 members.
+         ## it is hidden at both cutoffs.
          "REVISED2_DROP=esm2_esm2_t33_650M_UR50D_lr1e-05_full",
-         "REVISED2_MEAN_RULES=ens_69608a9f1c=Mean of ranks;ens_46e2c662fb=Mean of log-probs;ens_e466138fd9=Mean of z-scores")
+         ## No mean-rule ensembles (user, s177): their margin is too small to matter.
+         "REVISED2_NO_MEAN_RULES=1")
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
@@ -90,10 +91,13 @@ ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
 ## MAIN ONLY (user, s165): supp_cd1's A-D as a row under C-F, and supp_cd1_min100_2021's
 ## de novo pair leading the 2021 row. Each of these panels fits its x axis to its own
 ## bars (REVISED2_OWN_XRANGE).
+## The 1-nt 2023 row is in BOTH variants (s178): the supp's second row is its full-roster
+## copy, with the supp's own (full) panel titles.
+message("  [5/6] exporting the codon-distance-1 panels (2023) ...")
+c1 <- run_export("figures/panels_coguk_export.R", RS("cd1_2023"),
+                 c("REVISED2_ARM=cd1_2023", BAR_ENV, "REVISED2_OWN_XRANGE=1",
+                   if (VARIANT == "main") PER_TITLES))
 if (VARIANT == "main") {
-  message("  [5/6] exporting the codon-distance-1 panels (2023) ...")
-  c1 <- run_export("figures/panels_coguk_export.R", RS("cd1_2023"),
-                   c("REVISED2_ARM=cd1_2023", BAR_ENV, "REVISED2_OWN_XRANGE=1", PER_TITLES))
   message("  [6/6] exporting the >= 100-sequence de novo panels (2021) ...")
   m21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021"),
                     c("REVISED2_ARM=cd1min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1",
@@ -126,8 +130,9 @@ for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
   ca[[k]] <- relabel_grob(ca[[k]])
 NEW_KEYS <- c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt",
               "decile_dn_pc_named")
+for (k in NEW_KEYS) c1[[k]] <- relabel_grob(c1[[k]])
 if (VARIANT == "main") for (k in NEW_KEYS) {
-  c1[[k]] <- relabel_grob(c1[[k]]); m21[[k]] <- relabel_grob(m21[[k]]); f21[[k]] <- relabel_grob(f21[[k]])
+  m21[[k]] <- relabel_grob(m21[[k]]); f21[[k]] <- relabel_grob(f21[[k]])
 }
 ## Checked, not assumed: a panel that arrived as a ggplot (not a grob), kept its text
 ## somewhere the walk misses, or carries a label the table does not list would still
@@ -138,7 +143,7 @@ left <- grep(REVISED2_STALE,
                                   "decile_dn_evt", "legend")],
                              ca[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
                                   "decile_dn_evt")],
-                             if (VARIANT == "main") c(c1[NEW_KEYS], m21[NEW_KEYS], f21[NEW_KEYS])), grob_text)),
+                             c1[NEW_KEYS], if (VARIANT == "main") c(m21[NEW_KEYS], f21[NEW_KEYS])), grob_text)),
              value = TRUE, perl = TRUE)
 if (length(left)) stop("old names survived the relabel: ",
                        paste(unique(left), collapse = "; "))
@@ -245,7 +250,9 @@ key_row <- plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1))
 row4 <- if (VARIANT == "main") {
   with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8]))
 } else {
-  plot_grid(with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8])),
+  ## THE SUPP MIRRORS MAIN C-J (user, s178): its second row is the 2023 all-RBD bars at
+  ## codon distance 1 on the full roster, replacing the 2021 escape row.
+  plot_grid(with_header("All RBD, 1 nt, 2023 cutoff", bar_block(c1, BAR_LETTERS[5:8])),
             key_row, NULL, ncol = 1, rel_heights = c(PANEL_IN[["esc"]], LEG_IN, GAP_IN))
 }
 

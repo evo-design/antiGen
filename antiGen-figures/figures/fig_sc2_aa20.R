@@ -234,8 +234,9 @@ options(
   sc2.recall_at = 0.1,
 
   ## --- outputs ---
-  sc2.fig_main   = "sc2_results_aa20",
-  sc2.fig_prefix = "aa20_",
+  ## A caller's names win, as in fig_coguk_list_aa20.R.
+  sc2.fig_main   = getOption("sc2.fig_main", "sc2_results_aa20"),
+  sc2.fig_prefix = getOption("sc2.fig_prefix", "aa20_"),
   ## The Figure 1 recall-AUC inset is a PUBLISHED-corpus panel. This arm must not
   ## overwrite it. Empty string, not NULL -- `options(x = NULL)` removes the option
   ## and getOption would then return the drawer's default, which is that very file.

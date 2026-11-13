@@ -164,8 +164,10 @@ options(
   ## B/C) read as what the fitted "which" term buys over counting substitutions.
   coguk.site_substitution = "site_substitution",
   coguk.mcm_interpolation = "mcm_interpolation",
-  coguk.fig_main     = "coguk_list_aa20",
-  coguk.fig_supp     = "coguk_list_aa20_supp",
+  ## A caller's names win (the panel exports set scratch names, then source this file;
+  ## overriding them wrote coguk_list_aa20 into figs/ on every export).
+  coguk.fig_main     = getOption("coguk.fig_main", "coguk_list_aa20"),
+  coguk.fig_supp     = getOption("coguk.fig_supp", "coguk_list_aa20_supp"),
   coguk.title_suffix = " [20 AA, revised corpus]",
   ## The suffix is long enough to push the widest title past its panel.
   coguk.title_size   = 9.5

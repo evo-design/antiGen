@@ -46,6 +46,15 @@ if (identical(ARM, "allcells_2023")) {
   ENS_ID <- "ens_vs10_2023"
   T4 <- c(all_pc = "Whole spike, per cell", all_evt = "Whole spike, per mutation",
           dn_pc = "De novo spike, per cell", dn_evt = "De novo spike, per mutation")
+} else if (identical(ARM, "fullspike_cd1_2023")) {
+  ## supp_fullspike's second row (NOTES s178): the whole spike at codon distance 1, the
+  ## 1-nt variants staged under the usual names (stage_fullspike_cd1_2023.py).
+  options(coguk.macro_dir = "data/evals_sc2_lists_macro_aa20_2023-01-01_fullspike_cd1",
+          coguk.list = "allcells",
+          coguk.varr_dir = "data/__none__", coguk.bg_dir = "data/__none__")
+  ENS_ID <- "ens_vs10_2023"
+  T4 <- c(all_pc = "Whole spike, 1 nt, per cell", all_evt = "Whole spike, 1 nt, per mutation",
+          dn_pc = "De novo spike, 1 nt, per cell", dn_evt = "De novo spike, 1 nt, per mutation")
 } else if (identical(ARM, "cd1_2023")) {
   ## supp_cd1 (NOTES s159): the all-cells arm with pool AND targets restricted, per
   ## query, to substitutions one nucleotide change from the query's wild-type residue
@@ -128,6 +137,9 @@ if (nzchar(Sys.getenv("REVISED2_MEAN_RULES"))) {
   MEAN_RULES <- setNames(vapply(kv, `[`, "", 2), vapply(kv, `[`, "", 1))
   stopifnot(length(MEAN_RULES) == 3)
 }
+## REVISED2_NO_MEAN_RULES=1 leaves the three mean rules out of the full roster
+## (user, s177: their margin over the members is too small to matter).
+if (nzchar(Sys.getenv("REVISED2_NO_MEAN_RULES"))) MEAN_RULES <- MEAN_RULES[0]
 FT_KEYS <- c("eve_ft_lr0.0001", "tranception_ft_both_lr0.0001",
              "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
              "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
@@ -151,7 +163,7 @@ options(coguk.fig_main = "scratch_revised_coguk",
         coguk.ensemble_labels = c(CV_LABEL, if (FULL) unname(MEAN_RULES)),
         ## ...and it is the rung the others are read against, so it goes on top.
         coguk.top_model = "antiGen (val x10)",
-        coguk.ensemble_groups = c("Val-selected (10x)", if (FULL) rep("Ensembles", 3)),
+        coguk.ensemble_groups = c("Val-selected (10x)", if (FULL) rep("Ensembles", length(MEAN_RULES))),
         ## ...and it is drawn in antiGen's DARK BLUE rather than the val-selected
         ## cyan, because with the base antiGen rung dropped it is now the only
         ## antiGen line on these panels and should read as one.

@@ -14204,3 +14204,44 @@ pretrained models or antiGen-top-decile, so a new release is needed.
 * NOT YET UPLOADED. The upload is the user's, with their PyPI credentials:
   `twine upload dist/antigen_model-0.2.0*`. Until then, `pip install antigen-model`
   installs 0.1.0, which has none of this.
+
+## 177. sc2_results_revised2_supp: no mean-rule ensembles (2026-11-13)
+
+User: drop the three mean-rule ensembles (the lighter-purple "Ensembles" group) from the
+whole supplement, since their margin over the members is too small to matter. New
+opt-in `REVISED2_NO_MEAN_RULES=1` in panels_coguk_export.R (it empties MEAN_RULES; the
+group vector is now sized to it). The supp sets it in place of s173's
+REVISED2_MEAN_RULES. The ensemble rows stay staged (9- and 8-member, both cutoffs); they
+are just not drawn. Both blocks draw the same 32 rows; "Ensembles" leaves the key.
+
+## 178. Codon-distance-1 rows in sc2_results_revised2_supp and supp_fullspike; every figure re-rendered (2026-11-13)
+
+User: the supp should mirror main C-J (all RBD at 2023: full pool, then 1 nt), replacing
+the 2021 escape row. supp_fullspike also gains the 1-nt counterpart of its bars.
+
+* **Supp E-H.** The cd1 2023 run (train-only, s163) already had every rung except the
+  six 2023 finetunes. `submit_ft6_cd1_2023.sh` scored those into it on quick_preemptible,
+  ANTIGEN_TOPQ_LEGACY=1, with the run's own flags; `stage_ft6_cd1_2023.py` appends them
+  (108 rows) after checking 522 staged rows against the run. fig_sc2_revised2.R's 1-nt
+  export (c1) now runs in both variants; in the supp it is the full roster, with its
+  own x ranges and full titles.
+* **supp_fullspike E-H.** A fresh run of the published whole-spike command with
+  --cd1-variants (`STORE/..._2023-01-01_allcells_fullspike_cd1`, train-only, legacy rule,
+  48 min). It crashed once on a full /large_storage (382 TB at 100%); it resumed cleanly
+  after the volume grew to 2.3 PB (summary and per-cell had the same 22 models).
+  `stage_fullspike_cd1_2023.py` GATE: its full-pool rows reproduce supp_fullspike's,
+  540 rows over 30 models, worst 0.0. New export arm `fullspike_cd1_2023`; the series
+  is relettered E/F -> I/J.
+* **Re-render of every current figure** (`antiGen-figures/render_all.sh`, new), compared
+  pixel by pixel with the files before: 12 identical. supp_fullspike and
+  sc2_results_revised2_supp differ as intended (new rows). **supp_gate_units was stale**:
+  the committed copy predated s163's train-only refits, and the re-render has the
+  corrected statistical baselines.
+* **Export side effects fixed.** fig_coguk_list_aa20.R and fig_sc2_aa20.R overwrote
+  their callers' scratch names, so every panel export wrote coguk_list_aa20*,
+  sc2_results_aa20 and aa20_supp_* into figs/. They now keep a caller's names
+  (getOption fallback); standalone runs are unchanged.
+* **Not current:** coguk_list_aa20 (never tracked as a png; its pdfs were export side
+  effects), supp_dms and supp_fixed_split (superseded by their _revised2 versions;
+  user). Moved to figs/old and figs_vector/old, with every other pdf that has no
+  current png (figs_vector/old/ is new). Current set: 16 figures.
