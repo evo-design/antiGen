@@ -121,6 +121,13 @@ FULL <- nzchar(Sys.getenv("REVISED2_FULL"))
 CV_LABEL <- "antiGen (val x10)"
 MEAN_RULES <- c(ens_7c8cf5c991 = "Mean of ranks", ens_7fa79cecaa = "Mean of log-probs",
                 ens_7530180874 = "Mean of z-scores")
+## REVISED2_MEAN_RULES="id=label;..." swaps in other rule ids (NOTES s173: the 8-member
+## rules while the ESM-2 650M full FT trains at 2023). Unset, the 9-member ids above.
+if (nzchar(Sys.getenv("REVISED2_MEAN_RULES"))) {
+  kv <- strsplit(strsplit(Sys.getenv("REVISED2_MEAN_RULES"), ";", fixed = TRUE)[[1]], "=", fixed = TRUE)
+  MEAN_RULES <- setNames(vapply(kv, `[`, "", 2), vapply(kv, `[`, "", 1))
+  stopifnot(length(MEAN_RULES) == 3)
+}
 FT_KEYS <- c("eve_ft_lr0.0001", "tranception_ft_both_lr0.0001",
              "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
              "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",

@@ -14102,3 +14102,33 @@ its fonts dir):
     /home/ivan.specht/miniconda/bin/python experiments/multitree/draw_path_panel.py \
       --ranks antiGen-figures/data/ba286_to_kp3_ranks_2023-01-01.csv \
       --pdb antiGen-figures/ref/6M0J.pdb --output antiGen-figures/cartoons/ba286_to_kp3.png
+
+## 173. sc2_results_revised2_supp: full roster at 2023 without the ESM-2 650M full FT (2026-11-12)
+
+User: complete A-D without the ESM-2 650M full FT, which is still training (job
+3705388, epoch 13 of 32, ~4.2 h/epoch, ETA ~Nov 16), and mask it from E-H for now.
+
+* **2023 rows.** `finish_ft_2023_8.sh` is finish_ft_2023.sh for EIGHT members. It writes
+  into the train-only 2023 run (s163), under ANTIGEN_TOPQ_LEGACY=1 (the rule of the rows
+  beside them), with maps in `list_score_maps_allcells_2023-01-01_trainonly`. On
+  gpu_batch the scheduler projected a Nov 17 start, so it ran on quick_preemptible
+  (24 min; an earlier 2023 run of the same models had taken 12 min). Base antiGen and the
+  35M partial FT were re-run for their maps, and both reproduce their rows to 5e-9.
+  `stage_ft8_2023.py` appends the six new finetunes (432 rows) and the three rules
+  (54 rows) to the staged C-F data; every staged row must still equal the run.
+* **The mean rules, over 8 members at BOTH cutoffs.** Each of the three drawn rules had
+  all nine members, so dropping one changes the rule, and its id, which hashes the member
+  names: ens_69608a9f1c (ranks), ens_46e2c662fb (log-probs), ens_e466138fd9 (z-scores).
+  At 2021 they come from the cached list maps (`ensembles8_aa20_2021`). GATE: the same
+  command with the 9-member rules reproduces the published 2021 rows, 54/54, worst 0.0.
+  The 8-member rows are appended to the 2021 ensemble CSV; the 9-member rows stay. 2021,
+  9 -> 8 members, recall per cell/per mutation, all escape: ranks 0.496/0.812 ->
+  0.491/0.811, log-probs 0.503/0.818 -> 0.502/0.817, z-scores 0.506/0.820 ->
+  0.504/0.820; de novo moves up by 0.003-0.033.
+* **Figure.** The supp's BAR_ENV adds REVISED2_DROP=<650M full FT> and
+  REVISED2_MEAN_RULES (a new opt-in in panels_coguk_export.R; unset, the 9-member ids).
+  A-D and E-H now draw the same 35 rows. At 2023 the mean of log-probs is 1st on de novo
+  RBD in both poolings.
+* **When the 650M full FT lands:** run the original finish_ft_2023.sh, pointed at the
+  train-only run with ANTIGEN_TOPQ_LEGACY=1, then drop the two REVISED2 overrides; the
+  9-member rows are already staged at 2021.

@@ -52,7 +52,11 @@ stopifnot(VARIANT %in% c("main", "supp"))
 source("figures/revised2_roster.R")
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
-} else "REVISED2_FULL=1"   # finetunes + the three mean rules (NOTES s141)
+} else c("REVISED2_FULL=1",   # finetunes + the three mean rules (NOTES s141)
+         ## FOR NOW (user, s173): the ESM-2 650M full FT is still training at 2023, so
+         ## it is hidden at both cutoffs and the mean rules are over the other 8 members.
+         "REVISED2_DROP=esm2_esm2_t33_650M_UR50D_lr1e-05_full",
+         "REVISED2_MEAN_RULES=ens_69608a9f1c=Mean of ranks;ens_46e2c662fb=Mean of log-probs;ens_e466138fd9=Mean of z-scores")
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
 
