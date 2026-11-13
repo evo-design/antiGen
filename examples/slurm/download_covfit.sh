@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=dl_covfit
-#SBATCH --partition=cpu
+#SBATCH --partition=cpu_batch
 #SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G

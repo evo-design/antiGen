@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=valsel10_esm2
-#SBATCH --partition=evo_gpu_priority,gpu_batch_high_mem,gpu_batch
+#SBATCH --partition=gpu_batch,gpu_batch_high_mem   # long jobs: never evo_gpu_priority (CLAUDE.md)
 #SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1

@@ -230,33 +230,55 @@ query sequences aligned to the training reference (same length and alignment).
 
 # 4. Running the manuscript evaluations
 
-`antiGen-eval` scans a directory of checkpoints, groups them by model, and writes unified
-per-variant comparison CSVs against a set of fixed baselines.
+`antiGen-eval` scores every checkpoint in a directory, plus the statistical baselines and
+the fixed external maps in `data/baselines/`, on the post-cutoff records of a test tree:
 
 ```bash
-antiGen-eval --dataset sc2 --data-dir $FITNESS_DATA_ROOT/output1 \
-    --checkpoint-dir ./checkpoints --output-dir ./evals_sc2
+antiGen-eval --dataset sc2 --alphabet ACDEFGHIKLMNPQRSTVWY \
+    --train-examples $CORPORA/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
+    --test-examples  $CORPORA/sc2-test/examples_all_cur.txt --split-date 2023-01-01 \
+    --root-counts    $CORPORA/sc2-2023-01-01/train/counts_2023-01-01_cur.tsv \
+    --checkpoint-dir ./checkpoints --output-dir ./evals
 ```
 
-It produces two metric families per variant: **quantile hit-rate** (how often observed mutations
-fall in the model's top-q% predictions) and **variant-emergence** (across top-q quantiles
-q = 0.1 … 1.0). These are termed next-mutation recall and PSSM precision in the paper, respectively. Baselines come from `data/baselines*/` plus two built from the root PSSM
-(`pssm_root` and the position-only `pssm_root_position`). Ties at a top-q boundary are broken
-**fractionally** (the expected value under random tie-breaking).
+It reports **next-mutation recall** (how often the mutations that occur next fall in a
+model's top-q predictions) per mutation, and `antiGen/list_macro.py` reports it per cell
+(each (site, residue) counted once) over a mutation list or every cell of a region. The
+statistical baselines are fitted on the train corpus only, the data the checkpoints saw.
+Ties at a top-q boundary are counted fractionally (the expected value under random
+tie-breaking).
 
-The SLURM scripts used for the manuscript runs are in [`examples/slurm/`](examples/slurm/); they
-embed lab-specific paths/partitions and are meant to be copied and edited for your environment.
+The paper's evaluations, one named step per figure family, are in
+[`reproduce/eval.sh`](reproduce/eval.sh) (Slurm; paths and partitions in
+`reproduce/config.sh`):
+
+```bash
+bash reproduce/stage_checkpoints.sh          # check the checkpoint directories the evals read
+bash reproduce/eval.sh                       # list the steps
+bash reproduce/eval.sh rbd_2023              # submit one; outputs under $OUT/rbd_2023-01-01/
+bash reproduce/stage.sh                      # outputs -> antiGen-figures/data/
+```
+
+[`REPRODUCE.md`](REPRODUCE.md) maps every figure to its staged data, the step that
+produces it, the checkpoints it reads and the published output it reproduces.
+`python reproduce/train_commands.py` prints the `antiGen-train` command behind every
+checkpoint. The training recipes are in [`examples/slurm/`](examples/slurm/).
 
 ---
 
 # 5. Reproducing the paper figures
 
-[`antiGen-figures/`](antiGen-figures/) is R code that plots the evaluation outputs into the
-manuscript figures (it trains and evaluates nothing). From that directory, `Rscript run_all.R`
-regenerates everything into `figs/` (PNG) and `figs_vector/` (PDF), or `Rscript figures/<script>.R`
-runs a single figure; the inputs it reads live in `antiGen-figures/data/` and sibling directories.
-Requires R with ggplot2, cowplot, reshape2, dplyr, tidyr, tibble, forcats, magick, ggtext,
-jsonlite, and scales.
+[`antiGen-figures/`](antiGen-figures/) is R code that draws the staged evaluation outputs
+into the manuscript figures; it trains and evaluates nothing, and everything it reads is
+committed. From that directory:
+
+```bash
+bash render_all.sh                    # every current figure -> figs/*.png, figs_vector/*.pdf
+bash render_all.sh supp_cd1_series    # one figure
+```
+
+It needs R (4.5.3 was used) with cowplot, dplyr, forcats, ggpattern, ggplot2, ggtext,
+magick, reshape2, scales, tibble and tidyr.
 
 ---
 

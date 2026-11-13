@@ -17,9 +17,9 @@ import glob
 import os
 import shutil
 
-STORE = "/large_storage/hielab/ispecht/fitness-inference"
-SRC = f"{STORE}/evals_cd1_series_rare100_trainonly"
-OUT = "/home/ivan.specht/antiGen/antiGen-figures/data/gating_macro_aa20_cd1"
+STORE = os.environ.get("STORE", "/large_storage/hielab/ispecht/fitness-inference")
+SRC = os.environ.get("RUNS", f"{STORE}/evals_cd1_series_rare100_trainonly")
+OUT = os.environ.get("FIGDATA", "/home/ivan.specht/antiGen/antiGen-figures/data") + "/gating_macro_aa20_cd1"
 VAR = "list_allcells_cd1_fullpool"
 CUTS = sorted(os.path.basename(d) for d in glob.glob(f"{SRC}/20*"))
 assert len(CUTS) == 16, CUTS

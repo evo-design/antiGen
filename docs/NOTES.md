@@ -14292,3 +14292,67 @@ figure); keep the pseudovirus assay; NOTES moves to docs/NOTES.md.
 * docs/NOTES.md (was experiments/multitree/NOTES.md); CLAUDE.md points there.
 * `reproduce/train_commands.py`: every checkpoint's `antiGen-train` command, regenerated
   from its stored train_args (only non-default flags, paths as $CORPORA / $CKPT_TRAIN).
+
+## 180. Reorganisation before the PR, part 2: reproduce/, pruning (2026-11-13)
+
+`reproduce/` takes the checkpoints to the staged figure data, one named step per figure
+family; REPRODUCE.md (repo root) maps every figure to its staged data, its step, its
+checkpoints and the published output it reproduces.
+
+* **reproduce/config.sh**: CORPORA, CKPT, OUT (default $CKPT/reproduce, fresh names so
+  nothing collides with the published runs), PARTITION=gpu_batch, CPU_PARTITION=cpu_batch.
+* **reproduce/eval.sh <step>**: 18 steps (list2021, dms_dumps, cd1_2021, cd1_2021_allcells,
+  rbd_2023, ens8_2023, fullspike_2023, cutoff_eval/rbd/spike, cd1_series_denovo/rare100,
+  postcutoff_counts, background_2021/2023, fixedsplit, gate_units, panel_b). Each calls
+  the CLI directly with the flags the published run used (read back from its log or
+  sacct), not through the historical wrappers, and sets ANTIGEN_TOPQ_LEGACY=1 except on
+  the post-s161 runs (cd1_2021_allcells, both cd1 series). Each job's script is kept as
+  logs/rp_<step>.sh. Two consolidations: the 2023 all-RBD run reads one union dir
+  (ckpt_stage_rbd_2023-01-01 = the 8 roster links + the 6 fine-tunes) where the published
+  run was a roster pass plus a fine-tune resume; background_2021 is one run where the
+  published dir is a hand union of three (s179 catalog).
+* **reproduce/checkpoints.tsv + stage_checkpoints.sh**: every symlink of the 13 checkpoint
+  dirs the evals read (141 links/files; none had a creator in the repo), checked or
+  created from the table. ckpt_stage_rbd_2023-01-01 was created this way in $CKPT.
+* **reproduce/stage.sh**: outputs -> antiGen-figures/data, through the existing stagers,
+  whose hard-coded STORE / FIG / run / mask paths are now env overrides (defaults
+  unchanged). Hazards fixed: stage_allcells_2023.sh REPORT defaulted to the nonexistent
+  ensembles9 report (now ensembles8); stage_cd1_2023.sh takes RUN_DIR; the
+  denovo cutoffs are passed explicitly.
+* **reproduce/rules/**: the ensemble rule definitions (rules_drawn5.json, rules_mean3_8.json,
+  and rules_vs10_2021.json, the CV x10 rule alone for the DMS dumps) are committed; their
+  writer is not known, so they are fixed inputs.
+* **reproduce/compare_staged.py**: row-matched, value-level comparison of two staged trees
+  (byte diffs are meaningless across row order and extra models).
+
+**Checks.**
+* stage.sh on the published outputs (each step name symlinked to its source,
+  $CKPT/reproduce_published) reproduces every CSV it writes: 0 failures, worst 6e-8
+  (codon / PSSM rows), with all gates passing (native CV x10 = published rule to 1e-7;
+  full-pool fullspike rows exact). The 2023 host-weighted background re-derives exactly.
+* From the checkpoints: panel_b's ranks CSV and the panel PNG are byte-identical;
+  gate_units' table is identical (all 16 cutoffs; the catalog's "2 of 16" was a run on
+  other corpora).
+* GPU spot checks from the checkpoints, through eval.sh into a scratch OUT
+  ($CKPT/reproduce_check), against the published runs: cd1_2021_allcells (s161 rule)
+  reproduces all 2,916 summary rows exactly; cutoff_eval 2020-04-01 (legacy) all 24 rows to
+  1e-8 (one extra row, a model added to data/baselines since); cutoff_rbd 2020-04-01
+  (legacy) 1,796 of 1,800 rows exactly, the other 4 (mcm_interpolation on the COG-UK
+  variants, which the per-cell panel does not draw) within 4.7e-5.
+* pytest: 260 passed. render_all.sh: all 13 renders run; every PNG is byte-identical to
+  the committed one (the PDFs differ only in their time stamps, so they are not
+  re-committed). render_all.sh had failed (set -o pipefail) on a script that prints
+  nothing, because `grep -v` then exits 1; fixed.
+
+**Pruning.** experiments/multitree keeps the 23 scripts reproduce/ and the training
+drivers call (README rewritten); examples/slurm keeps the 24 training / external-baseline
+recipes (README rewritten). 265 files deleted, among them every eval wrapper reproduce/
+replaces, the refit machinery, the daemons, the endemic and multi-tree drivers,
+corpus2023/, experiments/history/; data/flu and data/test_sequences (unread). Kept
+although not on the minimal list, because queued jobs or untracked local tests call them:
+best_epoch.py, eval_sc2_list_macro.sh, train_valsel_seed.sh, train_antigen_valsel10.sh
+(the data-seed jobs), ensemble_test_rows.py (test_ensemble_test_rows.py), finish_ft_2023.sh
+(the 650M full fine-tune, still training). Kept scripts defaulting to evo_gpu_priority now
+default to gpu_batch; download_covfit.sh to cpu_batch.
+
+README Parts 4-5 rewritten (reproduce/, render_all.sh, the R packages).

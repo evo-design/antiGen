@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=train_2023
-#SBATCH --partition=evo_gpu_priority,gpu_batch_high_mem,gpu_batch,gpu
+#SBATCH --partition=gpu_batch,gpu_batch_high_mem,gpu   # long jobs: never evo_gpu_priority (CLAUDE.md)
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=256G

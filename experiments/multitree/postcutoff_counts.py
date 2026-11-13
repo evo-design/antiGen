@@ -26,8 +26,10 @@ import sys
 import numpy as np
 
 AA = "ACDEFGHIKLMNPQRSTVWY"
-W = "/home/ivan.specht/antiGen-data-revised/work"
-T = "/home/ivan.specht/antiGen-data-revised/output/sc2-test"
+import os
+# antiGen-data's work/ (the placed test tree) and output/sc2-test (its counts_ba2 dates)
+W = os.environ.get("CORPORA_WORK", "/home/ivan.specht/antiGen-data-revised/work")
+T = os.environ.get("CORPORA", "/home/ivan.specht/antiGen-data-revised/output") + "/sc2-test"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/large_storage/hielab/ispecht/fitness-inference/postcutoff_counts"
 import glob as _g
 # Every cutoff counts_ba2 carries (24, ascending); each sequence goes to ONE bucket m =

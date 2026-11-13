@@ -14,9 +14,9 @@ any difference means the run is not the published one.
 import csv
 import os
 
-STORE = "/large_storage/hielab/ispecht/fitness-inference"
-RUN = f"{STORE}/evals_sc2_lists_macro_aa20_2023-01-01_allcells_fullspike_cd1/list_macro_summary.csv"
-FIG = "/home/ivan.specht/antiGen/antiGen-figures/data"
+STORE = os.environ.get("STORE", "/large_storage/hielab/ispecht/fitness-inference")
+RUN = os.environ.get("RUN_DIR", f"{STORE}/evals_sc2_lists_macro_aa20_2023-01-01_allcells_fullspike_cd1") + "/list_macro_summary.csv"
+FIG = os.environ.get("FIGDATA", "/home/ivan.specht/antiGen/antiGen-figures/data")
 PUB = [f"{FIG}/evals_sc2_lists_macro_aa20_2023-01-01_fullspike/list_macro_summary_aa20.csv",
        f"{FIG}/evals_sc2_lists_macro_aa20_2023-01-01_fullspike/list_macro_summary_ensemble.csv"]
 OUT = f"{FIG}/evals_sc2_lists_macro_aa20_2023-01-01_fullspike_cd1"

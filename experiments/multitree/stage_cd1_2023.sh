@@ -13,8 +13,8 @@
 # ones (gate below).
 set -euo pipefail
 ARM=${ARM:-2023}
-STORE=/large_storage/hielab/ispecht/fitness-inference
-FIG=/home/ivan.specht/antiGen/antiGen-figures/data
+STORE=${STORE:-/large_storage/hielab/ispecht/fitness-inference}
+FIG=${FIGDATA:-/home/ivan.specht/antiGen/antiGen-figures/data}
 if [ "$ARM" = 2023 ]; then
   S=$STORE/evals_cd1_2023-01-01/out; D=$FIG/evals_sc2_lists_macro_aa20_2023-01-01_cd1
   LIST=allcells; SRC_ENS=ens_vs10_2023; ENS=ens_vs10_2023; PUB=""
@@ -23,6 +23,7 @@ else
   LIST=coguk; SRC_ENS=ens_vs10_2021; ENS=ens_8a91fbbf88
   PUB=$FIG/evals_sc2_lists_macro_aa20/list_macro_summary_ensemble.csv
 fi
+S=${RUN_DIR:-$S}      # reproduce/stage.sh; the published 2023 run is out_trainonly (s163)
 mkdir -p "$D"
 python3 - "$S/list_macro_summary.csv" "$D" "$LIST" "$SRC_ENS" "$ENS" "$PUB" <<'PY'
 import csv, sys

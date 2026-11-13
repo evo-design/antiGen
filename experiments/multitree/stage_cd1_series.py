@@ -24,12 +24,12 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, "/home/ivan.specht/antiGen")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from antiGen.load import load_counts_matrix
 
 AA = "ACDEFGHIKLMNPQRSTVWY"
 MIN, MIN_CELLS, MIN_EVENTS = 100, 30, 300
-STORE = "/large_storage/hielab/ispecht/fitness-inference"
+STORE = os.environ.get("STORE", "/large_storage/hielab/ispecht/fitness-inference")
 # ARM=denovo (default): pool and targets are de novo cells (training count 0).
 # ARM=rare100: cells seen in < 100 training sequences (list_macro --seen-min-count 100).
 ARM = os.environ.get("ARM", "denovo")
@@ -37,7 +37,9 @@ RUNS = f"{STORE}/evals_cd1_series" + ("" if ARM == "denovo" else "_rare100")
 # NOTES s163: every model fitted on the train tree only (POOL=0). The pooled runs above
 # gave the fitted baselines the test corpus's pre-cutoff records.
 RUNS += os.environ.get("RUN_SUFFIX", "_trainonly")
-OUT = ("/home/ivan.specht/antiGen/antiGen-figures/data/gating_cd1_"
+RUNS = os.environ.get("RUNS", RUNS)                  # reproduce/stage.sh
+POSTCUT = os.environ.get("POSTCUTOFF", f"{STORE}/postcutoff_counts")
+OUT = (os.environ.get("FIGDATA", "/home/ivan.specht/antiGen/antiGen-figures/data") + "/gating_cd1_"
        + ("dn" if ARM == "denovo" else "rare100") + "_min100")
 VAR = "list_allcells_unseen_cd1_fullpool"
 CUTS = sys.argv[1:] or ["2020-04-01", "2020-07-01", "2020-10-01", "2021-01-01", "2021-04-01",
@@ -48,7 +50,7 @@ CUTS = sys.argv[1:] or ["2020-04-01", "2020-07-01", "2020-10-01", "2021-01-01", 
 table, passing, stopped = [], [], None
 for d in CUTS:
     run = f"{RUNS}/{d}"
-    pfm = np.asarray(load_counts_matrix(f"{STORE}/postcutoff_counts/counts_all_lineages_{d}.tsv", AA))
+    pfm = np.asarray(load_counts_matrix(f"{POSTCUT}/counts_all_lineages_{d}.tsv", AA))
     keep = pfm >= MIN
     cells = {}
     for r in csv.DictReader(open(f"{run}/list_macro_percell.csv")):

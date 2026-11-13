@@ -42,8 +42,8 @@ for fig in "${ORDER[@]}"; do
     mkdir -p "$TRACE_DIR"
     rm -f "$TRACE_DIR/$fig.trace"
     env $env_part OPENTRACE_LOG="$TRACE_DIR/$fig.trace" LD_PRELOAD="${OPENTRACE_SO:?}" \
-      "$RSCRIPT" "$script" 2>&1 | grep -v Fontconfig | tail -1
+      "$RSCRIPT" "$script" 2>&1 | { grep -v Fontconfig || true; } | tail -1
   else
-    env $env_part "$RSCRIPT" "$script" 2>&1 | grep -v Fontconfig | tail -1
+    env $env_part "$RSCRIPT" "$script" 2>&1 | { grep -v Fontconfig || true; } | tail -1
   fi
 done

@@ -1,0 +1,53 @@
+[
+ {
+  "norm": "pctile",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen"
+  ],
+  "figure_label": "Mean of ranks",
+  "figure_group": "Ensembles"
+ },
+ {
+  "norm": "logsoftmax",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen"
+  ],
+  "figure_label": "Mean of log-probs",
+  "figure_group": "Ensembles"
+ },
+ {
+  "norm": "zscore",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen"
+  ],
+  "figure_label": "Mean of z-scores",
+  "figure_group": "Ensembles"
+ }
+]

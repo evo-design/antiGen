@@ -1,8 +1,0 @@
-#name	slen	product regex	merge into	query
-denv1_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	denv1_e	"Dengue virus 1"[Organism] AND polyprotein[Title]
-denv2_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	denv2_e	"Dengue virus 2"[Organism] AND polyprotein[Title]
-denv3_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	denv3_e	"Dengue virus 3"[Organism] AND polyprotein[Title]
-denv4_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	denv4_e	"Dengue virus 4"[Organism] AND polyprotein[Title]
-zika_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	zika_e	"Zika virus"[Organism] AND polyprotein[Title]
-wnv_poly	3000:3500	^(envelope( protein)?( E)?|E|E protein|envelope glycoprotein( E)?)$	wnv_e	"West Nile virus"[Organism] AND polyprotein[Title]
-chikv_poly	1200:1300	^(envelope )?(glycoprotein )?E1( envelope glycoprotein| protein| glycoprotein)?$	chikv_e1	"Chikungunya virus"[Organism] AND "structural polyprotein"[Title]

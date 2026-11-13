@@ -11,7 +11,7 @@ D=${D:-/home/ivan.specht/antiGen/antiGen-figures/data/evals_sc2_lists_macro_aa20
 ENS=${ENS:-ens_vs10_2023}
 # The three mean rules over the nine-member family (NOTES s141), once finish_ft_2023.sh
 # has written them; absent until then, and the figure draws those bars empty.
-REPORT=${REPORT:-/large_storage/hielab/ispecht/fitness-inference/ensembles9_aa20_2023-01-01/report/list_macro_summary_ensemble.csv}
+REPORT=${REPORT:-/large_storage/hielab/ispecht/fitness-inference/ensembles8_aa20_2023-01-01/report/list_macro_summary_ensemble.csv}
 mkdir -p "$D"
 python3 - "$S/list_macro_summary.csv" "$D" "$ENS" "$REPORT" <<'PY'
 import csv, sys

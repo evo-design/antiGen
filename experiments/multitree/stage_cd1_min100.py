@@ -22,17 +22,17 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, "/home/ivan.specht/antiGen")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from antiGen.load import load_counts_matrix
 
 AA = "ACDEFGHIKLMNPQRSTVWY"
 MIN = int(os.environ.get("MIN_COUNT", "100"))
 ARM = os.environ.get("ARM", "2023")
-STORE = "/large_storage/hielab/ispecht/fitness-inference"
-FIG = "/home/ivan.specht/antiGen/antiGen-figures/data"
+STORE = os.environ.get("STORE", "/large_storage/hielab/ispecht/fitness-inference")
+FIG = os.environ.get("FIGDATA", "/home/ivan.specht/antiGen/antiGen-figures/data")
 if ARM == "2023":
     RUN = f"{STORE}/evals_cd1_2023-01-01/out"
-    PFM = "/home/ivan.specht/antiGen-data-revised/output/sc2-test/counts_ba2/counts_2023-01-01.tsv"
+    PFM = os.environ.get("CORPORA", "/home/ivan.specht/antiGen-data-revised/output") + "/sc2-test/counts_ba2/counts_2023-01-01.tsv"
     OUT = f"{FIG}/evals_sc2_lists_macro_aa20_2023-01-01_cd1_min{MIN}"
     ENS = "ens_vs10_2023"
 else:
@@ -46,6 +46,7 @@ else:
 # NOTES s163: RUN_DIR / OUT_DIR override, to stage a re-fitted run somewhere the
 # published file can then be spliced from.
 RUN = os.environ.get("RUN_DIR", RUN)
+PFM = os.environ.get("PFM", PFM)
 OUT = os.environ.get("OUT_DIR", OUT)
 EXTRA = {"joint_cv3", "covonly", "blend_r1_AJC", "blend_r2_AJK", "blend_dn_CK"}
 REN = {"list_allcells_cd1_fullpool": "list_allcells_fullpool",
