@@ -6,7 +6,7 @@ from typing import Any, Optional, Union
 
 import torch
 
-from antiGen.config import ExperimentConfig, ModelConfig, ModelType, AlphabetConfig, TransformerConfig
+from antiGen.config import ExperimentConfig, ModelConfig, ModelType, AlphabetConfig, TransformerConfig, LEGACY_AAS
 from antiGen.models.base import BaseFitnessPredictor
 
 
@@ -45,6 +45,12 @@ def create_model(
     elif config.model_type == ModelType.BLOSUM62:
         from antiGen.models.blosum62_fitness_predictor import BLOSUM62FitnessPredictor
         model = BLOSUM62FitnessPredictor(config)
+    elif config.model_type == ModelType.CODON:
+        from antiGen.models.codon_fitness_predictor import CodonFitnessPredictor
+        model = CodonFitnessPredictor(config)
+    elif config.model_type == ModelType.SUBSTITUTION:
+        from antiGen.models.substitution_fitness_predictor import SubstitutionFitnessPredictor
+        model = SubstitutionFitnessPredictor(config)
     elif config.model_type == ModelType.PSSM:
         from antiGen.models.pssm_fitness_predictor import PSSMFitnessPredictor
         model = PSSMFitnessPredictor(config)
@@ -159,7 +165,7 @@ def _convert_legacy_checkpoint(checkpoint: dict[str, Any]) -> ModelConfig:
             model_type=ModelType.FITNESS_PREDICTOR,
             seq_len=ma["seq_len"],
             alphabet=AlphabetConfig(
-                amino_acids="ACDEFGHIKLMNPQRSTVWY*-",
+                amino_acids=LEGACY_AAS,
             ),
             transformer=TransformerConfig(
                 d_model=ma["d_model"],
@@ -180,7 +186,7 @@ def _convert_legacy_checkpoint(checkpoint: dict[str, Any]) -> ModelConfig:
         seq_len=N // 3,
         alphabet=AlphabetConfig(
             nucleotides="ACGT-",
-            amino_acids="ACDEFGHIKLMNPQRSTVWY*-",
+            amino_acids=LEGACY_AAS,
         ),
         transformer=TransformerConfig(
             d_model=d_model,

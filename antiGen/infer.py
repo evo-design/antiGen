@@ -13,8 +13,11 @@ is a whole-sequence distribution over mutation events, NOT an independent per-po
 categorical.
 
 Usage:
+    antiGen-infer --pretrained sc2-2023-01-01 queries.fasta -o scores.csv   # shipped model
     antiGen-infer model.pt queries.fasta -o scores.csv
     antiGen-infer model.pt queries.fasta --format wide -o matrix.csv
+
+The shipped models are listed by ``antiGen.pretrained.available()`` (see TUTORIAL.md).
 """
 from __future__ import annotations
 
@@ -33,6 +36,8 @@ from antiGen.models.factory import load_model
 VARIABLE_LENGTH_OK = {
     ModelType.ESM2_FITNESS_PREDICTOR,
     ModelType.BLOSUM62,
+    ModelType.CODON,
+    ModelType.SUBSTITUTION,
 }
 
 
@@ -77,8 +82,13 @@ def score_batch(model, seqs, allowed_aas, device, drop_gap_stop):
 def parse_args():
     p = argparse.ArgumentParser(
         description="Score amino-acid substitutions for query sequences using a trained antiGen model.")
-    p.add_argument("checkpoint", help="Trained model checkpoint (.pt) or config (.yaml)")
-    p.add_argument("fasta", help="Query sequences: FASTA (one or more records) or a raw sequence file")
+    p.add_argument("inputs", nargs="+", metavar="[CHECKPOINT] FASTA",
+                   help="A trained checkpoint (.pt) or config (.yaml), then the query FASTA "
+                        "(one or more records, or a raw sequence file). With --pretrained, "
+                        "the FASTA alone.")
+    p.add_argument("--pretrained", default=None,
+                   help="Use a model shipped with the package instead of a checkpoint, e.g. "
+                        "sc2-2023-01-01 (antiGen CV x10) or sc2-2023-01-01-base")
     p.add_argument("-o", "--output", default="substitution_scores.csv", help="Output CSV path")
     p.add_argument("--format", choices=["long", "wide"], default="long",
                    help="long: rows of (query_id, position, ref_aa, alt_aa, prob) [default]; "
@@ -87,7 +97,13 @@ def parse_args():
                    help="Exclude the gap ('-') and stop ('*') columns from the distribution")
     p.add_argument("--batch-size", type=int, default=64, help="Max sequences per forward pass")
     p.add_argument("--device", default=None, help="Device (default: cuda if available else cpu)")
-    return p.parse_args()
+    args = p.parse_args()
+    want = 1 if args.pretrained else 2
+    if len(args.inputs) != want:
+        p.error("give CHECKPOINT FASTA, or --pretrained NAME FASTA")
+    args.checkpoint = None if args.pretrained else args.inputs[0]
+    args.fasta = args.inputs[-1]
+    return args
 
 
 def main():
@@ -96,8 +112,13 @@ def main():
         "cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    print(f"Loading model from {args.checkpoint}...")
-    model, _ = load_model(args.checkpoint, device=device)
+    if args.pretrained:
+        from antiGen import pretrained
+        model, info = pretrained.load(args.pretrained, device=device)
+        print(f"Loaded shipped model {args.pretrained}: {info['description']}")
+    else:
+        print(f"Loading model from {args.checkpoint}...")
+        model, _ = load_model(args.checkpoint, device=device)
     model.eval()
     allowed_aas = model.config.alphabet.amino_acids
     expected_len = model.config.seq_len
@@ -146,21 +167,25 @@ def main():
     with open(args.output, "w", newline="") as f:
         w = csv.writer(f)
         if args.format == "long":
-            w.writerow(["query_id", "position", "ref_aa", "alt_aa", "prob"])
+            ## position is 0-based (as it always was); position_1based / mutation follow
+            ## the usual notation, e.g. L455S.
+            w.writerow(["query_id", "position", "ref_aa", "alt_aa", "prob",
+                        "position_1based", "mutation"])
             for i, (qid, seq) in enumerate(queries):
                 pr = probs_by_idx[i]
                 for pos, ref in enumerate(seq):
                     for j, alt in enumerate(allowed_aas):
                         if alt == ref or alt in gap_stop:
                             continue
-                        w.writerow([qid, pos, ref, alt, f"{pr[pos, j].item():.8f}"])
+                        w.writerow([qid, pos, ref, alt, f"{pr[pos, j].item():.6e}",
+                                    pos + 1, f"{ref}{pos + 1}{alt}"])
         else:  # wide
             w.writerow(["query_id", "position", "ref_aa"] + out_cols)
             for i, (qid, seq) in enumerate(queries):
                 pr = probs_by_idx[i]
                 col_j = [allowed_aas.index(a) for a in out_cols]
                 for pos, ref in enumerate(seq):
-                    w.writerow([qid, pos, ref] + [f"{pr[pos, j].item():.8f}" for j in col_j])
+                    w.writerow([qid, pos, ref] + [f"{pr[pos, j].item():.6e}" for j in col_j])
     print(f"Wrote {args.format}-format substitution probabilities to {args.output}")
 
 

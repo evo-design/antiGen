@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import gc
 import glob
 import os
@@ -26,9 +27,21 @@ from torch.utils.data import Dataset, DataLoader
 
 from antiGen.config import ModelType
 from antiGen import datasets
+from antiGen import score_cache as sc
+from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.models.factory import create_model
-from antiGen.load import load_examples, load_pssms
-from antiGen.eval_utils import (
+from antiGen.config import LEGACY_AAS
+from antiGen.load import (load_counts_matrix, load_counts_series,
+                          load_examples, load_pssms)
+from antiGen.mutation_lists import (cells_to_mask, describe as describe_list,
+                                    load_mutation_list)
+from antiGen.eval_utils import (CountedStatPredictor,
+                                fit_substitution_baseline,
+                                real_wildtype_mask,
+                                positional_marginal_counts,
+                                where_times_which_dirichlet,
+                                WhereTimesWhichPredictor,
+                                MeanLogProbEnsemble,
     RBD_RANGE,
     evaluate_full,
     variant_hit_rates,
@@ -36,6 +49,7 @@ from antiGen.eval_utils import (
     build_special_mask,
     build_model_gap_stop_mask,
     load_checkpoint,
+    real_substitution_mask,
 )
 
 
@@ -154,6 +168,13 @@ def config_label(prefix, config_dict, global_step):
     return f"{prefix}_{tag}"
 
 
+#: Day 0 of "years into pandemic". This is the figure's constant, not a new one:
+#: `fig2_sc2_benchmarks.R` has had `PANDEMIC_START <- as.Date("2019-12-20")` since the
+#: published arm, and an emergence axis drawn against any other origin would not sit on
+#: the same ruler as the gating panel beside it.
+PANDEMIC_START = "2019-12-20"
+
+
 # ── Unified output writers ───────────────────────────────────────────────────────
 
 def write_unified_hit_rate(output_dir, file_suffix, qtile_labels,
@@ -169,14 +190,44 @@ def write_unified_hit_rate(output_dir, file_suffix, qtile_labels,
             writer.writerow([name] + [f"{v:.8f}" for v in vals])
 
 
+def emergence_step_labels(n_steps, dates=None):
+    """Column headers for the emergence grid, as ``t_<years into pandemic>``.
+
+    THE INDEX CONVENTION IS ONLY CORRECT FOR ONE GRID. The published arm reads
+    ``pssms/<variant>/time_<t>.csv``, whose filenames ARE t in years and which the
+    data pipeline writes at exactly 0.1-year spacing, so numbering the steps
+    ``(i + 1) * 0.1`` reproduced the real t and `sc2_results`' "Date (t, years into
+    pandemic)" axis was true. ``--variant-counts-dir`` is a different grid: dated
+    files at whatever spacing the corpus was built with. The revised arm's is
+    QUARTERLY, 2021-01-01 .. 2026-01-01, so the index convention labelled a five-year
+    span as t_0.1 .. t_2.1 -- an axis wrong by a factor of 2.5, and a panel-L filter
+    (`x >= 2`, "from two years in") that silently became "the last two points".
+
+    So a dated grid labels itself from its dates and an undated one keeps the index
+    convention, which leaves every published CSV byte-identical.
+    """
+    if dates is None:
+        return [f"t_{(i + 1) * 0.1:.1f}" for i in range(n_steps)]
+    origin = datetime.date.fromisoformat(PANDEMIC_START)
+    out = []
+    for d in dates:
+        if not isinstance(d, datetime.date):
+            d = datetime.date.fromisoformat(str(d))
+        out.append(f"t_{(d - origin).days / 365.25:.4f}")
+    if len(out) != n_steps:
+        raise ValueError(f"{len(out)} date(s) for {n_steps} emergence step(s)")
+    return out
+
+
 def write_unified_variant_emergence(output_dir, file_suffix, n_steps, quantiles,
-                                    model_rows, baseline_rows):
+                                    model_rows, baseline_rows, step_labels=None):
     """Write one emergence CSV: rows = (model|baseline, top_quantile), cols = time steps.
 
     model_rows / baseline_rows map name -> {q: [hit rate per step]}. One row per
     (name, q) so every top-q quantile (q = 0.1 … 0.9) is reported.
     """
-    step_labels = [f"t_{(i + 1) * 0.1:.1f}" for i in range(n_steps)]
+    if step_labels is None:
+        step_labels = emergence_step_labels(n_steps)
     csv_path = os.path.join(output_dir, f"variant_emergence_{file_suffix}_all-models.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
@@ -258,12 +309,80 @@ def read_unified_csv(path, baseline_names, prefix_set):
 def parse_args():
     parser = argparse.ArgumentParser(description='Unified multi-model fitness evaluation')
     parser.add_argument('--dataset', type=str, required=True, choices=['sc2', 'flu', 'rsv_a', 'denv2'])
+    parser.add_argument('--include-experimental', action='store_true', default=False,
+                        help='Also evaluate checkpoints tagged with an experimental arm '
+                             '(antiGen-train --experiment), which are not forecast-valid.')
     parser.add_argument('--checkpoint-dir', type=str, required=True,
                         help='Directory to scan for fitness_*.pt checkpoints')
     parser.add_argument('--output-dir', type=str, required=True,
                         help='Directory for unified comparison CSVs')
+    parser.add_argument('--alphabet', type=str, default=LEGACY_AAS,
+                        help='Residue alphabet. The default is the 22-token frame every '
+                             'published invocation uses; the revised corpus passes 20.')
+    parser.add_argument('--train-examples', type=str, nargs='+', default=None,
+                        help='The revised corpus writes the two halves as separate '
+                             'files; naming them replaces the data-dir glob.')
+    parser.add_argument('--test-examples', type=str, nargs='+', default=None)
+    parser.add_argument('--pool-examples', action='store_true',
+                        help='LEGACY, wrong for any comparison (NOTES s163): also fit the '
+                             'training-fitted baselines on the test corpus\'s pre-cutoff '
+                             'records. Default: training data is --train-examples only.')
+    parser.add_argument('--split-date', type=str, default=None, metavar='YYYY-MM-DD',
+                        help='Which train/test split to read, for a corpus whose '
+                             'POST_CUTOFF field is a set of cutoff dates.')
+    parser.add_argument('--root-counts', type=str, default=None, metavar='TSV',
+                        help="The revised count matrix, where pssms/root.csv used to be.")
+    parser.add_argument('--variant-counts-dir', type=str, default=None, metavar='DIR',
+                        help="Dated variant count files, replacing "
+                             "pssms/<variant>/time_*.csv as the emergence grid.")
+    parser.add_argument('--counts-since', type=str, default=None, metavar='YYYY-MM-DD',
+                        help="Drop emergence steps before this date.")
     parser.add_argument('--data-dir', type=str, default=None,
                         help="Override the data directory (else derived from checkpoints' train_args)")
+    parser.add_argument('--multitree-baselines', action='store_true',
+                        help='Also score the factored baselines from the cross-tree '
+                             'experiment: codon, substitution (a fitted codon x '
+                             'BLOSUM62 matrix) and where_times_which (P(i) * '
+                             'P(a|wt_i)). Unlike the CSV baselines these are '
+                             'query-dependent -- they read the residue at each '
+                             'position -- so they are scored through the model path, '
+                             'one forward pass per example, not broadcast as a fixed '
+                             '(L, E) map.')
+    parser.add_argument('--counted-baselines', action='store_true',
+                        help='add the counted-statistic rungs: site_substitution '
+                             '(s_i * M[wt_i,a]) and mcm_interpolation '
+                             '((N + kappa*s*M)/(N_total+kappa), kappa=N_total). '
+                             'Separate from --multitree-baselines so an existing '
+                             'roster does not change.')
+    parser.add_argument('--mcm-baseline', action='store_true',
+                        help='add the MUTATION COUNT MATRIX alone as a rung, "mcm": '
+                             'log N[i,a], the training-window event count of each cell '
+                             '(statistical_baselines "frequency"). The N that the MCM '
+                             'interpolation blends with its factored prior. Own flag '
+                             'for the same reason as --counted-baselines (NOTES s121).')
+    parser.add_argument('--substitution-seed', type=int, default=0,
+                        help="Seed for fit_substitution_baseline's minibatch sampler. "
+                             "NOTES s14 found it saturates by K=2, so one fit is "
+                             "enough here; the multitree arm averages three only "
+                             "because its ESM-2 rungs are seed-ensembled too.")
+    parser.add_argument('--eval-range', choices=('default', 'full'), default='default',
+                        help="Which positions to score. 'default' uses the dataset's "
+                             "own range -- for sc2 that is the RBD (1-based 331-531), "
+                             "where the DMS baselines are defined. 'full' scores every "
+                             "position. Baselines with no signal outside the RBD "
+                             "(the Omicron DMS sets and EVEscape are a constant -1 "
+                             "there, which load_baselines turns into NaN) keep only "
+                             "their RBD cells as candidates while non-RBD targets "
+                             "still count against them, so they degrade rather than "
+                             "disappear; the per-baseline coverage is printed.")
+    parser.add_argument('--mutation-list', action='append', default=None,
+                        metavar='LABEL=PATH',
+                        help='Curated mutation list to evaluate as its own subset, '
+                             'e.g. --mutation-list ecdc=data/mutation_lists/ecdc.csv. Repeatable. Each adds '
+                             'quantile_hit_rates_list_<LABEL>* and '
+                             'variant_emergence_list_<LABEL>* outputs, scored exactly '
+                             'like the de novo subset: the listed (position, alt) cells '
+                             'are the only candidates and the only targets.')
     parser.add_argument('--variant', type=str, default=None,
                         help='Override the variant name (else from train_args or dataset default)')
     parser.add_argument('--models', type=str, default=None,
@@ -278,6 +397,59 @@ def parse_args():
     parser.add_argument('--priority-models', type=str, default=None,
                         help='Comma-separated label substrings to evaluate FIRST (before the '
                              'other models). Baselines are always computed first regardless.')
+    parser.add_argument('--ensemble-dir', type=str, default=None, metavar='DIR',
+                        help="Score the checkpoints in DIR as ONE rung: the mean of "
+                             "their per-query log-probabilities, which is the "
+                             "published 'Mean of log-probs' rule (ensemble_rules' "
+                             "logsoftmax/arith). Intended for the val-selected runs, "
+                             "whose claim is about their mean -- scoring them as N "
+                             "separate rungs would put N readings of one predictor on "
+                             "the panel. Valid where the eval range is the whole "
+                             "protein and no member abstains; see "
+                             "MeanLogProbEnsemble.")
+    parser.add_argument('--ensemble-name', type=str, default='antigen_valsel',
+                        help='Row name for --ensemble-dir.')
+    parser.add_argument('--baseline-dir', type=str, default=None,
+                        help='Override the per-dataset baseline CSV directory. The '
+                             'default is data/baselines_<dataset>/, whose CSVs carry '
+                             'one row per position OF THE BUILD THEY WERE MADE FOR. A '
+                             'corpus built to a different convention -- the revised '
+                             'H3N2 is HA1+HA2 with no signal peptide, 550 residues '
+                             'against the published 566 -- needs maps re-keyed to it '
+                             '(experiments/multitree/rekey_dms_to_mature.py), not the '
+                             'originals indexed at an offset.')
+    parser.add_argument('--skip-baselines', action='store_true', default=False,
+                        help="Skip the test-set baseline sweep. It is one pass over "
+                             "the test set scoring 13 fixed maps against every "
+                             "variant and quantile -- the single most expensive thing "
+                             "in the run, ~4 h here -- and it is pure waste for a job "
+                             "whose output is a score-map cache rather than a CSV "
+                             "(the ensemble MEMBER pass, NOTES s68). The baseline "
+                             "ROWS are then absent from the hit-rate CSVs, so do not "
+                             "pass this for a run anything reads.")
+    parser.add_argument('--dump-scores', default=None, metavar='DIR',
+                        help="Cache each evaluated model's eval-range score map over "
+                             "the TEST set to DIR, in antiGen.score_cache's format. "
+                             "Observational: it adds I/O to a pass that is happening "
+                             "anyway and changes no number. It exists so that "
+                             "anything combining several models' maps -- the "
+                             "ensemble rules -- can be scored on the recall panels "
+                             "without paying the member forward passes a second "
+                             "time. ~1.2 GB per model at 71,704 queries x 201 x 20.")
+    parser.add_argument('--dump-models', default=None, metavar='A,B,C',
+                        help="Restrict --dump-scores to these model prefixes "
+                             "(exact names, comma-separated). Default: every model "
+                             "the run evaluates.")
+    parser.add_argument('--legacy-pool', action='store_true', default=False,
+                        help="Score every rung against its OWN emission set rather "
+                             "than a common candidate pool -- the published "
+                             "behaviour, and what the committed evals_sc2 CSVs were "
+                             "written with. Off by default since NOTES s68: without "
+                             "a common pool 'the top 10%%' is 10%% of a set whose size "
+                             "varies by model (3,801-4,221 across this roster), so a "
+                             "map that declines to score part of the range selects "
+                             "fewer cells than its rivals. Pass this only to "
+                             "reproduce a published number.")
     parser.add_argument('--seed', type=int, default=42, help='Seed for baseline tie-break noise')
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--hit-rate-buckets', type=int, default=10)
@@ -333,10 +505,12 @@ def main():
     print(f"Using device: {device}")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    allowed_aas = "ACDEFGHIKLMNPQRSTVWY*-"
+    allowed_aas = args.alphabet
     E = len(allowed_aas)
-    gap_idx = allowed_aas.index('-')
-    stop_idx = allowed_aas.index('*')
+    # None when the alphabet has no such column (NOTES s54): every gap/stop exclusion
+    # downstream then becomes a no-op rather than an index error.
+    gap_idx = allowed_aas.index('-') if '-' in allowed_aas else None
+    stop_idx = allowed_aas.index('*') if '*' in allowed_aas else None
     n_buckets = args.hit_rate_buckets
     emergence_only = args.emergence_only
     if emergence_only:
@@ -347,13 +521,28 @@ def main():
 
     # ── 1. Discover checkpoint groups (prefix -> newest-first list) ──────────
     groups = discover_checkpoints(args.checkpoint_dir, model_filters, exclude_filters)
-    if not groups:
+    if not groups and not args.multitree_baselines:
         print(f"No checkpoints matched in {args.checkpoint_dir} (filters={model_filters}). Nothing to do.")
         return
+    # --multitree-baselines with no checkpoint is a baselines-only run (NOTES s163); the
+    # later `if not candidates` check already allows exactly that case.
     print(f"Found {len(groups)} checkpoint group(s): {sorted(groups)}")
 
     # ── 2. Resolve data paths ────────────────────────────────────────────────
-    if args.data_dir:
+    # The revised corpus names every input it needs, so the legacy resolution -- which
+    # derives a directory from a checkpoint's recorded cutoff and needs
+    # $FITNESS_DATA_ROOT -- must not run at all. Left in, it would either fail on a
+    # missing env var or resolve to the PUBLISHED corpus and read it for nothing.
+    # "Every input is named on the command line", which is what makes `data_dir`
+    # unnecessary. --variant-counts-dir is NOT part of that test: it adds the emergence
+    # grid and nothing else, so a corpus with no variant roots still names everything
+    # the eval reads. Requiring it here sent such a run down the
+    # `datasets.default_data_dir` path and out through "set FITNESS_DATA_ROOT" -- the
+    # same coupling the PSSM branch below used to have, in a second place.
+    explicit = bool(args.train_examples and args.test_examples and args.root_counts)
+    if explicit:
+        data_dir = None
+    elif args.data_dir:
         data_dir = args.data_dir
     else:
         allowed_cutoffs = datasets.DATASETS[args.dataset]["allowed_cutoffs"]
@@ -377,17 +566,40 @@ def main():
 
     variant = args.variant or datasets.default_variant(args.dataset)
 
-    examples_files = sorted(glob.glob(os.path.join(data_dir, "examples_cutoff_*.txt")))
-    if not examples_files:
-        raise SystemExit(f"No examples_cutoff_*.txt found in {data_dir}")
-    examples_path = examples_files[0]
     print(f"Dataset={args.dataset} variant={variant}")
-    print(f"Loading examples from {examples_path}...")
-    all_examples = load_examples(examples_path, allowed_aas, variant)
+    if args.train_examples or args.test_examples:
+        if not (args.train_examples and args.test_examples):
+            raise SystemExit("--train-examples and --test-examples go together.")
+        all_examples = []
+        # Which records came from the TEST corpus (NOTES s163). Its pre-cutoff records
+        # are NOT training data: the training data of every model is the train tree,
+        # built from sequences dated before the cutoff, and a test-tree node flagged
+        # pre-cutoff still lists mutations to children observed only after it. They stay
+        # in all_examples (the variant root can be one) but never reach the fits.
+        from_test_file = set()
+        for path in list(args.train_examples) + list(args.test_examples):
+            print(f"Loading examples from {path}...")
+            recs = load_examples(path, allowed_aas, variant, split_date=args.split_date)
+            if path in args.test_examples:
+                from_test_file.update(id(e) for e in recs)
+            all_examples += recs
+    else:
+        examples_files = sorted(glob.glob(os.path.join(data_dir, "examples_cutoff_*.txt")))
+        if not examples_files:
+            raise SystemExit(f"No examples_cutoff_*.txt found in {data_dir}")
+        examples_path = examples_files[0]
+        print(f"Loading examples from {examples_path}...")
+        all_examples = load_examples(examples_path, allowed_aas, variant,
+                                     split_date=args.split_date)
 
     seq_len = len(all_examples[0].aa_idx)
     print(f"Sequence length: {seq_len}")
     eval_range = list(range(seq_len)) if args.dataset in ('flu', 'rsv_a', 'denv2') else RBD_RANGE
+    if args.eval_range == 'full':
+        eval_range = list(range(seq_len))
+    print(f"Eval range: {len(eval_range)} positions "
+          f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)"
+          f"{' [--eval-range full]' if args.eval_range == 'full' else ''}")
 
     # ── 3. Select the newest dataset-matching checkpoint per (prefix, config) ─
     # Match by train_args when present, else (legacy checkpoints) by seq_len.
@@ -401,6 +613,12 @@ def main():
         for _ts, path in groups[prefix]:  # newest-first
             ta, cfg, gstep = peek_checkpoint_meta(path)
             if ta is not None:
+                # Experimental arms (multi-tree, random validation split) are not
+                # forecast-valid and must not land in a comparison CSV by accident.
+                if ta.get('experiment') and not args.include_experimental:
+                    print(f"[skip] {prefix}: experimental arm "
+                          f"'{ta['experiment']}' (pass --include-experimental)")
+                    continue
                 if dataset_of_train_args(ta) != args.dataset:
                     continue
                 matched = True
@@ -420,8 +638,19 @@ def main():
         else:
             print(f"[skip] {prefix}: no checkpoint matches dataset '{args.dataset}'")
     if not candidates:
-        print(f"No checkpoints match --dataset {args.dataset}. Nothing to do.")
-        return
+        # Exit NON-ZERO. Discovering checkpoint groups and then filtering every one of
+        # them away is a misconfiguration -- the wrong --dataset, or an experimental
+        # arm that needs --include-experimental -- not a no-op. Returning quietly here
+        # let a 44-second job report success with an empty output directory, the same
+        # silent-success shape as the ESM-2 build skips that cost two full runs.
+        # `--multitree-baselines` alone is the one legitimate no-checkpoint case.
+        msg = (f"No checkpoints match --dataset {args.dataset} "
+               f"({len(groups)} group(s) discovered, all filtered out). "
+               f"See the [skip] lines above for why.")
+        if args.multitree_baselines:
+            print(msg + " Continuing: --multitree-baselines supplies its own models.")
+        else:
+            raise SystemExit(msg)
 
     # Optionally evaluate some models first (e.g. the from-scratch transformer), so
     # their rows land early even if the heavy models (650M) push the job to the wall.
@@ -436,13 +665,45 @@ def main():
     testing_examples = [e for e in all_examples if not e.is_training]
     variant_testing_examples = [e for e in testing_examples if e.is_descended_from_variant]
     training_examples = [e for e in all_examples if e.is_training]
+    if args.train_examples and not args.pool_examples:
+        n_pooled = len(training_examples)
+        training_examples = [e for e in training_examples if id(e) not in from_test_file]
+        print(f"Training examples: {len(training_examples)} from --train-examples "
+              f"({n_pooled - len(training_examples)} pre-cutoff test-corpus records "
+              f"excluded; NOTES s163)")
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
     print(f"Testing examples: {len(testing_examples)}, "
           f"variant-descended: {len(variant_testing_examples)}")
 
     # PSSMs + baselines
-    pssm_dir = os.path.join(data_dir, "pssms")
-    pssm_root, pssm_variant = load_pssms(pssm_dir, variant, E)
+    if args.root_counts or args.variant_counts_dir:
+        # THE TWO ARE NOT SYMMETRIC. --root-counts fixes the de novo cut, which every
+        # recall metric needs; --variant-counts-dir fixes the emergence grid, which only
+        # the variant-emergence CSVs need. So the grid requires the cut and not the
+        # other way round: a corpus with no variant roots -- the revised endemic trees
+        # have none -- can still be scored for recall, and `do_emergence` below is
+        # already gated on `pssm_variant` being non-empty, so those CSVs are simply not
+        # written. Requiring both was what made such a corpus unscoreable at all.
+        if args.variant_counts_dir and not args.root_counts:
+            raise SystemExit("--variant-counts-dir needs --root-counts: the emergence "
+                             "grid is read against the de novo cut, so the cut cannot "
+                             "be left to come from somewhere else.")
+        pssm_root = load_counts_matrix(args.root_counts, allowed_aas)
+        if args.variant_counts_dir:
+            steps, pssm_variant = load_counts_series(args.variant_counts_dir, allowed_aas,
+                                                     since=args.counts_since)
+            emergence_dates = steps
+            print(f"Emergence grid: {len(steps)} step(s), {steps[0]} .. {steps[-1]}")
+        else:
+            pssm_variant, emergence_dates = [], None
+            print("--root-counts without --variant-counts-dir: de novo cut only, "
+                  "no variant-emergence grid.")
+    else:
+        pssm_dir = os.path.join(data_dir, "pssms")
+        pssm_root, pssm_variant = load_pssms(pssm_dir, variant, E)
+        # time_<t>.csv names its own t at 0.1-year spacing, which is exactly what the
+        # index convention reproduces, so this grid keeps labelling itself by index.
+        emergence_dates = None
 
     if args.dataset == 'flu':
         baseline_subdir = "baselines_flu"
@@ -452,8 +713,24 @@ def main():
         baseline_subdir = "baselines_denv2"
     else:
         baseline_subdir = "baselines"
-    baseline_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", baseline_subdir)
+    baseline_dir = args.baseline_dir or os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "data", baseline_subdir)
     baselines = load_baselines(baseline_dir, allowed_aas, args.seed, pssm_root, global_wt_aa_idx)
+
+    # A BASELINE KEYED TO A DIFFERENT BUILD IS NOT COMPARABLE. The CSVs carry one row
+    # per position of the build they were made for, so a corpus of another length must
+    # fail here rather than be indexed: an IndexError deep in the sweep is the GOOD
+    # outcome, and a map silently read off by sixteen residues would have drawn a
+    # believable bar. Checked by name and up front, where the fix is obvious.
+    wrong = [(n, int(t.shape[0])) for n, t in baselines if t.shape[0] != seq_len]
+    if wrong:
+        raise SystemExit(
+            f"Baseline(s) of the wrong length for this corpus (seq_len={seq_len}): "
+            + ", ".join(f"{n}={ln}" for n, ln in wrong)
+            + f"\n  baseline_dir = {baseline_dir}"
+            + "\n  Re-key them to this build (experiments/multitree/"
+              "rekey_dms_to_mature.py) and pass --baseline-dir, or leave the rung off."
+              " Do not assume the offset.")
 
     # Loaders
     test_loader = DataLoader(
@@ -467,9 +744,74 @@ def main():
             num_workers=4, pin_memory=True, drop_last=False,
         )
 
+    # ── Score-map cache (optional) ──────────────────────────────────────────
+    # The query set is `testing_examples` in loader order, which is shuffle=False, so
+    # a map's row i is example i. `query_sha1` over the eval-range genotypes is what
+    # makes that checkable later: two dumps of the same roster have identical SHAPE
+    # and no array-level signature of a drifted query set (score_cache's module note).
+    dump_dir = args.dump_scores
+    dump_sha1 = None
+    dump_only = ([m.strip() for m in args.dump_models.split(',') if m.strip()]
+                 if args.dump_models else None)
+    if dump_dir:
+        aa_all = torch.stack([e.aa_idx for e in testing_examples])
+        dump_sha1 = sc.query_sha1(aa_all[:, eval_range])
+        print(f"\n=== Score-map cache: {dump_dir} ===")
+        print(f"  {len(testing_examples)} queries x {len(eval_range)} positions x {E} "
+              f"residues = {sc.expected_bytes(len(testing_examples), len(eval_range), E) / 2**30:.2f} GiB per model")
+        sc.write_query_manifest(
+            dump_dir, dataset=args.dataset, variant=variant, seq_len=seq_len,
+            eval_range=eval_range, list_specs=[], sha1=dump_sha1,
+            n_queries=len(testing_examples),
+            n_events=float(sum(float(e.mat[eval_range, :].sum()) for e in testing_examples)),
+            args=args)
+        if not os.path.exists(os.path.join(dump_dir, sc.QUERIES)):
+            qi, po, al, ct = [], [], [], []
+            for i, e in enumerate(testing_examples):
+                for r, a in (e.mat[eval_range, :] > 0).nonzero().tolist():
+                    qi.append(i); po.append(eval_range[r]); al.append(a)
+                    ct.append(float(e.mat[eval_range[r], a]))
+            sc.write_queries(dump_dir, aa_all.to(torch.int8).numpy(),
+                             (np.array(qi), np.array(po), np.array(al),
+                              np.array(ct, dtype=np.float32)))
+            print(f"  wrote {sc.QUERIES}: {len(testing_examples)} genotypes, "
+                  f"{len(qi)} target cells ({sum(ct):.0f} events)")
+        print(f"  query_sha1 {dump_sha1}"
+              + (f"; restricted to {dump_only}" if dump_only else ""), flush=True)
+
+    # Baseline coverage inside the eval range. A baseline with no signal outside the
+    # RBD (the Omicron DMS sets, EVEscape) is a constant -1 there, which
+    # load_baselines turns into NaN, so under --eval-range full its candidate pool is
+    # only the RBD while non-RBD targets still count in its denominator. That is the
+    # intended "abstention is not rewarded" behaviour, but a reader comparing rungs
+    # needs to know which ones are scoring a fifth of the protein.
+    print("\nBaseline coverage over the eval range "
+          "(finite cells; low = the baseline is absent over most of it):")
+    for _name, _probs in baselines:
+        _sub_probs = _probs[eval_range, :]
+        _cov = float(torch.isfinite(_sub_probs).float().mean())
+        _flag = "   <-- partial" if _cov < 0.9 else ""
+        print(f"  {_name:24s} {100 * _cov:5.1f}%{_flag}")
+
     # ── 4. Eval-variant masks ────────────────────────────────────────────────
     special_mask = build_special_mask(seq_len, E, gap_idx, stop_idx)
     hit_rate_seen_mask = pssm_root > 0  # (seq_len, E) True = seen in training root
+
+    # The model-independent half of the common candidate pool, over the eval range.
+    # With it, every rung ranks the same cells and selects q * |pool| of them, which
+    # is what `list_macro.py` already does and what makes the recall panels of this
+    # figure and of the CoG-UK list figure the same measurement (NOTES s68). At 20
+    # letters there is no gap or stop column, so this selects every cell and the only
+    # thing it changes is that a map with MISSING measurements (EVEscape, the BA.2
+    # DMS panels, LY-CoV1404) now ranks those cells last inside a full-size pool
+    # instead of being handed a smaller one.
+    common_pool = None if args.legacy_pool else real_substitution_mask(
+        len(eval_range), allowed_aas)
+    if common_pool is None:
+        print("\ncandidate pool: per-model emission set (--legacy-pool, pre-s68)")
+    else:
+        print(f"\ncandidate pool: common -- {int(common_pool.sum())} of "
+              f"{len(eval_range) * E} eval-range cells, identical for every rung")
 
     test_variants = [
         ("All", "all", None),
@@ -477,6 +819,66 @@ def main():
         ("All (no gap/stop)", "all_nogapstop", special_mask),
         ("Unseen (no gap/stop)", "unseen_nogapstop", hit_rate_seen_mask | special_mask),
     ]
+
+    # ── 4b. Curated mutation lists as subsets ────────────────────────────────
+    # Each list restricts BOTH the candidate pool and the targets to its cells, which
+    # is what the de novo subset does and what --mutation-list's help promises. The
+    # consequence is worth stating when the numbers are read: the pool is no longer
+    # every RBD cell but only the listed ones, so "top 10%" is the top 10% of a few
+    # hundred cells, or a few dozen. A list eval ranks within the list; it does not
+    # measure whether the model would surface the list out of the whole protein.
+    mutation_lists = []          # (label, in_mask_full, in_mask_sub)
+    root_seq_str = "".join(allowed_aas[i] for i in global_wt_aa_idx.tolist())
+    for item in (args.mutation_list or []):
+        if "=" not in item:
+            raise SystemExit(f"--mutation-list wants LABEL=PATH, got {item!r}")
+        label, path = item.split("=", 1)
+        label = label.strip()
+        if not label.isidentifier():
+            raise SystemExit(f"--mutation-list label {label!r} must be a bare name")
+        cells, report = load_mutation_list(path, allowed_aas, seq_len,
+                                           root_seq=root_seq_str, label=label)
+        in_full = cells_to_mask(cells, seq_len, E)
+        in_sub = cells_to_mask(cells, seq_len, E, eval_range=eval_range)
+        n_in_range = int(in_sub.sum())
+        print(describe_list(report, in_range=n_in_range))
+        if n_in_range == 0:
+            raise SystemExit(
+                f"mutation list {label!r} has no cells inside the eval range "
+                f"(positions {eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based). "
+                f"Nothing could be scored.")
+        mutation_lists.append((label, in_full, in_sub))
+        # Restricted pool: the listed cells are the whole universe, as for de novo.
+        test_variants.append((f"List: {label}", f"list_{label}", ~in_full))
+        test_variants.append((f"List: {label} (no gap/stop)",
+                              f"list_{label}_nogapstop", (~in_full) | special_mask))
+        # Full pool: the listed cells are the targets but every eval-range cell is
+        # still a candidate, which is Figure 2's question asked of a subset of
+        # mutations. Reported alongside because the restricted-pool numbers are hard
+        # to read on their own -- on sc2 cutoff 1 every one of ECDC's 74 in-range
+        # cells is observed at some point, so a pool restricted to them contains
+        # almost no negatives and the metric becomes "are the frequent list members
+        # ranked above the rare ones" rather than "can the list be found".
+        test_variants.append((f"List: {label} (full pool)",
+                              f"list_{label}_fullpool", (None, ~in_full)))
+        # De novo x list: the two pool definitions above, with the training-window
+        # cells struck from the targets AND the pool. This is the cut the plain list
+        # variants cannot make, and the difference is large: on sc2 cutoff 1, 104 of
+        # CoG-UK's 247 in-RBD cells occur in the training window, but because those
+        # cells recur across the test set they carry 81% of the list's target EVENTS.
+        # So the unfiltered list numbers are four-fifths a memorization test, which is
+        # why a plain composition baseline places near the top of them and at chance
+        # on `unseen`. These two variants ask the list question of the 143 cells the
+        # model could not have memorized.
+        test_variants.append((f"List: {label} (de novo)", f"list_{label}_unseen",
+                              (~in_full) | hit_rate_seen_mask))
+        # Full pool here means every UNSEEN eval-range cell is a candidate, not every
+        # cell -- the pool and the targets must agree on the seen mask or the metric
+        # would spend its budget on cells it has already excluded from scoring. This
+        # is the many-query analogue of what list_recall.py does with one query.
+        test_variants.append((f"List: {label} (de novo, full pool)",
+                              f"list_{label}_unseen_fullpool",
+                              (hit_rate_seen_mask, (~in_full) | hit_rate_seen_mask)))
     variant_variants = [
         ("Variant-descended", "variant", None),
         ("Variant-descended (no gap/stop)", "variant_nogapstop", special_mask),
@@ -502,15 +904,17 @@ def main():
             pvm[emergence_seen_mask] = float('nan')
             pssm_variant_sub_unseen.append(pvm)
 
-        # wt masks for the no-gap/stop and unseen+no-gap/stop specs
-        wt_mask_nogapstop = wt_mask_2d.clone()
-        wt_mask_nogapstop[:, gap_idx] = False
-        wt_mask_nogapstop[:, stop_idx] = False
-        combined_mask = emergence_seen_mask.clone()
-        combined_mask[:, gap_idx] = True
-        combined_mask[:, stop_idx] = True
-        wt_mask_unseen_nogapstop = wt_mask_2d.clone()
-        wt_mask_unseen_nogapstop[combined_mask] = False
+        # wt masks for the no-gap/stop and unseen+no-gap/stop specs, built off
+        # `special_mask` rather than by indexing with gap_idx/stop_idx directly.
+        # At 20 letters both indices are None, and `t[:, None] = False` does not
+        # raise -- it unsqueezes and assigns the WHOLE tensor, so every one of the
+        # four `*_nogapstop*` emergence rows was silently written off an all-False
+        # candidate mask and an all-NaN score map (NOTES s68). The equivalent
+        # mask form is a no-op at 20 letters and identical at 22.
+        special_sub = special_mask[eval_range, :]
+        wt_mask_nogapstop = wt_mask_2d & ~special_sub
+        combined_mask = emergence_seen_mask | special_sub
+        wt_mask_unseen_nogapstop = wt_mask_2d & ~combined_mask
 
         variant_thresholds = [100, 1] if variant == 'BA.2' else [10, 1]
         T0 = variant_thresholds[0]
@@ -528,8 +932,7 @@ def main():
         bl_nogapstop = []
         for n, bp in baselines:
             s = _sub(bp)
-            s[:, gap_idx] = float('nan')
-            s[:, stop_idx] = float('nan')
+            s[special_sub] = float('nan')
             bl_nogapstop.append((n, s))
         bl_unseen_nogapstop = []
         for n, bp in baselines:
@@ -537,26 +940,96 @@ def main():
             s[combined_mask] = float('nan')
             bl_unseen_nogapstop.append((n, s))
 
-        # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set, threshold)
+        # Curated lists: the same construction as `unseen`, with the mask inverted --
+        # everything NOT in the list is NaN, so the list's cells are the whole universe
+        # for the PSSM-precision curve as well as for recall.
+        # Keyed by the suffix stem, so `coguk` and `coguk_unseen` sit side by side and
+        # the spec loop below does not need to know which is which.
+        list_emergence = {}      # stem -> (pssm_list, baseline_set, drop_mask)
+        for label, _in_full, in_sub in mutation_lists:
+            out_of_list = ~in_sub
+            # The de novo cut, as for recall: strike the training-window cells from
+            # the list's universe so the precision curve is read off the cells the
+            # model could not have memorized.
+            for stem, drop in ((label, out_of_list),
+                               (f"{label}_unseen", out_of_list | emergence_seen_mask)):
+                pv_list = []
+                for pv in pssm_variant_sub:
+                    pvm = pv.clone()
+                    pvm[drop] = float('nan')
+                    pv_list.append(pvm)
+                bl_list = []
+                for n, bp in baselines:
+                    bp_sub = _sub(bp)
+                    bp_sub[drop] = float('nan')
+                    bl_list.append((n, bp_sub))
+                list_emergence[stem] = (pv_list, bl_list, drop)
+
+        # The candidate pool for the precision row, per spec. It matters more here
+        # than on the recall row because n_valid is this metric's DENOMINATOR and not
+        # just the size of the set searched: without a common pool a map that declines
+        # to score part of the range is scored against a top decile that much smaller
+        # (NOTES s51 measured it at 98.0 listed cells caught scoring BELOW a rival's
+        # 94.0). Every restriction expressed above by writing NaN into a score map --
+        # the de novo cut, a curated list -- is struck from the pool here too, or those
+        # cells would rank last inside it rather than leave it.
+        root_real = real_wildtype_mask(
+            testing_root_example.aa_idx[eval_range].unsqueeze(0), allowed_aas)[0]
+        n_ungrounded = int((~root_real).sum())
+        print(f"variant root: {n_ungrounded} gap/stop residue(s) in the eval range"
+              + ("; the query-dependent pool is a no-op for the precision row"
+                 if not n_ungrounded else
+                 f", so the query-dependent pool removes {n_ungrounded * E} cells"))
+
+        def _epool(wt_m, drop=None):
+            """This spec's candidate set, or None under --legacy-pool."""
+            if common_pool is None:
+                return None
+            pool = common_pool & wt_m & root_real.unsqueeze(-1)
+            return pool if drop is None else (pool & ~drop)
+
+        # spec: (file_suffix, pssm_list, model_prob_key, wt_mask, baseline_set,
+        #        threshold, pool)
         emergence_specs = [
-            ("all", pssm_variant_sub, "base", wt_mask_2d, bl_base, T0),
-            ("unseen", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, T0),
-            ("all_thresh1", pssm_variant_sub, "base", wt_mask_2d, bl_base, 1),
-            ("unseen_thresh1", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, 1),
-            ("all_nogapstop", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, T0),
-            ("all_nogapstop_thresh1", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, 1),
-            ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0),
-            ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1),
+            ("all", pssm_variant_sub, "base", wt_mask_2d, bl_base, T0,
+             _epool(wt_mask_2d)),
+            ("unseen", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, T0,
+             _epool(wt_mask_2d, emergence_seen_mask)),
+            ("all_thresh1", pssm_variant_sub, "base", wt_mask_2d, bl_base, 1,
+             _epool(wt_mask_2d)),
+            ("unseen_thresh1", pssm_variant_sub_unseen, "unseen", wt_mask_2d, bl_unseen, 1,
+             _epool(wt_mask_2d, emergence_seen_mask)),
+            ("all_nogapstop", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, T0,
+             _epool(wt_mask_nogapstop)),
+            ("all_nogapstop_thresh1", pssm_variant_sub, "nogapstop", wt_mask_nogapstop, bl_nogapstop, 1,
+             _epool(wt_mask_nogapstop)),
+            ("unseen_nogapstop", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, T0,
+             _epool(wt_mask_unseen_nogapstop)),
+            ("unseen_nogapstop_thresh1", pssm_variant_sub_unseen, "unseen_nogapstop", wt_mask_unseen_nogapstop, bl_unseen_nogapstop, 1,
+             _epool(wt_mask_unseen_nogapstop)),
         ]
+        for stem, (pv_list, bl_list, drop) in list_emergence.items():
+            emergence_specs.append(
+                (f"list_{stem}", pv_list, f"list_{stem}", wt_mask_2d, bl_list, T0,
+                 _epool(wt_mask_2d, drop)))
+            emergence_specs.append(
+                (f"list_{stem}_thresh1", pv_list, f"list_{stem}", wt_mask_2d,
+                 bl_list, 1, _epool(wt_mask_2d, drop)))
 
         n_steps = len(pssm_variant_sub)
+        # pssm_variant_sub slices POSITIONS, not time, so its length is the whole grid
+        # and these dates line up one-for-one; `--counts-since` already dropped its
+        # prefix inside load_counts_series. emergence_step_labels re-checks the two
+        # lengths agree rather than trusting that to stay true.
+        emergence_labels = emergence_step_labels(n_steps, emergence_dates)
         # Accumulators: suffix -> {name: {q: [hit rate per step]}}
         emergence_model_rows = {suffix: {} for suffix, *_ in emergence_specs}
         emergence_baseline_rows = {}
-        for suffix, pssm_list, _mp, wt_m, bl_set, thr in emergence_specs:
+        for suffix, pssm_list, _mp, wt_m, bl_set, thr, pool in emergence_specs:
             emergence_baseline_rows[suffix] = {
                 name: variant_hit_rates(bp, wt_m, pssm_list, threshold_count=thr,
-                                        quantiles=EMERGENCE_QUANTILES)
+                                        quantiles=EMERGENCE_QUANTILES,
+                                        pool_mask=pool)
                 for name, bp in bl_set
             }
 
@@ -608,18 +1081,20 @@ def main():
         if do_emergence:
             for suffix, *_ in emergence_specs:
                 write_unified_variant_emergence(args.output_dir, suffix, n_steps, EMERGENCE_QUANTILES,
-                                                emergence_model_rows[suffix], emergence_baseline_rows[suffix])
+                                                emergence_model_rows[suffix], emergence_baseline_rows[suffix],
+                                                step_labels=emergence_labels)
 
     # ── 7. Baseline sweep (once, no model) — before models so baselines land on disk
     #        immediately and are reused on resume. Skipped entirely in emergence-only
     #        mode (variant-emergence baselines were already computed in step 5). ─────
-    if not emergence_only:
+    if not emergence_only and not args.skip_baselines:
         if any(suffix not in test_baseline_rows for _, suffix, _ in test_variants):
             print("\n=== Baseline sweep (test set) ===")
             base_results = evaluate_full(
                 None, test_loader, device,
                 variants=[(label, sm) for label, _, sm in test_variants],
                 baselines=baselines, n_buckets=n_buckets, eval_range=eval_range,
+                common_pool=common_pool, alphabet=allowed_aas,
             )
             for label, suffix, _ in test_variants:
                 _, _, baseline_hits = base_results[label]
@@ -634,10 +1109,150 @@ def main():
                 None, variant_test_loader, device,
                 variants=[(label, sm) for label, _, sm in variant_variants],
                 baselines=baselines, n_buckets=n_buckets, eval_range=eval_range,
+                common_pool=common_pool, alphabet=allowed_aas,
             )
             for label, suffix, _ in variant_variants:
                 _, _, baseline_hits = vb_results[label]
                 variant_baseline_rows[suffix] = baseline_hits
+
+    # ── 7b. Query-dependent baselines from the cross-tree experiment ─────────
+    # codon, substitution and where_times_which read the residue at each position, so
+    # they cannot be expressed as the fixed (L, E) maps `baselines` holds and are
+    # instead scored through the model path. They are built here, once, and appended
+    # to `candidates` so that resume, the gap/stop mask and every eval variant treat
+    # them exactly like a checkpointed model.
+    builtin_models = {}
+    if args.multitree_baselines:
+        print("\n=== Building cross-tree factored baselines ===")
+
+        def _codon():
+            return create_model(ModelConfig(
+                model_type=ModelType.CODON, seq_len=seq_len,
+                alphabet=AlphabetConfig(amino_acids=allowed_aas),
+                codon=CodonConfig()), device)
+
+        # Fitted on the TRAINING examples only -- the same data the models saw, and
+        # never the test set.
+        _fit_cache = {}
+
+        def _fit():
+            if "fit" not in _fit_cache:
+                print(f"  fitting substitution matrix on {len(training_examples)} "
+                      f"training examples (seed={args.substitution_seed})...",
+                      flush=True)
+                _fit_cache["fit"] = fit_substitution_baseline(
+                    training_examples, device, allowed_aas,
+                    seed=args.substitution_seed)
+            return _fit_cache["fit"]
+
+        def _substitution():
+            return _fit()
+
+        def _where_times_which():
+            pm = positional_marginal_counts(training_examples, seq_len, E)
+            return WhereTimesWhichPredictor(_fit().config, pm, _fit()).to(device)
+
+        def _wxw_dirichlet():
+            return where_times_which_dirichlet(
+                _fit(), training_examples, seq_len, E).to(device)
+
+        builtin_models = {"codon": _codon,
+                          "substitution": _substitution,
+                          "where_times_which": _where_times_which,
+                          "wxw_dirichlet": _wxw_dirichlet}
+
+    # The COUNTED-statistic siblings of the two factored rungs above: `site_prop` is
+    # where_times_which with a counted substitution matrix in place of the fitted
+    # codon x BLOSUM one, and `cpssm_dir` is wxw_dirichlet with the same swap. Math is
+    # antiGen/statistical_baselines.py, kept verbatim from the branch it came from.
+    #
+    # ITS OWN FLAG, not --multitree-baselines: the figures key rows by name and an
+    # unknown model collapses into one NA group, so a roster must not grow silently.
+    if args.counted_baselines or args.mcm_baseline:
+        print("\n=== Building counted-statistic baselines ===", flush=True)
+        from antiGen.statistical_baselines import fit as _cs_fit
+        _cs_cache = {}
+
+        def _cs_stats():
+            if "st" not in _cs_cache:
+                print(f"  fitting counted statistics on {len(training_examples)} "
+                      f"training examples...", flush=True)
+                _cs_cache["st"] = _cs_fit(training_examples, seq_len, E)
+                print(f"  N_total = {_cs_cache['st']['N_total']:.0f}", flush=True)
+            return _cs_cache["st"]
+
+        _cs_cfg = ModelConfig(model_type=ModelType.SITE_SUBSTITUTION, seq_len=seq_len,
+                              alphabet=AlphabetConfig(amino_acids=allowed_aas))
+
+        def _site_substitution():
+            return CountedStatPredictor(_cs_cfg, _cs_stats(),
+                                        "site_substitution").to(device)
+
+        def _mcm_interpolation():
+            return CountedStatPredictor(_cs_cfg, _cs_stats(),
+                                        "mcm_interpolation").to(device)
+
+        if args.counted_baselines:
+            builtin_models["site_substitution"] = _site_substitution
+            builtin_models["mcm_interpolation"] = _mcm_interpolation
+            print("  added 2: site_substitution, mcm_interpolation")
+        if args.mcm_baseline:
+            builtin_models["mcm"] = (lambda: CountedStatPredictor(
+                _cs_cfg, _cs_stats(), "mcm").to(device))
+            print("  added 1: mcm")
+    # The val-selected runs as ONE rung. Registered beside the factored baselines
+    # because `builtin_models` is the hook for "a model the eval builds rather than
+    # loads", and that is exactly what an ensemble is -- it then goes through the same
+    # masks, candidate pool and quantile machinery as every other rung.
+    if args.ensemble_dir:
+        ens_paths = sorted(glob.glob(os.path.join(args.ensemble_dir, "fitness_*.pt")))
+        if not ens_paths:
+            raise SystemExit(f"--ensemble-dir {args.ensemble_dir} has no fitness_*.pt")
+        # The composition argument in MeanLogProbEnsemble holds only when the eval
+        # range is the whole protein. Refuse rather than quietly rank on a different
+        # normalisation than the one the rule names.
+        if len(eval_range) != seq_len:
+            raise SystemExit(
+                f"--ensemble-dir needs the full eval range (have {len(eval_range)} of "
+                f"{seq_len} positions): the mean-of-log-probs rule normalises over the "
+                "scored cells, and this module normalises over the sequence.")
+
+        def _ensemble():
+            mems = []
+            for ep in ens_paths:
+                eck, ecfg = load_checkpoint(ep, map_location=device)
+                if ecfg.seq_len != seq_len:
+                    raise SystemExit(f"{os.path.basename(ep)}: seq_len {ecfg.seq_len} "
+                                     f"!= data seq_len {seq_len}")
+                em = create_model(ecfg, device)
+                em.load_state_dict(eck['model_state_dict'], strict=False)
+                em.eval()
+                mems.append(em)
+            return MeanLogProbEnsemble(mems).to(device)
+
+        builtin_models[args.ensemble_name] = _ensemble
+        candidates.append((args.ensemble_name, None, None))
+        print(f"  ensemble rung '{args.ensemble_name}': {len(ens_paths)} member(s) "
+              f"from {args.ensemble_dir}")
+
+    # EVERY BUILT MODEL BECOMES A CANDIDATE, and this loop is deliberately OUTSIDE
+    # `if args.ensemble_dir:`. Nested there -- as it was -- a run without an ensemble
+    # directory BUILDS the factored baselines and then never scores them: it prints
+    # the roster, resumes past the checkpoints, writes its outputs and reports "Done."
+    # in 26 seconds, having added nothing. That is how `site_substitution` and
+    # `mcm_interpolation` came back missing from all sixteen cutoffs, and it would
+    # equally have dropped codon / substitution / where_times_which from any fresh
+    # CSV. The older cutoff logs show "added 3 factored baselines" with no
+    # --ensemble-dir, so this is a regression being undone, not a new convention.
+    #
+    # Names already queued are skipped: `args.ensemble_name` is appended explicitly
+    # above AND lives in `builtin_models`, so an unguarded loop double-scores it.
+    _queued = {c[0] for c in candidates}
+    _to_add = [n for n in builtin_models if n not in _queued]
+    for name in _to_add:
+        candidates.append((name, None, None))
+    if _to_add:
+        print(f"  added {len(_to_add)} built model(s): {', '.join(_to_add)}")
 
     # Persist baselines / emergence baselines now, before the first (possibly slow) model.
     flush_outputs()
@@ -664,17 +1279,27 @@ def main():
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(args.seed)
         print(f"\n=== Evaluating model group: {prefix} ===")
-        try:
+        ckpt = None
+        if prefix in builtin_models:
+            # No checkpoint: these are constructed from the training examples.
+            try:
+                model = builtin_models[prefix]()
+                model.eval()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[skip] {prefix}: factored baseline build failed ({exc})")
+                continue
+        else:
+         try:
             ckpt, model_config = load_checkpoint(path, map_location=device)
-        except Exception as exc:  # noqa: BLE001
+         except Exception as exc:  # noqa: BLE001
             print(f"[skip] {prefix}: load_checkpoint failed ({exc})")
             continue
 
-        if model_config.seq_len != seq_len:
+         if model_config.seq_len != seq_len:
             print(f"[skip] {prefix}: checkpoint seq_len={model_config.seq_len} != data seq_len={seq_len}")
             continue
 
-        try:
+         try:
             model = create_model(model_config, device)
             missing, unexpected = model.load_state_dict(ckpt['model_state_dict'], strict=False)
             if missing:
@@ -682,7 +1307,7 @@ def main():
             if unexpected:
                 print(f"  [warn] {prefix}: {len(unexpected)} unexpected state_dict keys (e.g. {unexpected[:3]})")
             model.eval()
-        except Exception as exc:  # noqa: BLE001
+         except Exception as exc:  # noqa: BLE001
             print(f"[skip] {prefix}: model build/load failed ({exc})")
             del ckpt
             gc.collect()
@@ -695,12 +1320,32 @@ def main():
         # Quantile hit rates over the test set (the expensive part; skipped in
         # --emergence-only mode, which touches only the single testing-root pass below).
         if not emergence_only:
-            results = evaluate_full(
-                model, test_loader, device,
-                variants=[(label, sm) for label, _, sm in test_variants],
-                baselines=[], n_buckets=n_buckets, eval_range=eval_range,
-                model_gap_stop_mask=model_mask,
-            )
+            writer = None
+            if dump_dir and (dump_only is None or prefix in dump_only) \
+                    and not os.path.exists(sc.map_path(dump_dir, prefix)):
+                writer = sc.MapWriter(dump_dir, prefix, len(testing_examples),
+                                      len(eval_range), E)
+            try:
+                results = evaluate_full(
+                    model, test_loader, device,
+                    variants=[(label, sm) for label, _, sm in test_variants],
+                    baselines=[], n_buckets=n_buckets, eval_range=eval_range,
+                    model_gap_stop_mask=model_mask,
+                    common_pool=common_pool, alphabet=allowed_aas,
+                    score_sink=(writer.write_batch if writer else None),
+                )
+            except BaseException:
+                # A partial map is a full-size file of plausible zeros, and the resume
+                # rule downstream is os.path.exists. Leave a stray .tmp instead.
+                if writer is not None:
+                    writer.abort()
+                raise
+            if writer is not None:
+                side = writer.close(manifest_sha1=dump_sha1,
+                                    extra={"n_queries": len(testing_examples),
+                                           "eval_range_len": len(eval_range)})
+                print(f"  [map] {prefix}: {side['n_nan']} NaN, "
+                      f"{side['n_neginf']} -inf cells", flush=True)
             for label, suffix, _ in test_variants:
                 _, hit_rate_by_qtile, _ = results[label]
                 hit_rate_model_rows[suffix][prefix] = hit_rate_by_qtile
@@ -712,6 +1357,7 @@ def main():
                     variants=[(label, sm) for label, _, sm in variant_variants],
                     baselines=[], n_buckets=n_buckets, eval_range=eval_range,
                     model_gap_stop_mask=model_mask,
+                    common_pool=common_pool, alphabet=allowed_aas,
                 )
                 for label, suffix, _ in variant_variants:
                     _, hit_rate_by_qtile, _ = v_results[label]
@@ -726,18 +1372,24 @@ def main():
             mp_unseen = tr_scores.clone()
             mp_unseen[emergence_seen_mask] = float('nan')
             mp_nogapstop = tr_scores.clone()
-            mp_nogapstop[:, gap_idx] = float('nan')
-            mp_nogapstop[:, stop_idx] = float('nan')
+            mp_nogapstop[special_sub] = float('nan')
             mp_unseen_nogapstop = tr_scores.clone()
             mp_unseen_nogapstop[combined_mask] = float('nan')
             mp_by_key = {
                 "base": mp_base, "unseen": mp_unseen,
                 "nogapstop": mp_nogapstop, "unseen_nogapstop": mp_unseen_nogapstop,
             }
-            for suffix, pssm_list, mp_key, wt_m, _bl, thr in emergence_specs:
+            for label, _in_full, in_sub in mutation_lists:
+                mp_list = tr_scores.clone()
+                mp_list[~in_sub] = float('nan')
+                mp_by_key[f"list_{label}"] = mp_list
+                mp_list_unseen = tr_scores.clone()
+                mp_list_unseen[~in_sub | emergence_seen_mask] = float('nan')
+                mp_by_key[f"list_{label}_unseen"] = mp_list_unseen
+            for suffix, pssm_list, mp_key, wt_m, _bl, thr, pool in emergence_specs:
                 emergence_model_rows[suffix][prefix] = variant_hit_rates(
                     mp_by_key[mp_key], wt_m, pssm_list, threshold_count=thr,
-                    quantiles=EMERGENCE_QUANTILES,
+                    quantiles=EMERGENCE_QUANTILES, pool_mask=pool,
                 )
 
         # Persist after each model so a timeout/crash keeps all finished models.
@@ -745,7 +1397,9 @@ def main():
         print(f"[write] flushed outputs after model: {prefix}")
 
         # Free model between groups
-        del model, ckpt
+        del model
+        if ckpt is not None:
+            del ckpt
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

@@ -1,0 +1,21 @@
+[
+ {
+  "norm": "logsoftmax",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "vs10Antigen_s0",
+   "vs10Antigen_s1",
+   "vs10Antigen_s2",
+   "vs10Antigen_s3",
+   "vs10Antigen_s4",
+   "vs10Antigen_s5",
+   "vs10Antigen_s6",
+   "vs10Antigen_s7",
+   "vs10Antigen_s8",
+   "vs10Antigen_s9"
+  ],
+  "figure_label": "antiGen, 10x val-selected epoch (mean of log-probs)",
+  "figure_group": "Val-selected, averaged over 10 holdouts"
+ }
+]

@@ -28,12 +28,38 @@ EVE_Q = len(EVE_ALPHABET)
 def _load_and_filter_msa(msa_path, metadata_path, date_cutoff, max_seqs=0):
     from antiGen.baselines.msa_transformer import load_date_filter, read_msa_fasta
 
-    print(f"  Loading metadata and filtering to dates before {date_cutoff}...")
-    allowed_strains = load_date_filter(metadata_path, date_cutoff)
-    print(f"    {len(allowed_strains)} strains pass date filter")
-    print(f"  Reading MSA from {msa_path}...")
-    msa = read_msa_fasta(msa_path, allowed_strains)
-    print(f"    {len(msa)} sequences after filtering")
+    # No metadata path means the MSA is used as given. That is correct only for an MSA
+    # already restricted to the training window -- antiGen-data-revised writes one per
+    # run from the same sequences it generated the examples from -- and it is the
+    # caller's statement, not something that can be checked here: a FASTA carries no
+    # dates, so an unfiltered pandemic MSA would pretrain on the test window and
+    # nothing downstream could tell (NOTES s55). `date_cutoff` is empty in that case
+    # and is recorded as such in the checkpoint config.
+    if not metadata_path:
+        print(f"  Reading MSA from {msa_path} (no date filter: the file is taken as "
+              f"already restricted to the training window)...")
+        msa = read_msa_fasta(msa_path)
+        print(f"    {len(msa)} sequences")
+    else:
+        print(f"  Loading metadata and filtering to dates before {date_cutoff}...")
+        allowed_strains = load_date_filter(metadata_path, date_cutoff)
+        print(f"    {len(allowed_strains)} strains pass date filter")
+        print(f"  Reading MSA from {msa_path}...")
+        msa = read_msa_fasta(msa_path, allowed_strains)
+        print(f"    {len(msa)} sequences after filtering")
+
+    # A filter that leaves only the reference row is a strain-name mismatch between the
+    # MSA and the metadata, not a result. It does NOT fail on its own: read_msa_fasta
+    # keeps msa[0] whatever the filter says, so the run would pretrain on ONE sequence
+    # and finish clean (NOTES s55). This is the hazard created by making --metadata
+    # optional -- a path that is wrong rather than absent -- so it is named here.
+    if metadata_path and len(msa) <= 1:
+        raise ValueError(
+            f"the date filter on {metadata_path} (< {date_cutoff}) left {len(msa)} "
+            f"sequence(s) of {msa_path}: {len(allowed_strains)} strains passed the "
+            f"date filter but none of them matches a header in this MSA. Check that "
+            f"the metadata belongs to this MSA, or omit --metadata if the MSA is "
+            f"already restricted to the training window.")
 
     if max_seqs > 0 and len(msa) > max_seqs:
         rng = np.random.RandomState(42)

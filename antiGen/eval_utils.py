@@ -15,6 +15,7 @@ import os
 import torch
 
 from antiGen.config import ModelConfig
+from antiGen.models.base import BaseFitnessPredictor
 
 
 # ── Loss / probability helpers ─────────────────────────────────────────────────
@@ -56,8 +57,130 @@ def compute_loss_full(probs, target_batch):
 
 RBD_RANGE = list(range(330, 531))  # 0-indexed, inclusive
 
+ALLOWED_AAS = "ACDEFGHIKLMNPQRSTVWY*-"
 
-def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None):
+
+def real_substitution_mask(n_positions, allowed_aas=ALLOWED_AAS, device=None):
+    """(n_positions, E) True on the 20 amino-acid columns, False on gap and stop.
+
+    The model-independent half of the candidate pool, and the default ``pool_mask`` for
+    :func:`compute_hit_rate`. Gap and stop are what the roster actually disagrees about:
+    across the 38 cached rungs, ``n_valid`` at the BA.2 root takes the values 3,801 /
+    3,804 / 3,819 / 4,020 / 4,221, and the whole 4,221 -> 3,819 part of that is the 201
+    gap plus 201 stop cells that antiGen, the PSSMs, pyr0, CoVFit and the factored
+    baselines emit while EVE, Tranception, BLOSUM62, evcouplings and the DMS panels do
+    not (ESM-2 and the MSA Transformers emit one of the two). Excluding both from the
+    pool for every model makes "the top decile" the same size for all of them.
+
+    It costs no target on the panels this figure reports: **0 of the 247 CoG-UK listed
+    RBD cells are a gap or a stop**, so no model loses a cell it could have been
+    credited for. The residual 3,819 -> 3,801/3,804 spread is EVEscape's 15 and the BA.2
+    DMS panels' 18 genuinely missing measurements, which are handled by ranking them
+    last inside the common pool rather than by shrinking it for everyone.
+    """
+    import torch as _t
+    keep = _t.tensor([a not in "-*" for a in allowed_aas], dtype=_t.bool, device=device)
+    return keep.unsqueeze(0).expand(n_positions, len(allowed_aas)).clone()
+
+
+def real_wildtype_mask(aa_sub, allowed_aas=ALLOWED_AAS):
+    """(B, R) True where the QUERY's own residue is one of the 20 amino acids.
+
+    The query-dependent half of the candidate pool, and the mirror image of
+    :func:`real_substitution_mask`: that one drops the gap and stop *columns*, so no
+    model can pick ``A123-`` or ``A123*``; this one drops whole *rows*, so no model can
+    pick ``-123A`` or ``*123C`` either. Until NOTES s52 only the first half existed, and
+    a position whose query residue was a gap contributed a FULL 20 candidates -- one
+    more than a normal position's 19, because the wild-type ``scatter_`` removes nothing
+    when the query's residue is not a pool column.
+
+    Measured on the 17,978 CoG-UK test queries: 2,763 of them (15.4%) carry at least one
+    gap or stop in the RBD, over 53,616 (query, position) pairs, so ~1.07M cells were in
+    the pool that describe a mutation out of missing sequence rather than out of a
+    residue.
+
+    Unlike the column mask this one is NOT free of targets, and the reason is that
+    ``mutation_lists.load_mutation_list`` reduces a list row to a ``(position, alt)``
+    cell -- the ``wildtype`` column is only a coordinate check -- so a test-set event
+    scores as a hit whatever the query's own residue was. 362 of the 26,491 listed
+    events in ``list_coguk_fullpool`` are of the form ``-501Y`` against a list row of
+    ``N501Y``: coverage returning, not a substitution. A caller that masks the pool must
+    therefore decide what to do with those events; see
+    ``rescore_common_pool --ungrounded-queries``.
+
+    ``aa_sub`` is (B, R) residue indices, already subset to the eval range.
+    """
+    import torch as _t
+    bad = _t.tensor([i for i, a in enumerate(allowed_aas) if a in "-*"],
+                    dtype=_t.long, device=aa_sub.device)
+    return ~(aa_sub.unsqueeze(-1) == bad).any(dim=-1)
+
+
+def topq_boundary(p, q, dim=-1):
+    """The boundary value of an EXACT fractional top-q selection, along ``dim``.
+
+    With ``n`` the number of non-NaN entries in a row and ``k = ceil(q * n)``, this is
+    the k-th largest non-NaN value. Then the cells strictly above it number at most
+    ``k - 1 < q * n`` and, with its tied block, at least ``k >= q * n``, so
+    ``frac = (q * n - n_above) / n_at`` lies in [0, 1] and the selection holds exactly
+    ``q * n`` cells (NOTES s161).
+
+    It replaces ``torch.nanquantile(p, 1 - q, interpolation='lower')``, which is the
+    value at ascending index ``floor((1 - q) * (n - 1))``. That one can leave MORE than
+    ``q * n`` cells strictly above it (with untied scores, n_above = n - 1 -
+    floor((1 - q)(n - 1)) can exceed q * n: n = 854 gives 86 against 85.4). The tie
+    fraction then clamps to 0 and the selection overshoots by up to one cell per query.
+    Tie-heavy scores were exact only when the boundary fell inside a tied block.
+
+    Returns the boundary with ``dim`` kept (size 1); NaN for an all-NaN row.
+
+    ``ANTIGEN_TOPQ_LEGACY=1`` restores the pre-s161 boundary, exactly as it was called.
+    It is for one purpose only: rescoring a few rows into a run whose other rows were
+    scored under that rule, so one panel never mixes the two (NOTES s163).
+    """
+    if os.environ.get("ANTIGEN_TOPQ_LEGACY") == "1":
+        return torch.nanquantile(p, 1.0 - q, dim=dim, keepdim=True, interpolation='lower')
+    p = p.float()
+    valid = ~torch.isnan(p)
+    n = valid.sum(dim=dim, keepdim=True)
+    k = torch.ceil(q * n.double() - 1e-9).clamp(min=1).long()
+    s = torch.sort(torch.where(valid, p, torch.full_like(p, float('-inf'))),
+                   dim=dim, descending=True).values
+    vb = torch.gather(s, dim, (k - 1).clamp(max=s.shape[dim] - 1))
+    return torch.where(n > 0, vb, torch.full_like(vb, float('nan')))
+
+
+def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
+                     per_cell=False, pool_mask=None, wt_pool_mask=None):
+    """Hit mass of the top-q of ``scores``, against ``target_batch``.
+
+    ``pool_mask`` is an (len(eval_range), E) boolean COMMON CANDIDATE POOL, and passing
+    one is what makes a comparison across models fair. Without it the pool is each
+    model's own emission set, so ``n_valid`` -- and with it the size of "the top decile"
+    -- varies by model: measured across this roster it runs 3,801 to 4,221, a **10%
+    spread**, almost all of it the gap and stop columns that some models emit and others
+    do not. Two models then select top-q sets of different sizes and the one with the
+    larger pool gets more chances to catch a target, which is a property of its alphabet
+    rather than of its predictions.
+
+    With a pool mask, every model ranks the same cells and selects ``q * |pool|`` of
+    them. A cell inside the pool that a model cannot score is **ranked last** rather than
+    dropped -- it stays in the denominator and is never selected -- which is the
+    convention ``background_contrast.common_percentiles`` already uses for the K-L row,
+    and it keeps one model's missing measurements from shrinking everyone's pool.
+
+    The query's own residue is masked out after the pool is applied, so ``n_valid`` is
+    ``|pool| - 1`` per query rather than exactly ``|pool|``; it is still identical across
+    models, which is the property that matters.
+
+    ``wt_pool_mask`` is a (B, R) boolean over POSITIONS -- normally
+    :func:`real_wildtype_mask` -- and is intersected into the pool a row at a time, so a
+    position whose query residue is a gap or a stop contributes no candidates at all. It
+    is what stops a model picking ``-123A``, the mirror of what ``pool_mask`` already
+    does for ``A123-``. Like ``pool_mask`` it is model-independent, so ``n_valid`` still
+    agrees across models at the same query; unlike it, it varies BETWEEN queries, which
+    is fine -- the metric only ever compares models within a query.
+    """
     target_batch = target_batch.to(scores.device)
     aa_batch = aa_batch.to(scores.device)
 
@@ -77,6 +200,43 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None)
     # predictions, giving a comparable metric across models with different -inf
     # coverage (e.g. BLOSUM62 vs the from-scratch transformer).
     scores = scores.clone()
+    # The two halves of the pool are intersected BEFORE the unscorable fill, so a cell
+    # about to leave the pool is never filled and never drags the floor down with it.
+    pm = None
+    if pool_mask is not None:
+        pm = pool_mask.to(scores.device)
+        if pm.dim() == 3:
+            # a PER-QUERY pool (B, R, E), e.g. the codon-distance-1 cells of each
+            # query's own wild type (list_macro --cd1-variants, NOTES s159)
+            if pm.shape != scores.shape:
+                raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the "
+                                 f"(batch, eval-range) score grid {tuple(scores.shape)}")
+        elif pm.shape != scores.shape[1:]:
+            raise ValueError(f"pool_mask {tuple(pm.shape)} does not match the eval-range "
+                             f"score grid {tuple(scores.shape[1:])}")
+        else:
+            pm = pm.unsqueeze(0).expand_as(scores)
+    if wt_pool_mask is not None:
+        wt = wt_pool_mask.to(scores.device)
+        if wt.shape != scores.shape[:2]:
+            raise ValueError(f"wt_pool_mask {tuple(wt.shape)} does not match the "
+                             f"(batch, eval-range) grid {tuple(scores.shape[:2])}")
+        wt = wt.unsqueeze(-1).expand_as(scores)
+        pm = wt if pm is None else (pm & wt)
+    if pm is not None:
+        # Inside the pool, a cell the model cannot score ranks LAST instead of leaving
+        # the pool: one finite step below the query's own minimum, so it is never
+        # selected and never changes the boundary value, but still counts in n_valid.
+        unscorable = (torch.isnan(scores) | torch.isneginf(scores)) & pm
+        filled_mask = unscorable.clone()
+        if unscorable.any():
+            finite = torch.where(torch.isfinite(scores), scores,
+                                 torch.full_like(scores, float('inf')))
+            floor = finite.reshape(scores.shape[0], -1).min(dim=1).values
+            floor = torch.where(torch.isfinite(floor), floor,
+                                torch.zeros_like(floor)).view(-1, 1, 1) - 1.0
+            scores = torch.where(unscorable, floor.expand_as(scores), scores)
+        scores = torch.where(pm, scores, torch.full_like(scores, float('nan')))
     scores.scatter_(2, aa_batch_sub.unsqueeze(-1), float('nan'))
     scores = torch.where(
         torch.isneginf(scores),
@@ -92,29 +252,465 @@ def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None)
     # tied cells at the boundary. That fraction is the expected count under uniform
     # random tie-breaking, so the metric is seed-free, monotone in q, and comparable
     # across models and baselines regardless of score granularity.
+    if pm is None:
+        filled_mask = None
     B = scores.shape[0]
     p_flat = scores.reshape(B, -1).float()
     valid = ~torch.isnan(p_flat)
     n_valid = valid.sum(dim=1).clamp(min=1).float()          # (B,)
     n_needed = qtile * n_valid                                # (B,) target count to select
     # Boundary value = largest actual data value at/below the (1-q) quantile.
-    vb = torch.nanquantile(p_flat, 1.0 - qtile, dim=1, interpolation='lower').view(B, 1, 1)
+    vb = topq_boundary(p_flat, qtile, dim=1).view(B, 1, 1)   # exact q * n (NOTES s161)
     above = scores > vb                                       # strictly inside top-q
     at = scores == vb                                         # tied at the boundary
     n_above = above.reshape(B, -1).sum(dim=1).float()
     n_at = at.reshape(B, -1).sum(dim=1).float().clamp(min=1)
     frac = ((n_needed - n_above) / n_at).clamp(0.0, 1.0)     # (B,) share of tied block
+    if filled_mask is not None and filled_mask.any():
+        # A cell the model could not score ranks last but must never be SELECTED; see
+        # rank_fractions' `return_filled` note for the measurement that forced this.
+        keep = ~(filled_mask & ~torch.isnan(scores))
+        above = above & keep
+        at = at & keep
     hits_above = (above * target_batch).reshape(B, -1).sum(dim=1)
     hits_at = (at * target_batch).reshape(B, -1).sum(dim=1)
     n_hits = (hits_above + frac * hits_at).sum().item()
     n_mutations = target_batch.sum().item()
 
+    if per_cell:
+        # The same hit mass, kept per (position, residue) instead of summed over the
+        # batch, so a caller can average over CELLS rather than over mutation EVENTS.
+        # The two differ sharply on a curated list, whose cells recur at wildly
+        # different rates across the test set (CoG-UK RBD: k from 1 to 972 events per
+        # cell), so the event-weighted mean is dominated by a handful of cells.
+        # Summing these two tensors reproduces (n_hits, n_mutations) exactly.
+        cell_hits = ((above * target_batch).float()
+                     + frac.view(B, 1, 1) * (at * target_batch).float()).sum(dim=0)
+        cell_events = target_batch.float().sum(dim=0)
+        return n_hits, n_mutations, cell_hits, cell_events
+
     return n_hits, n_mutations
 
 
+
+# ── Per-source epoch validation (multi-tree training) ─────────────────────────
+
+class CellDumper:
+    """Collects one epoch's per-source validation probability maps, then writes an .npz.
+
+    Use as the ``cell_sink`` of :func:`validate_per_source`. Stored as float16 — these
+    are probabilities read back for ranking and decomposition, where float16 is ample,
+    and it halves what is already the largest artifact a run produces.
+
+    The saved arrays are indexed ``[example, position, amino_acid]`` with example order
+    equal to the validation loader's order, which is the same order as the
+    ``per_example`` arrays in the metrics JSON.
+    """
+
+    def __init__(self):
+        self.by_source = {}
+
+    def __call__(self, name, probs):
+        self.by_source.setdefault(name, []).append(
+            probs.detach().to(torch.float16).cpu().numpy())
+
+    def save(self, path, **metadata):
+        import numpy as np
+        arrays = {name: np.concatenate(chunks, axis=0)
+                  for name, chunks in self.by_source.items()}
+        for key, value in metadata.items():
+            arrays[f"meta_{key}"] = np.asarray(value)
+        np.savez_compressed(path, **arrays)
+        return sum(a.nbytes for a in arrays.values())
+
+
+@torch.no_grad()
+def validate_per_source(model, loaders_by_source, device, qtiles=(0.1, 0.25),
+                        cell_sink=None):
+    """Validation NLL per observed mutation, overall and per source phylogeny.
+
+    ``loaders_by_source`` maps a source name to a DataLoader. Each loader must be
+    length-homogeneous (one phylogeny is one protein, so one L), which is automatic when
+    sources are split by file.
+
+    Hit rates use ``eval_range=range(L)``: the module default ``RBD_RANGE`` is spike-
+    specific and would otherwise be applied silently to a 566-residue HA.
+
+    ``n_mutations`` is accumulated here rather than taken from ``compute_loss_full``,
+    whose per-batch count is ``clamp(min=1)`` and would inflate the denominator for a
+    batch with no observed mutations.
+
+    ``cell_sink``, if given, is called as ``cell_sink(source_name, probs)`` once per
+    batch with the full wild-type-masked ``(batch, L, E)`` probability tensor, before any
+    reduction. Scoring is unchanged whether or not it is supplied — it only observes.
+    """
+    import math
+
+    was_training = model.training
+    model.eval()
+    vocab = model.config.alphabet.vocab_size
+    # A 20-letter alphabet has no stop column, so there is nothing to mask and the
+    # question of whether the model emits one legitimately does not arise -- the same
+    # reasoning as `build_model_gap_stop_mask` (NOTES s53/s56). Until s56 this read
+    # `.index('*')` unconditionally and raised `ValueError: substring not found`; it
+    # survived s53 only because that arm's `--val-mode file` left every validation
+    # loader empty, so this function was never called.
+    aas = model.config.alphabet.amino_acids
+    stop_idx = aas.index('*') if '*' in aas else None
+    mask_stop = stop_idx is not None and not getattr(model, 'OUTPUTS_LEGITIMATE_STOP', True)
+
+    per_source, total_loss, total_n = {}, 0.0, 0.0
+    for name, loader in loaders_by_source.items():
+        loss_sum = n_mutations = 0.0
+        hits = {q: 0.0 for q in qtiles}
+        seq_len = None
+        example_loss, example_n = [], []
+        for aa_batch, target_batch in loader:
+            aa_batch = aa_batch.to(device)
+            target_batch = target_batch.to(device)
+            seq_len = aa_batch.shape[1]
+            logits = model(aa_batch).float()
+            probs = compute_probs(logits, target_batch, aa_batch)
+            batch_loss, _ = compute_loss_full(probs, target_batch)
+            loss_sum += batch_loss.item()
+            n_mutations += target_batch.sum().item()
+
+            # Per-example NLL, so two runs over the same (deterministically ordered)
+            # validation set can be compared example-by-example rather than only in
+            # aggregate. The loader is shuffle=False, so index i is the same example
+            # in every run that used the same --split-seed and source name.
+            normalized = probs / probs.sum(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+            example_loss.extend(
+                (-(target_batch * torch.log(normalized))).sum(dim=(1, 2)).tolist())
+            example_n.extend(target_batch.sum(dim=(1, 2)).tolist())
+
+            if cell_sink is not None:
+                # The renormalized map, so a consumer can reproduce per_example.loss
+                # exactly as -(target * log(cells)).sum() and know the dump is faithful.
+                cell_sink(name, normalized)
+
+            scores = logits.clone()
+            if mask_stop:
+                scores[:, :, stop_idx] = float('nan')
+            full_range = list(range(seq_len))
+            for q in qtiles:
+                n_hits, _ = compute_hit_rate(scores, target_batch, aa_batch,
+                                             qtile=q, eval_range=full_range)
+                hits[q] += n_hits
+
+        per_source[name] = {
+            'seq_len': seq_len,
+            'n_mutations': n_mutations,
+            'nll_per_mutation': loss_sum / max(n_mutations, 1.0),
+            # A uniform predictor over the non-wild-type cells scores exactly this,
+            # because compute_probs zeroes the WT cell and the loss renormalizes.
+            'uniform_nll_per_mutation': (math.log(seq_len * (vocab - 1))
+                                         if seq_len else float('nan')),
+            'hit_rate': {f"{q:g}": hits[q] / max(n_mutations, 1.0) for q in qtiles},
+            'per_example': {'loss': example_loss, 'n_mutations': example_n},
+        }
+        total_loss += loss_sum
+        total_n += n_mutations
+
+    if was_training:
+        model.train()
+    return {
+        'overall': {'nll_per_mutation': total_loss / max(total_n, 1.0),
+                    'n_mutations': total_n},
+        'per_source': per_source,
+    }
+
+
+def fit_substitution_baseline(train_examples, device, alphabet, steps=300, lr=0.05,
+                              batch_size=16, use_blosum=True, seed=0):
+    """Fit the learned codon x BLOSUM62 substitution matrix on one source's TRAIN half.
+
+    This is the strong substitution-level baseline: 25 free scalars (a transition/
+    transversion ratio, two mixing weights and a 22-dim amino-acid background) on top of
+    the genetic code and BLOSUM62, fitted with the same objective the models are trained
+    with. It knows nothing about position, so beating it is evidence that a model has
+    learned where mutations happen, and failing to beat it means a model has not learned
+    more than substitution chemistry.
+
+    Returns the fitted model, in eval mode.
+    """
+    import torch.optim as optim
+
+    from antiGen.config import (AlphabetConfig, ModelConfig, ModelType,
+                                SubstitutionConfig)
+    from antiGen.models.factory import create_model
+
+    seq_len = len(train_examples[0].aa_idx)
+    model = create_model(
+        ModelConfig(model_type=ModelType.SUBSTITUTION, seq_len=seq_len,
+                    alphabet=AlphabetConfig(amino_acids=alphabet),
+                    substitution=SubstitutionConfig(use_blosum=use_blosum)),
+        device)
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    generator = torch.Generator().manual_seed(seed)
+
+    n = len(train_examples)
+    for step in range(steps):
+        idx = torch.randint(0, n, (min(batch_size, n),), generator=generator).tolist()
+        aa_batch = torch.stack([train_examples[i].aa_idx for i in idx]).to(device)
+        target_batch = torch.stack([train_examples[i].mat for i in idx]).to(device)
+        optimizer.zero_grad()
+        loss = compute_loss_batch(
+            compute_probs(model(aa_batch), target_batch, aa_batch), target_batch)
+        loss.backward()
+        optimizer.step()
+
+    model.eval()
+    return model
+
+
+def frequency_baseline_scores(examples, seq_len, vocab_size, alpha=0.5):
+    """Laplace-smoothed per-position child-mutation counts from one source's TRAIN half.
+
+    Returned as counts; take ``log()`` before feeding them through ``compute_probs``,
+    since ``softmax(log c) == c / sum(c)``, so the baseline is scored by exactly the same
+    wild-type-masked, renormalized machinery as the model.
+    """
+    counts = torch.zeros(seq_len, vocab_size)
+    for example in examples:
+        counts += example.mat
+    return counts + alpha
+
+
+def positional_marginal_counts(examples, seq_len, vocab_size, alpha=0.5):
+    """Train-half child-mutation counts collapsed onto positions — the pure "where" signal.
+
+    Returns a ``(seq_len,)`` tensor of each position's total smoothed count, i.e. the row
+    sums of ``frequency_baseline_scores``. Factored out so the where-only map and the
+    factorized where x which predictor share one definition of "where".
+    """
+    return frequency_baseline_scores(examples, seq_len, vocab_size, alpha).sum(dim=1)
+
+
+def where_only_baseline_scores(examples, seq_len, vocab_size, alpha=0.5):
+    """The frequency baseline with its amino-acid axis flattened to uniform.
+
+    Each row keeps the total mass ``frequency_baseline_scores`` gave that position but
+    spreads it evenly over the vocabulary, so this baseline knows *where* mutations
+    happen and nothing about *which* residue appears. The gap between this and the
+    frequency baseline is therefore exactly the value of the alt-AA distribution.
+
+    Note that ``frequency_baseline_scores`` is the empirical *joint* over
+    (position, alt_aa) despite being described elsewhere as a per-position map; this is
+    the position-only object that name suggests.
+
+    Returned as counts, like ``frequency_baseline_scores``: take ``log()`` before
+    scoring, so the same wild-type-masked renormalization applies.
+    """
+    per_position = positional_marginal_counts(examples, seq_len, vocab_size, alpha)
+    return (per_position / vocab_size).unsqueeze(1).expand(-1, vocab_size).contiguous()
+
+
+class WhereTimesWhichPredictor(BaseFitnessPredictor):
+    """Factorized ``P(i, a) = P(i) * P(a | wt_i)`` — the independence reference.
+
+    ``P(i)`` is the train-half positional marginal (the "where" term, the same one
+    ``where_only_baseline_scores`` uses). ``P(a | wt_i)`` is the fitted substitution
+    model's row for the wild-type residue at ``i`` (the "which" term, which knows the
+    genetic code and BLOSUM62 but not the position).
+
+    This is the strongest predictor that assumes where and which are *independent*. A
+    trained model that does not beat it has learned no position-specific substitution
+    preference, which is the central thing we want to know.
+
+    Scores are example-dependent (the which term is indexed by the example's own
+    residues), so unlike the other map-shaped baselines this cannot go through
+    ``fixed_map_metrics`` — it implements the model interface and is scored by
+    ``validate_per_source`` instead.
+    """
+
+    # Inherited from the substitution model: both special columns carry a learned bias.
+    OUTPUTS_LEGITIMATE_GAP = True
+    OUTPUTS_LEGITIMATE_STOP = True
+
+    def __init__(self, config, positional_counts, substitution_model):
+        super().__init__(config)
+        self.register_buffer(
+            'log_position', torch.log(positional_counts.clamp(min=1e-12)).float())
+        self.substitution = substitution_model
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        # log_softmax over the destination axis makes the which term a proper
+        # conditional, so the product is a genuine factorization rather than two
+        # score scales added together.
+        which = torch.log_softmax(self.substitution.score_matrix()[x], dim=-1)
+        return which + self.log_position.view(1, -1, 1)
+
+
+class CountedStatPredictor(BaseFitnessPredictor):
+    """The counted-statistic family: Site x Substitution and its MCM interpolation.
+
+    Thin wrapper over ``antiGen.statistical_baselines``, which is the single source of
+    truth for this math and is kept VERBATIM from the branch it was written on so the
+    two arms cannot drift. This class exists only to put that math behind the model
+    interface, because the scores are example-dependent -- ``M[wt_i, a]`` is indexed by
+    the query's own residues -- so they cannot go through ``fixed_map_metrics``.
+
+    THE SIBLINGS ALREADY ON THESE PANELS. ``site_substitution`` is
+    ``where_times_which`` with a COUNTED substitution matrix in place of the fitted
+    codon x BLOSUM one, and ``mcm_interpolation`` is ``wxw_dirichlet`` with the same
+    swap -- same conjugate form, same kappa = N_total. So the pair reads directly as
+    what the fitted "which" term buys over simply counting substitutions.
+    """
+
+    def __init__(self, config, stats, key: str):
+        super().__init__(config)
+        self._key = key
+        self.register_buffer('_st_N', stats['N'].float())
+        self.register_buffer('_st_occ', stats['occ'].float())
+        self.register_buffer('_st_s', stats['s'].float())
+        self.register_buffer('_st_M', stats['M'].float())
+        self._n_total = float(stats['N_total'])
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        from antiGen.statistical_baselines import score_map
+        return score_map(self._key, {'N': self._st_N, 'occ': self._st_occ,
+                                     's': self._st_s, 'M': self._st_M,
+                                     'N_total': self._n_total}, x)
+
+    def get_num_parameters(self, trainable_only: bool = True) -> int:
+        return 0
+
+
+class WhereTimesWhichDirichletPredictor(BaseFitnessPredictor):
+    """``where_times_which`` as a conjugate PRIOR, updated by the observed events.
+
+    ``WhereTimesWhichPredictor`` and the event-count map are the two ends of one
+    question. The factored map says what a mutation should look like if where and
+    which are independent and position-specific history is worth nothing; the raw
+    event counts say the opposite, that only the cells actually seen matter. Each is
+    wrong in the obvious way -- the factored map cannot learn that one site mutates
+    to one residue over and over, and the counts assign nothing at all to a cell the
+    training window happens not to contain.
+
+    This blends them as a Dirichlet posterior mean. The factored joint is the base
+    measure, carrying concentration ``kappa``; every observed mutation event is one
+    conjugate update::
+
+        q[i, a] = (N[i, a] + kappa * pi[i, a]) / (N_total + kappa)
+        pi[i, a] = P(i) * P(a | wt_i)        -- the factored joint, summing to 1
+
+    The default ``kappa = N_total`` gives prior and data equal weight, which is the
+    setting the idea arrived with.
+
+    TWO LIMITS, AND THEY ARE THE GATE. ``kappa -> inf`` is the factored map and
+    ``kappa -> 0`` is the event-count map, both EXACTLY and both up to one additive
+    constant over the whole map -- which within-query ranking does not see. The
+    first of those is a rung drawn on the same panels, so the identity can be checked
+    against this arm's own output rather than against an argument
+    (``test_wxw_dirichlet.py``).
+
+    One consequence worth stating because it is easy to mistake for a bug: nothing
+    here needs Laplace smoothing. ``N`` is the RAW event count, unsmoothed, because
+    ``kappa * pi`` is already strictly positive in every cell -- that is what a prior
+    is for. Adding ``alpha`` to ``N`` as well would smooth twice and would break both
+    limits.
+
+    Scores are example-dependent through the which term, so like its parent this is
+    scored through the model path rather than ``fixed_map_metrics``.
+    """
+
+    # Inherited from the substitution model, exactly as the factored predictor is:
+    # both special columns carry mass under the prior.
+    OUTPUTS_LEGITIMATE_GAP = True
+    OUTPUTS_LEGITIMATE_STOP = True
+
+    def __init__(self, config, event_counts, positional_counts, substitution_model,
+                 kappa=None):
+        super().__init__(config)
+        self.register_buffer('event_counts', event_counts.float())
+        # Normalized here, unlike the parent's: a prior has to be a distribution, and
+        # the parent only ever needed this term up to a constant.
+        self.register_buffer(
+            'log_position',
+            torch.log_softmax(torch.log(positional_counts.clamp(min=1e-12)).float(),
+                              dim=0))
+        self.substitution = substitution_model
+        n_total = float(event_counts.sum())
+        self.n_total = n_total
+        self.kappa = n_total if kappa is None else float(kappa)
+        # With no events AND no prior weight the posterior is 0/0, and the map comes
+        # out all-NaN -- which ranks as a silent tie everywhere rather than failing.
+        # N_total = 0 means the training window carried no mutation at all, so this is
+        # a broken fit and not a case to paper over with a fallback.
+        if self.kappa <= 0.0:
+            raise ValueError(
+                f"kappa must be > 0 (got {self.kappa}); with kappa = 0 the posterior "
+                f"is the raw event map and every unobserved cell is log(0). "
+                + ("The default kappa is N_total, which is 0 here: these training "
+                   "examples carry no mutation events." if n_total == 0 else ""))
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        which = torch.log_softmax(self.substitution.score_matrix()[x], dim=-1)
+        prior = torch.exp(which + self.log_position.view(1, -1, 1))
+        q = ((self.event_counts.unsqueeze(0) + self.kappa * prior)
+             / (self.n_total + self.kappa))
+        return torch.log(q.clamp(min=1e-30))
+
+
+def where_times_which_dirichlet(substitution_model, examples, seq_len, vocab_size,
+                                kappa=None):
+    """Build the Dirichlet blend from the same pieces the factored baseline uses.
+
+    One constructor for all four entry points (``eval``, ``list_macro``,
+    ``list_variant_recall``, ``background_discrimination``), so the four cannot drift
+    into scoring four slightly different models under one name.
+
+    ``alpha=0.0`` is the point: the counts enter RAW and the prior does the smoothing.
+    """
+    return WhereTimesWhichDirichletPredictor(
+        substitution_model.config,
+        frequency_baseline_scores(examples, seq_len, vocab_size, alpha=0.0),
+        positional_marginal_counts(examples, seq_len, vocab_size),
+        substitution_model,
+        kappa=kappa)
+
+
+@torch.no_grad()
+def fixed_map_metrics(score_map, loader, device, qtiles=(0.1, 0.25)):
+    """NLL per mutation and hit rates of a fixed ``(seq_len, vocab)`` score map."""
+    log_map = torch.log(score_map.to(device))
+    loss_sum = n_mutations = 0.0
+    hits = {q: 0.0 for q in qtiles}
+    example_loss, example_n = [], []
+    for aa_batch, target_batch in loader:
+        aa_batch = aa_batch.to(device)
+        target_batch = target_batch.to(device)
+        logits = log_map.unsqueeze(0).expand(aa_batch.shape[0], -1, -1).contiguous()
+        probs = compute_probs(logits, target_batch, aa_batch)
+        batch_loss, _ = compute_loss_full(probs, target_batch)
+        loss_sum += batch_loss.item()
+        n_mutations += target_batch.sum().item()
+
+        # Per-example NLL, on the same renormalized footing as validate_per_source, so a
+        # baseline and a model can be compared example-by-example over a shuffle=False
+        # loader. Observational: nothing above depends on it.
+        normalized = probs / probs.sum(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+        example_loss.extend(
+            (-(target_batch * torch.log(normalized))).sum(dim=(1, 2)).tolist())
+        example_n.extend(target_batch.sum(dim=(1, 2)).tolist())
+
+        full_range = list(range(aa_batch.shape[1]))
+        for q in qtiles:
+            n_hits, _ = compute_hit_rate(logits, target_batch, aa_batch,
+                                         qtile=q, eval_range=full_range)
+            hits[q] += n_hits
+    return {
+        'nll_per_mutation': loss_sum / max(n_mutations, 1.0),
+        'hit_rate': {f"{q:g}": hits[q] / max(n_mutations, 1.0) for q in qtiles},
+        'per_example': {'loss': example_loss, 'n_mutations': example_n},
+    }
+
 @torch.no_grad()
 def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets=10,
-                  eval_range=None, model_gap_stop_mask=None):
+                  eval_range=None, model_gap_stop_mask=None, common_pool=None,
+                  alphabet=ALLOWED_AAS, score_sink=None):
     """Evaluate loss and hit rates over the entire dataloader, fanning out across variants.
 
     Does a single forward pass per batch and computes hit rates for every variant
@@ -124,13 +720,35 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
            no loss). Passing None lets eval.py run the baseline sweep once instead
            of re-scoring baselines against every model.
     variants: list of (label, seen_mask) tuples. seen_mask is a (seq_len, E) bool tensor
-              (True = previously seen mutation to exclude) or None (no masking).
+              (True = cell to exclude), None (no masking), or a (score_mask,
+              target_mask) pair when the candidate pool and the target set should be
+              restricted differently -- either element may be None.
     baselines: list of (name, probs_2d) where probs_2d is a (seq_len, E) tensor
                used as a fixed baseline for all examples.
     model_gap_stop_mask: optional (seq_len, E) bool tensor. Cells that are True are
                NaN-masked in the model's scores right after the forward pass (before
                any variant-specific masking), so models that emit sentinel/garbage at
                gap/stop columns don't get those cells ranked. Baselines are unaffected.
+    common_pool: optional (len(eval_range), E) bool COMMON CANDIDATE POOL, normally
+               :func:`real_substitution_mask`. Passing one is what makes "the top q"
+               the same SIZE for every rung: the variant's score mask narrows the pool
+               rather than being burned into the scores, and a cell inside the pool
+               that a model cannot score ranks last instead of leaving the pool, so
+               ``n_valid`` is ``|pool| - 1`` for every model alike. ``None`` is the
+               published per-model behaviour, where ``n_valid`` is each model's own
+               emission set and a partially-covering map gets a smaller top-q set.
+               See :func:`compute_hit_rate` and NOTES s51/s68.
+    alphabet:  the amino-acid string, used only to build the query-dependent half of
+               the pool (:func:`real_wildtype_mask`) when ``common_pool`` is given.
+    score_sink: optional ``sink(start, arr)`` called once per batch with the model's
+               eval-range scores as a (B, len(eval_range), E) float32 array, at query
+               offset ``start``. Observational -- the metric is identical whether or
+               not it is supplied. The slice handed over is the one
+               ``antiGen.score_cache`` specifies: the model's gap/stop mask already
+               applied (a property of the model), the query's own residue still
+               present (a property of the query, applied by the metric), and -inf
+               sentinels as they are. The dataloader must be ``shuffle=False`` or the
+               offsets name the wrong queries.
 
     Returns dict: label -> (avg_loss, hit_rate_by_qtile, baseline_hits_by_qtile).
     avg_loss is the same across variants (masking only changes hit-rate accounting).
@@ -138,6 +756,10 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     """
     if baselines is None:
         baselines = []
+    if eval_range is None:
+        eval_range = RBD_RANGE
+    if common_pool is not None:
+        common_pool = common_pool.to(device)
 
     if model is not None:
         model.eval()
@@ -151,6 +773,7 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     var_total_rbd_mutations = {label: 0 for label, _ in variants}
 
     n_total_batches = len(dataloader)
+    n_seen = 0
     for batch_idx, (aa_batch, target_batch) in enumerate(dataloader):
         if batch_idx % 10 == 0:
             print(f"  [evaluate_full] batch {batch_idx}/{n_total_batches}", flush=True)
@@ -171,8 +794,17 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
             scores = logits.clone()
             if model_gap_stop_mask is not None:
                 scores[:, model_gap_stop_mask] = float('nan')
+            if score_sink is not None:
+                score_sink(n_seen, scores[:, eval_range, :].detach().float().cpu().numpy())
         else:
             scores = None
+        n_seen += batch_size
+
+        # The query-dependent half of the common pool: a position whose own residue
+        # is a gap or a stop contributes no candidates, the mirror of the gap/stop
+        # COLUMNS real_substitution_mask already drops. A no-op at 20 letters.
+        wt_pool = (real_wildtype_mask(aa_batch[:, eval_range], alphabet)
+                   if common_pool is not None else None)
 
         # Build per-example wild-type mask once; baselines mask out wild-type to NaN.
         masked_baselines = {}
@@ -185,34 +817,69 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
                 masked_baselines[name] = bp
 
         for label, seen_mask in variants:
-            if seen_mask is None:
-                v_scores = scores
+            # A variant's mask is normally one (seq_len, E) bool applied to the scores,
+            # the baselines AND the targets together -- that is what makes the de novo
+            # subset "rank unseen cells among unseen cells". A variant may instead pass
+            # a (score_mask, target_mask) pair to decouple the two: restricting only
+            # the targets keeps the full candidate pool, which asks whether the listed
+            # mutations rank highly among ALL cells rather than among each other. Both
+            # readings are wanted for curated mutation lists, where the listed cells
+            # are nearly all observed and a pool restricted to them has almost no
+            # negatives left to rank against.
+            if isinstance(seen_mask, tuple):
+                score_mask, target_mask = seen_mask
+            else:
+                score_mask = target_mask = seen_mask
+
+            # The TARGET side is the same under either pool convention.
+            if target_mask is None:
                 v_target = target_batch
+            else:
+                v_target = target_batch.clone()
+                tm_dev = target_mask.to(device)
+                v_target[tm_dev.unsqueeze(0).expand_as(v_target)] = 0
+
+            # The CANDIDATE side has two. With a common pool the variant's score mask
+            # NARROWS THE POOL and nothing is written into the scores, so every rung
+            # ranks the same cells and selects q * |pool| of them; without one, the
+            # published behaviour, where the mask is burned in as NaN and n_valid is
+            # each model's own emission set.
+            v_pool = None
+            if common_pool is not None:
+                v_pool = common_pool
+                if score_mask is not None:
+                    v_pool = v_pool & ~score_mask.to(device)[eval_range, :]
+                v_scores = scores
+                v_masked_baselines = masked_baselines
+            elif score_mask is None:
+                v_scores = scores
                 v_masked_baselines = masked_baselines
             else:
-                sm_dev = seen_mask.to(device)
                 if scores is not None:
                     v_scores = scores.clone()
+                    sm_dev = score_mask.to(device)
                     v_scores[sm_dev.unsqueeze(0).expand_as(v_scores)] = float('nan')
                 else:
-                    v_scores = None
-                v_target = target_batch.clone()
-                v_target[sm_dev.unsqueeze(0).expand_as(v_target)] = 0
+                    v_scores = scores
                 v_masked_baselines = {}
                 for name, mb in masked_baselines.items():
                     mb_copy = mb.clone()
-                    mb_copy[seen_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
+                    mb_copy[score_mask.unsqueeze(0).expand_as(mb_copy)] = float('nan')
                     v_masked_baselines[name] = mb_copy
 
             for i in range(n_buckets - 1):
                 qtile = (i + 1) / n_buckets
                 rbd_muts_this = None
                 if v_scores is not None:
-                    hits, rbd_muts_this = compute_hit_rate(v_scores, v_target, aa_batch, qtile, eval_range=eval_range)
+                    hits, rbd_muts_this = compute_hit_rate(
+                        v_scores, v_target, aa_batch, qtile, eval_range=eval_range,
+                        pool_mask=v_pool, wt_pool_mask=wt_pool)
                     var_total_hits[label][i] += hits
 
                 for name, _ in baselines:
-                    b_hits, b_rbd = compute_hit_rate(v_masked_baselines[name], v_target, aa_batch, qtile, eval_range=eval_range)
+                    b_hits, b_rbd = compute_hit_rate(
+                        v_masked_baselines[name], v_target, aa_batch, qtile,
+                        eval_range=eval_range, pool_mask=v_pool, wt_pool_mask=wt_pool)
                     var_baseline_hits[label][name][i] += b_hits
                     if rbd_muts_this is None:
                         rbd_muts_this = b_rbd
@@ -245,7 +912,8 @@ def evaluate_full(model, dataloader, device, variants, baselines=None, n_buckets
     return results
 
 
-def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, quantiles=(0.1,)):
+def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
+                      quantiles=(0.1,), pool_mask=None):
     """Variant-emergence hit rate for one (seq_len, E) score map, per top-q quantile.
 
     Masks wild-type to NaN, then for each ``q`` in ``quantiles`` takes the top-q
@@ -261,22 +929,65 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, 
     boundary block of equal scores is counted with weight (n_needed - n_above)/n_at,
     the expected share under random tie-breaking. This makes the metric seed-free and
     fair to coarse-valued predictors (e.g. BLOSUM62) instead of over-selecting them.
+
+    ``pool_mask`` is the COMMON CANDIDATE POOL, and it matters more here than on the
+    recall row because ``n_valid`` is this metric's DENOMINATOR, not just the size of
+    the set it searches: without one, a map that declines to score part of the eval
+    range is scored against a top decile that much smaller, so it can catch strictly
+    fewer emerged cells than a rival and still report the higher precision. With one,
+    a cell inside the pool that the map cannot score is filled one step below the
+    minimum -- it ranks LAST, stays in ``n_valid``, and is never selected. Same
+    treatment as ``list_variant_recall.top_q_weights``, which is where it was first
+    measured (NOTES s51); carried here by s68.
+
+    The pool is the caller's to build, and it must be exactly this spec's candidate
+    set: every restriction the caller expressed by writing NaN into ``prob_2d`` (the
+    de novo cut, a curated list) has to be struck from the pool too, or those cells
+    would be filled and ranked last rather than leaving the pool, inflating the
+    denominator. ``wt_mask`` is intersected in here because it is passed explicitly.
     """
     p = prob_2d.clone()
     p[~wt_mask] = float('nan')
     pf = p.float()
+    filled = None
+    if pool_mask is not None:
+        pm = pool_mask.to(pf.device) & wt_mask.to(pf.device)
+        unscorable = (torch.isnan(pf) | torch.isneginf(pf)) & pm
+        filled = unscorable.clone()
+        if unscorable.any():
+            finite = pf[torch.isfinite(pf)]
+            floor = (float(finite.min()) - 1.0) if finite.numel() else 0.0
+            pf = torch.where(unscorable, torch.full_like(pf, floor), pf)
+        pf = torch.where(pm, pf, torch.full_like(pf, float('nan')))
     n_valid = int((~torch.isnan(pf)).sum().item())
     high_count_masks = [pv >= threshold_count for pv in pssm_variant_list]
     out = {}
     for q in quantiles:
         n_needed = q * n_valid
-        vb = torch.nanquantile(pf, 1.0 - q, interpolation='lower')
+        vb = topq_boundary(pf.reshape(-1), q).reshape(())   # exact q * n (NOTES s161)
         above = pf > vb
         at = pf == vb
+        # The tie fraction is taken over the WHOLE boundary block, filled cells
+        # included -- they occupy top-q slots, they simply cannot be credited --
+        # which is how `list_variant_recall.top_q_weights` computes it.
         n_above = above.sum().item()
         n_at = max(at.sum().item(), 1)
         frac = min(max((n_needed - n_above) / n_at, 0.0), 1.0)
-        n_selected = max(n_above + frac * n_at, 1e-9)  # = n_needed (top-q count)
+        if filled is not None and filled.any():
+            # Ranked last is not never-selected: the filled cells are one tie block,
+            # so a large enough q puts the boundary inside it. They stay in n_valid
+            # (and so in n_selected) but can never be counted as caught.
+            above = above & ~filled
+            at = at & ~filled
+        # The denominator is the selected set, counted at-or-above the boundary with
+        # the filled cells INCLUDED -- they occupy top-q slots that simply cannot be
+        # credited, which is how a map pays for the range it declined to score. Note
+        # this is the actual count, not the target q*n_valid the two differ from by
+        # one boundary cell; `list_variant_recall.curve` takes the target instead, so
+        # the two rows differ at ~1e-4 and are not read against each other. Keeping
+        # the count is what makes a fully-scoring rung bit-identical to its published
+        # value, which is the property worth more here (NOTES s68).
+        n_selected = max(n_above + frac * n_at, 1e-9)
         rates = []
         for hm in high_count_masks:
             n_hits = (above & hm).sum().item() + frac * (at & hm).sum().item()
@@ -288,10 +999,17 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100, 
 # ── Mask construction ──────────────────────────────────────────────────────────
 
 def build_special_mask(seq_len, E, gap_idx, stop_idx):
-    """(seq_len, E) bool mask marking gap and stop AA columns True."""
+    """(seq_len, E) bool mask marking gap and stop AA columns True.
+
+    ``gap_idx`` / ``stop_idx`` of None mean the alphabet carries no such column, which
+    is the 20-letter frame antiGen-data-revised writes: nothing is special, so the mask
+    is all-False and every downstream exclusion becomes a no-op (NOTES s54).
+    """
     special_mask = torch.zeros(seq_len, E, dtype=torch.bool)
-    special_mask[:, gap_idx] = True
-    special_mask[:, stop_idx] = True
+    if gap_idx is not None:
+        special_mask[:, gap_idx] = True
+    if stop_idx is not None:
+        special_mask[:, stop_idx] = True
     return special_mask
 
 
@@ -301,16 +1019,89 @@ def build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx):
     Reads ``OUTPUTS_LEGITIMATE_GAP`` / ``OUTPUTS_LEGITIMATE_STOP`` on the model. Cells
     that are True should be NaN-masked in the model's scores so sentinel/unk-fallback
     values don't get ranked. An all-False mask (both legit) means no masking.
+
+    ``gap_idx`` / ``stop_idx`` may be None, which is what a 20-letter alphabet gives:
+    there is no column to mask, so the question of whether a model emits it legitimately
+    does not arise and the mask is all-False (NOTES s53).
     """
     mask = torch.zeros(seq_len, E, dtype=torch.bool)
-    if not model.OUTPUTS_LEGITIMATE_GAP:
+    if gap_idx is not None and not model.OUTPUTS_LEGITIMATE_GAP:
         mask[:, gap_idx] = True
-    if not model.OUTPUTS_LEGITIMATE_STOP:
+    if stop_idx is not None and not model.OUTPUTS_LEGITIMATE_STOP:
         mask[:, stop_idx] = True
     return mask
 
 
 # ── Baseline loading ────────────────────────────────────────────────────────────
+
+class MeanLogProbEnsemble(torch.nn.Module):
+    """N checkpoints combined as the mean of their per-query log-probabilities.
+
+    This is the published "Mean of log-probs" rule -- `ensemble_rules`'
+    ``logsoftmax`` / ``arith`` -- expressed as a MODEL rather than as an operation on
+    cached score maps, so the eval scores it through exactly the same masks, candidate
+    pool and quantile machinery as every other rung. The alternative, dumping each
+    member's map and recombining it, has to reproduce those three things by hand.
+
+    **The two normalisations compose, and that is what makes this faithful.**
+    `compute_probs` turns whatever a model returns into
+    ``softmax(logits.flatten(1), dim=1)`` -- per QUERY, over the flattened
+    (positions x residues) cells. This module returns the mean of each member's
+    ``log_softmax`` over that same flattened axis. Softmax of that mean is a strictly
+    increasing function of it, and the hit-rate metrics depend on within-query RANKS
+    alone, so the ranking the eval sees is the mean-of-log-probs ranking exactly.
+
+    **Two preconditions, true for the endemic arm and checked by the caller.** The
+    cached-map rule normalises over the EVAL RANGE; this normalises over the full
+    sequence, so the two agree only where the eval range is the whole protein -- which
+    it is for flu, rsv_a and denv2 (`eval.py`: ``eval_range = list(range(seq_len))``).
+    And ``union_min`` NaN handling is a no-op for members that never abstain, which
+    these -- one architecture, no coverage gaps -- do not.
+
+    A ONE-member ensemble is therefore a no-op on ranks, which is the gate:
+    ``test_one_member_is_a_no_op`` pins it.
+
+    **The first precondition is stronger than it needs to be** (NOTES s123). A member's
+    log-softmax is its logits minus ONE constant per query, whichever positions it is
+    normalised over, so the arith mean is the mean logit minus one constant per query
+    and its within-query ranks are the same under either range. What differs is only
+    the values. ``eval_range`` makes the values match the cached maps too: each member
+    is log-softmaxed over those positions only -- exactly the (eval range x residues)
+    slice a ``--dump-scores`` map holds -- and every position outside is ``-inf``.
+    Every consumer slices to the eval range before ranking (`compute_hit_rate`), so
+    those cells are never read; ``-inf`` rather than 0 so that a consumer which forgot
+    to slice would see them rank last instead of silently mid-table. It does NOT lift
+    the second precondition: a member that NaN-masks cells would need a NaN-aware
+    logsumexp, and `list_macro` refuses that case.
+    """
+
+    def __init__(self, members, eval_range=None):
+        super().__init__()
+        if not members:
+            raise ValueError("MeanLogProbEnsemble needs at least one member")
+        self.members = torch.nn.ModuleList(members)
+        self.eval_range = None if eval_range is None else list(eval_range)
+        # The gap/stop legitimacy flags are a property of the members; the ensemble
+        # emits a cell legitimately only if every member does.
+        self.OUTPUTS_LEGITIMATE_GAP = all(
+            getattr(m, "OUTPUTS_LEGITIMATE_GAP", False) for m in members)
+        self.OUTPUTS_LEGITIMATE_STOP = all(
+            getattr(m, "OUTPUTS_LEGITIMATE_STOP", False) for m in members)
+
+    def forward(self, aa_batch):
+        acc = None
+        for m in self.members:
+            lg = m(aa_batch).float()
+            if self.eval_range is None:
+                ls = torch.log_softmax(lg.flatten(1), dim=1).reshape(lg.shape)
+            else:
+                sub = lg[:, self.eval_range, :]
+                ls = torch.full_like(lg, float('-inf'))
+                ls[:, self.eval_range, :] = torch.log_softmax(
+                    sub.flatten(1), dim=1).reshape(sub.shape)
+            acc = ls if acc is None else acc + ls
+        return acc / len(self.members)
+
 
 def load_baselines(baseline_dir, allowed_aas, seed, pssm_root, global_wt_aa_idx):
     """Assemble the baseline score maps: pssm_root, pssm_root_position, and CSV baselines.
@@ -350,8 +1141,27 @@ def load_baselines(baseline_dir, allowed_aas, seed, pssm_root, global_wt_aa_idx)
             for row in reader:
                 rows.append([float(x) for x in row])
         baseline_tensor = torch.tensor(rows, dtype=torch.float32)
+        # The CSVs are written in the 22-token frame, 20 amino acids then stop then
+        # gap. Read under a narrower alphabet that is a PREFIX of that frame -- which
+        # is what STANDARD_AAS is -- the extra columns are exactly the two this
+        # alphabet has dropped, so they are dropped here too (NOTES s53). Any other
+        # width mismatch is an error: these maps are positional and a silent reshape
+        # would re-label every residue.
+        if baseline_tensor.shape[1] != E:
+            from antiGen.config import LEGACY_AAS
+            if (baseline_tensor.shape[1] == len(LEGACY_AAS)
+                    and LEGACY_AAS.startswith(allowed_aas)):
+                dropped = LEGACY_AAS[E:]
+                baseline_tensor = baseline_tensor[:, :E].contiguous()
+                print(f"  {baseline_name}: dropped the '{dropped}' column(s), "
+                      f"outside the alphabet")
+            else:
+                raise ValueError(
+                    f"{csv_file}: {baseline_tensor.shape[1]} columns against an "
+                    f"alphabet of {E} ('{allowed_aas}'), and the file is not the "
+                    f"22-token frame this alphabet is a prefix of")
         baselines.append((baseline_name, baseline_tensor))
-        print(f"Loaded baseline: {baseline_name} ({baseline_tensor.shape})")
+        print(f"Loaded baseline: {baseline_name} ({tuple(baseline_tensor.shape)})")
 
     # Set negative sentinels to NaN so they're excluded from ranking (matches the
     # -inf handling for model scores). Ties are resolved downstream by the fractional

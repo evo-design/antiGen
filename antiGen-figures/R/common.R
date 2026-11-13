@@ -25,11 +25,22 @@ FIG_VECTOR_DIR <- "figs_vector"  # PDF, for submission
 #' Always pass `plot` explicitly rather than relying on `last_plot()`; the
 #' scripts build several plots per figure and the implicit version silently
 #' saves whichever one happened to be printed last.
+## ARIAL, set on the DEVICE rather than on the themes (NOTES s127). Every piece of text
+## with no family of its own -- theme text, geom_text, cowplot panel letters, gridtext
+## markdown -- takes the device's default, so naming it once here reaches all of them.
+## Before this nothing named a family: PNGs got fontconfig's "sans" (Liberation Sans on
+## this machine, Arial-shaped but not Arial) and PDFs named Helvetica WITHOUT embedding
+## it, so each viewer substituted its own. Arial comes from conda-forge `mscorefonts` in
+## the antigen-figs environment; cairo_pdf embeds it (as ArialMT).
+FIG_FONT <- getOption("paper.font", "Arial")
+
 save_figure <- function(plot, name, width, height) {
   ggsave(file.path(FIG_RASTER_DIR, paste0(name, ".png")), plot,
-         width = width, height = height, bg = "white")
+         width = width, height = height, bg = "white",
+         device = "png", type = "cairo", family = FIG_FONT)
   ggsave(file.path(FIG_VECTOR_DIR, paste0(name, ".pdf")), plot,
-         width = width, height = height, bg = "white")
+         width = width, height = height, bg = "white",
+         device = grDevices::cairo_pdf, family = FIG_FONT)
   invisible(plot)
 }
 
@@ -144,11 +155,11 @@ find_metric_file <- function(dir, metric) {
 }
 
 #' Correlation between two matrices over the cells where both are present.
-cor_with_NA_mask <- function(x, y) {
+cor_with_NA_mask <- function(x, y, method = "pearson") {
   x <- as.vector(as.matrix(x))
   y <- as.vector(as.matrix(y))
   keep <- !is.na(x) & !is.na(y)
-  cor(x[keep], y[keep])
+  cor(x[keep], y[keep], method = method)
 }
 
 #' Set every wild-type cell of a residue x amino-acid matrix to NA.

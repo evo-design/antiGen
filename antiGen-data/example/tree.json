@@ -1,49 +1,136 @@
 {
-  "version": "v2",
-  "meta": {
-    "title": "antiGen-data toy example (amino acid, L=25)"
+ "version": "v2",
+ "meta": {
+  "title": "antiGen toy example",
+  "updated": "2020-06-01"
+ },
+ "tree": {
+  "name": "root",
+  "node_attrs": {
+   "num_date": {
+    "value": 2020.0
+   }
   },
-  "tree": {
-    "name": "NODE_ROOT",
+  "children": [
+   {
+    "name": "NODE_A",
     "node_attrs": {
-      "num_date": {
-        "value": 2020.0
-      },
-      "clade_membership": {
-        "value": "root"
-      }
+     "num_date": {
+      "value": 2020.1
+     }
+    },
+    "branch_attrs": {
+     "mutations": {
+      "S": [
+       "G12D"
+      ]
+     }
     },
     "children": [
-      {
-        "name": "sampleA",
-        "node_attrs": {
-          "num_date": {
-            "value": 2020.2
-          }
-        },
-        "branch_attrs": {
-          "mutations": {
-            "protein": [
-              "M1L"
-            ]
-          }
-        }
+     {
+      "name": "tipA1",
+      "node_attrs": {
+       "num_date": {
+        "value": 2020.2
+       }
       },
-      {
-        "name": "sampleB",
-        "node_attrs": {
-          "num_date": {
-            "value": 2020.3
-          }
-        },
-        "branch_attrs": {
-          "mutations": {
-            "protein": [
-              "E3K"
-            ]
-          }
-        }
+      "branch_attrs": {
+       "mutations": {
+        "S": [
+         "V8I"
+        ]
+       }
       }
+     },
+     {
+      "name": "tipA2",
+      "node_attrs": {
+       "num_date": {
+        "value": 2020.25
+       }
+      },
+      "branch_attrs": {
+       "mutations": {
+        "S": [
+         "Q22K"
+        ]
+       }
+      }
+     },
+     {
+      "name": "tipA3",
+      "node_attrs": {
+       "num_date": {
+        "value": 2020.3
+       }
+      },
+      "branch_attrs": {}
+     }
     ]
-  }
+   },
+   {
+    "name": "NODE_B",
+    "node_attrs": {
+     "num_date": {
+      "value": 2020.15
+     }
+    },
+    "branch_attrs": {
+     "mutations": {
+      "S": [
+       "A18T"
+      ]
+     }
+    },
+    "children": [
+     {
+      "name": "tipB1",
+      "node_attrs": {
+       "num_date": {
+        "value": 2020.35
+       }
+      },
+      "branch_attrs": {
+       "mutations": {
+        "S": [
+         "L6F"
+        ]
+       }
+      }
+     },
+     {
+      "name": "tipB2",
+      "node_attrs": {
+       "num_date": {
+        "value": 2020.4
+       }
+      },
+      "branch_attrs": {
+       "mutations": {
+        "S": [
+         "T20S",
+         "Q22R"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "name": "tipC",
+    "node_attrs": {
+     "num_date": {
+      "value": 2020.05
+     }
+    },
+    "branch_attrs": {
+     "mutations": {
+      "S": [
+       "K5N"
+      ]
+     }
+    }
+   }
+  ]
+ }
 }

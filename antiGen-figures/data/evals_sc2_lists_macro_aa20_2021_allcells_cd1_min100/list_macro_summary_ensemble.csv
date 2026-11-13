@@ -1,0 +1,3 @@
+model,variant,qtile,macro,micro,n_cells,n_events
+ens_vs10_2021,list_allcells_fullpool,0.10,0.47025584,0.60909252,364,39615
+ens_vs10_2021,list_allcells_unseen_fullpool,0.10,0.44730754,0.47999637,90,5504

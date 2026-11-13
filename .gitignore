@@ -24,8 +24,36 @@ plots/
 scratch/
 checkpoints/
 evals_*/
-# ...but antiGen-figures ships a pooled eval folder that must be tracked.
+# ...but antiGen-figures ships pooled eval folders that must be tracked: a
+# figure has to be reproducible from the commit that adds it.
 !antiGen-figures/data/evals_sc2/
+!antiGen-figures/data/evals_sc2_lists_macro/
+!antiGen-figures/data/evals_sc2_lists_varrecall/
+!antiGen-figures/data/evals_sc2_mtb/
+!antiGen-figures/data/evals_sc2_lists_macro_backbone/
+# The 20-letter arm on the revised corpus (NOTES s54). The "recall rows only"
+# note here was true at s54 and went stale: s66 gave the yield row a substrate
+# (antiGen-data-revised's dated BA.2 count files) and s73 is building the
+# background row. The varrecall directory was never added alongside its macro
+# sibling, so `list_variant_recall.csv` ended up TRACKED INSIDE AN IGNORED
+# DIRECTORY -- `git status` reports it as modified and `git add <path>` refuses
+# it, which is a confusing pair of answers to get about one file (NOTES s76).
+!antiGen-figures/data/evals_sc2_aa20/
+!antiGen-figures/data/evals_sc2_lists_macro_aa20/
+!antiGen-figures/data/evals_sc2_lists_varrecall_aa20/
+!antiGen-figures/data/evals_sc2_background_aa20/
+!antiGen-figures/data/evals_sc2_background_aa20_2023-01-01/
+!antiGen-figures/data/evals_sc2_background_aa20_2023-01-01_eventwtd/
+# sc2_results_revised2 panels I-L (NOTES s125).
+!antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_allcells/
+!antiGen-figures/data/evals_sc2_lists_macro_aa20_2023-01-01_fullspike/
+# supp_fixed_split: one list run per baseline cutoff (NOTES s126).
+!antiGen-figures/data/evals_fixedsplit_*/
+# The background contrast (the list figures' K-L). Small summary CSVs, not the
+# ~7 MB/model score matrices those are derived from, which stay outside the repo.
+!antiGen-figures/data/evals_sc2_background/
+!antiGen-figures/data/evals_sc2_background_q0.05/
+!antiGen-figures/data/evals_sc2_background_q0.20/
 # NOTE: do not blanket-ignore *.csv — data/baselines*/ and data/toy/ ship tracked CSVs.
 # Eval/training outputs are written outside the repo (or to the ignored dirs above).
 
@@ -45,7 +73,8 @@ evals_*/
 # ...but the antiGen-figures rendered outputs are committed so they show on GitHub.
 !antiGen-figures/figs/**
 !antiGen-figures/figs_vector/**
-!antiGen-figures/fig1/**
+# The cartoons the figures place as image panels are inputs, not outputs.
+!antiGen-figures/cartoons/*.png
 
 # Scratch/temp files
 plan_optimizations.md
@@ -55,3 +84,20 @@ plan_optimizations.md
 
 # Per-session context notes (not tracked)
 context/
+
+# Multi-tree / forecasting experiment artifacts (branch is-multitree).
+# All regenerable, and too large to track: fetch_trees.py and fetch_snapshots.py
+# re-download the builds, generate_all.py and make_forecast_testset.py rebuild the
+# example files byte-identically, and checkpoints are ~224 MB each.
+nextstrain/
+runs/
+tree_pulled_*.json
+experiments/multitree/data/**/*.txt
+# Analysis intermediates from the s14 scripts (rank_agreement, gate_search,
+# fuse_*, seed_curve, zeroshot_eval). Every one is reproduced by rerunning its
+# script; the numbers that matter are transcribed into NOTES.md, and the only
+# arrays the figure needs are in antiGen-figures/data/multitree/.
+experiments/multitree/out/
+# The Bundibugyo build zeroshot_eval.py scores, pulled from Nextstrain like the
+# rest of the trees above.
+recent.json

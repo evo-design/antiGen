@@ -2,6 +2,10 @@
 
 Welcome to antiGen, a model that predicts future mutations to viral proteins based on inferred phylogenetic trees. This repository is intended for (1) generating training data from phylogenetic trees, (2) training antiGen on said data, (3) querying substitution probabilities predicted by antiGen, (4) running the evaluations reported in the antiGen manuscript, and (5) reproducing the manuscript figures.
 
+**Just want predictions?** [TUTORIAL.md](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md) scores every substitution of a
+SARS-CoV-2 spike (BA.2.86 in the example) with the pretrained 2023-01-01 antiGen that
+ships with the package, and lists the top-decile RBD mutations. CPU only, no download.
+
 ## Install
 
 Install the modeling package and its command-line tools from PyPI (Python ≥ 3.10):
@@ -41,106 +45,119 @@ accelerates training and data generation but is optional. The software has been 
 
 ## Quickstart (generate → train → infer, runs on CPU)
 
-Runs the whole pipeline on a toy example: **generate** training data from a tiny
-Nextstrain-format mutation-annotated tree and MSA using the included `antiGen-data` tool, then **train** a model and **score** substitutions.
-No GPU is required for this example.
+Runs the whole pipeline on a toy example in under a minute: **generate** training and
+test examples by placing newer sequences on a tiny Nextstrain tree with the included
+[`antiGen-data`](antiGen-data/) tool, then **train** a model and **score** substitutions.
+No GPU is required.
 
 ```bash
-# 1. build the data-generation tool (make auto-selects nvcc if present, else g++)
+# 1. build the data-generation tool (C++17 + OpenMP)
 cd antiGen-data && make && cd ..
 
-# 2. generate training data from the toy Nextstrain JSON + MSA (~ms; GPU if present, else CPU)
-antiGen-data/antiGen-data antiGen-data/example/out 0.6 toy \
-    antiGen-data/example/ref.json antiGen-data/example/tree.json \
-    antiGen-data/example/metadata.tsv antiGen-data/example/seqs.fasta
+# 2. place the toy sequences on the toy tree; records first sampled after 2020-08-15
+#    are the test set
+antiGen-data/antigen prepare --tree antiGen-data/example/tree.json \
+    --root-seq antiGen-data/example/root-sequence.json \
+    --fasta antiGen-data/example/seqs.fasta --metadata antiGen-data/example/metadata.tsv \
+    --date-cutoff none --no-clock --out toy_prepared.tsv
+antiGen-data/antigen place --tree antiGen-data/example/tree.json \
+    --root-seq antiGen-data/example/root-sequence.json --prepared toy_prepared.tsv \
+    --post-cutoff 2020-08-15 --out toy_tree.tsv --out-examples toy_examples.txt
 
-# 3. (optional) sanity-check the generated examples file
-antiGen-validate-examples antiGen-data/example/out/examples_cutoff_0.6.txt
+# 3. (optional) sanity-check the examples file
+antiGen-validate-examples toy_examples.txt --split-date 2020-08-15 --alphabet ACDEFGHIKLMNPQRSTVWY
 
-# 4. train a small from-scratch transformer on it
-antiGen-train --model-type transformer \
-    --examples antiGen-data/example/out/examples_cutoff_0.6.txt \
+# 4. train a small from-scratch transformer on the pre-2020-08-15 records
+antiGen-train --examples toy_examples.txt --split-date 2020-08-15 --model-type transformer \
     --d-model 32 --num-layers 1 --epochs 3 --batch-size 4 --output-dir ./checkpoints
 
 # 5. score substitutions for the toy query sequences
 antiGen-infer ./checkpoints/fitness_*.pt antiGen-data/example/seqs.fasta -o scores.csv
 ```
 
+**Just want predictions from the paper's model?** [TUTORIAL.md](TUTORIAL.md) scores a
+SARS-CoV-2 spike with the pretrained antiGen that ships with the package.
+
 ---
 
 # 1. Generating training data
 
-antiGen training data is produced by the included **[`antiGen-data/`](antiGen-data/)** tool, a
-C++/CUDA application that grows a mutation-annotated phylogeny by parsimonious attachment and returns training/testing examples, as well as position-specific scoring matrices
-(PSSMs) for the training window and at various cutoff times in the testing window. To build it, cd into the antiGen-data sub-directory and run `make` (needs a C++17 compiler; `nvcc` is optional, for GPU support).
-
-The raw inputs (reference sequences, mutation-annotated trees, metadata, and MSAs) for the four datasets analyzed in the paper are archived on Zenodo at [doi:10.5281/zenodo.21842015](https://doi.org/10.5281/zenodo.21842015).
-
-Run it as:
+Training and test corpora come from **[`antiGen-data/`](antiGen-data/)**, a C++17/OpenMP
+tool that reads a Nextstrain mutation-annotated tree, computes parsimony-consistent allele
+sets, places newer aligned sequences on it by parsimony, and writes the examples antiGen
+trains and is evaluated on, plus residue count matrices. Build it with `make` in that
+directory; `./antigen` prints every command and option.
 
 ```bash
-antiGen-data <output_dir> <cutoff> <dataset_type> <ref_json> <tree_json> <metadata_tsv> <alignment_files...> [max_seqs] [--cpu]
+antigen prepare --tree <dataset.json> --root-seq <root-sequence.json> \
+    --fasta <aligned.fasta> --metadata <strain_date.tsv> --date-cutoff <D> --out prepared.tsv
+antigen place   --tree <dataset.json> --root-seq <root-sequence.json> --prepared prepared.tsv \
+    --out tree.tsv --out-examples examples.txt [--post-cutoff D1,D2,...] [--variant BA.2]
 ```
 
-- `output_dir` — where outputs are written (created if absent).
-- `cutoff` — train/test split, in **years after the tree's root date**: examples dated before `root + cutoff` are labeled `TRAINING`, later ones `TESTING`.
-- `dataset_type` — one of `sc2`, `h3n2`, `rsv_a`, `rsv_b`, `denv2`, or `toy`; selects the alphabet, segment layout, and evaluation region.
-- `ref_json`, `tree_json`, `metadata_tsv` — the reference sequence, guide phylogeny, and per-strain dates (formats under **Input files** below).
-- `alignment_files` — one or more MSA FASTAs of the sequences to attach, one per segment (1 for most datasets; 3 for H3N2 HA).
-- `max_seqs` *(optional)* — cap on how many sequences to attach.
-- `--cpu` *(optional)* — force the CPU path; a GPU is used automatically when present.
+**Inputs.** A Nextstrain v2 dataset JSON (nodes carry `node_attrs.num_date.value` and
+`branch_attrs.mutations`, e.g. `"S": ["D614G"]`), its root-sequence sidecar
+(`{"S": "MFVF…*"}`), an aligned FASTA of the sequences to place (protein, in the sidecar's
+frame), and a `strain`⇥`date` metadata TSV.
 
-**Input files.** The three inputs follow the Nextstrain convention; see
-[`antiGen-data/example/`](antiGen-data/example/) for a complete, runnable set.
+**Train and test.** A *train corpus* for cutoff D is built from the latest tree before D
+plus every sequence collected before D (`--date-cutoff D`). The *test tree* is built once,
+from every sequence, with `--post-cutoff` listing all cutoffs. Each record then lists the
+cutoffs it falls after, and the test set at D is the records carrying D. Every model,
+statistical baselines included, is trained on the train corpus alone; the test tree's
+pre-D records are never training data.
 
-- `ref_json` — root sequence per segment, e.g. `{"S": "MFVF…"}`.
-- `tree_json` — a Nextstrain tree whose nodes carry `node_attrs.num_date.value` (decimal year) and `branch_attrs.mutations`, one list per segment of `<ref><pos><alt>` strings, 1-indexed (e.g. `"S": ["A222V", "D614G"]`).
-- `metadata_tsv` — `strain`⇥`date` (ISO `YYYY-MM-DD`) for each sequence in the alignment(s).
+**The examples file.** One record per internal node: its sequence, the mutation from its
+parent, its `POST_CUTOFF` cutoffs, variant flags, and the mutations to its children (the
+training target; a mutation listed twice is a count of two). Positions are 0-based.
+`antiGen-validate-examples <file> --split-date D` checks a file.
 
-Each run writes to `<output_dir>/`, formatted as follows:
-
-```
-output_<dataset>/
-  examples_cutoff_<value>.txt     # training/testing examples (one entry per inferred ancestral genotype; see below)
-  pssms/root.csv                  # PSSM of all sequences in the training window
-  pssms/<variant>/time_*.csv      # PSSM of all sequences in the testing window up through the cutoff time specified in the file name
-```
-
-Each example within `examples_cutoff_*.txt` holds a sequence, its `TRAINING`/`TESTING` designation, whether it is the root example of or is descended from a supplied variant of interest, and the substitutions observed in that sequence's children (the training target).
-`antiGen-validate-examples <file> [--variant V]` checks a file is well-formed (single consistent
-sequence length, alphabet `ACDEFGHIKLMNPQRSTVWY*-`, in-range positions, ≥1 training example). The
-Quickstart above generates a miniature example of this format from the toy inputs in
-[`antiGen-data/example/`](antiGen-data/example/).
+**The paper's corpora.** `antiGen-data/slurm/` holds the drivers. `run_series.sbatch`
+builds a train corpus per quarterly cutoff (2020-04-01 … 2026-01-01), `run_all.sbatch`
+builds the shared test tree (plus `counts_ba2/`, the BA.2-clade residue counts after each
+cutoff), and `run_2021.sbatch` and `place_full.sbatch` build the 2021-01-01 arm. The input
+trees and sidecars are fetched by `fetch_trees.py` and `fetch_snapshots.py`, and
+[`antiGen-data/PROVENANCE.md`](antiGen-data/PROVENANCE.md) documents every file's source
+and integrity checks. See [`antiGen-data/README.md`](antiGen-data/README.md).
 
 ---
 
 # 2. Training antiGen
 
-**Pointing antiGen at data.** Give an explicit file with `--examples <path>` (works for any
-dataset with no code edits), or use a built-in dataset shortcut which resolves
-`examples_cutoff_<cutoff>.txt` under `$FITNESS_DATA_ROOT` (or an explicit `--data-dir`). These
-shortcuts only build a local path — the data is never downloaded, so you must have generated it
-first (Part 1) and placed it under `$FITNESS_DATA_ROOT`:
-
-| Flag | Dataset | Variant | `--cutoff` | Eval region |
-|------|---------|---------|------------|-------------|
-| *(default)* | SARS-CoV-2 spike | BA.2 (or `--variant`) | 1, 4, or 5 | RBD (330–530, 0-indexed) |
-| `--flu` | Influenza HA | J or K | 12 | full sequence |
-| `--rsv-a` | RSV-A F | A.D.1.6 | 74 | full sequence |
-| `--denv2` | Dengue 2 envelope | 2II_F.1.1.2_annotated | 191 | full sequence |
+**Pointing antiGen at data.** Give the examples file with `--examples <path>`, plus
+`--split-date D` when its records carry per-cutoff `POST_CUTOFF` labels. This is how every
+model in the paper was trained, on the train corpus of its cutoff from Part 1, e.g. the
+2023-01-01 base model:
 
 ```bash
-# built-in dataset: resolve the file from $FITNESS_DATA_ROOT via a shortcut
-export FITNESS_DATA_ROOT=/path/to/antiGen-data      # holds output1/, output_flu_full_cutoff12/, ...
-antiGen-train --flu --cutoff 12 --model-type transformer --output-dir ./checkpoints
-
-# your own data: point --examples straight at a file you generated in Part 1
-# (no $FITNESS_DATA_ROOT, no shortcut — works for any protein/pathogen). seq_len is read from
-# the file (alphabet is the standard 22 AAs); add --variant <label> if it has a variant of interest.
-antiGen-train --examples ./mydata/examples_cutoff_5.txt \
+antiGen-train --examples output/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
     --model-type transformer --d-model 128 --num-layers 2 \
-    --epochs 64 --batch-size 64 --lr 1e-4 --output-dir ./checkpoints
+    --epochs 32 --batch-size 64 --lr 1e-4 --variant BA.2 --ignore-dead-ends \
+    --output-dir ./checkpoints
 ```
+
+[`REPRODUCE.md`](REPRODUCE.md) lists the exact command for every checkpoint the figures
+use: the cross-validated ten (`--val-mode random --save-best --split-seed i --seed 100+i`,
+256 epochs), the gated model, the ESM-2 / EVE / Tranception fine-tunes, and the per-cutoff
+series. Each checkpoint also stores its `train_args`, so a model can always be retrained
+from the record it carries.
+
+**Dataset shortcuts.** `--flu`, `--rsv-a`, `--denv2` and the SARS-CoV-2 default select a
+dataset's variant, alphabet and evaluation region. With `--cutoff` instead of `--examples`,
+they resolve `examples_cutoff_<cutoff>.txt` under `$FITNESS_DATA_ROOT` (or `--data-dir`),
+a local path only; nothing is downloaded.
+
+| Flag | Dataset | Variant | Eval region |
+|------|---------|---------|-------------|
+| *(default)* | SARS-CoV-2 spike | BA.2 (or `--variant`) | RBD (330–530, 0-indexed) |
+| `--flu` | Influenza HA | J or K | full sequence |
+| `--rsv-a` | RSV-A F | A.D.1.6 | full sequence |
+| `--denv2` | Dengue 2 envelope | 2II_F.1.1.2_annotated | full sequence |
+
+**Alphabet.** antiGen trains over the **20 standard amino acids** by default, with no gap
+and no stop column. `--alphabet ACDEFGHIKLMNPQRSTVWY*-` trains in the older 22-token
+frame, for data that still carries gaps and stops. A checkpoint stores its alphabet, so
+`antiGen-infer` and `antiGen-eval` reload it without being told.
 
 ## Model architectures (`--model-type`)
 
@@ -149,6 +166,7 @@ antiGen-train --examples ./mydata/examples_cutoff_5.txt \
 | Transformer | `transformer` | — (core) | Small transformer trained from scratch. **Default; no downloads.** |
 | ESM-2 | `esm2` | `.[esm]` | ESM-2 protein LM (default `esm2_t12_35M_UR50D`), frozen/partial/full finetune |
 | BLOSUM62 | `blosum62` | — (core) | Static BLOSUM62 substitution matrix (no training, eval only) |
+| Codon | `codon` | — (core) | Single-nucleotide accessibility under the standard genetic code (no training, eval only) |
 | PSSM | `pssm` | — (core) | Per-position `log(count+1)` from the root PSSM (no training, eval only) |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
 | EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from a pandemic MSA via `plmc` (pseudo-likelihood; eval only) |
@@ -168,6 +186,9 @@ antiGen-train --model-type transformer --d-model 128 --num-layers 2 \
 
 # ESM-2, partial finetune of the last 4 layers
 antiGen-train --model-type esm2 --freeze-backbone --finetune-layers 4 --lr 1e-4 --flu
+
+# codon-accessibility baseline (no training; --codon-kappa up-weights transitions)
+antiGen-train --model-type codon --codon-kappa 2.5 --flu
 
 # gated blend of a from-scratch transformer and the root PSSM
 antiGen-train --model-type gated --gate-partner-a fitness_predictor --gate-partner-b pssm \
@@ -199,8 +220,8 @@ toy_root,0,M,C,0.00164760
 ```
 
 `prob` is the inferred probability of each possible amino acid substitution relative to the
-query (including premature stop codons `*` and gaps `-`, i.e. point indels). Use `--format wide`
-for a position × amino-acid matrix, and `--drop-gap-stop` to exclude the `-`/`*` columns.
+query. Use `--format wide` for a position × amino-acid matrix. `--drop-gap-stop` excludes the
+`-`/`*` columns, and is a no-op on a model trained over the 20 standard residues.
 
 **Length / alignment.** antiGen operates on a **fixed, aligned coordinate frame**: provide
 query sequences aligned to the training reference (same length and alignment).
@@ -209,33 +230,55 @@ query sequences aligned to the training reference (same length and alignment).
 
 # 4. Running the manuscript evaluations
 
-`antiGen-eval` scans a directory of checkpoints, groups them by model, and writes unified
-per-variant comparison CSVs against a set of fixed baselines.
+`antiGen-eval` scores every checkpoint in a directory, plus the statistical baselines and
+the fixed external maps in `data/baselines/`, on the post-cutoff records of a test tree:
 
 ```bash
-antiGen-eval --dataset sc2 --data-dir $FITNESS_DATA_ROOT/output1 \
-    --checkpoint-dir ./checkpoints --output-dir ./evals_sc2
+antiGen-eval --dataset sc2 --alphabet ACDEFGHIKLMNPQRSTVWY \
+    --train-examples $CORPORA/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
+    --test-examples  $CORPORA/sc2-test/examples_all_cur.txt --split-date 2023-01-01 \
+    --root-counts    $CORPORA/sc2-2023-01-01/train/counts_2023-01-01_cur.tsv \
+    --checkpoint-dir ./checkpoints --output-dir ./evals
 ```
 
-It produces two metric families per variant: **quantile hit-rate** (how often observed mutations
-fall in the model's top-q% predictions) and **variant-emergence** (across top-q quantiles
-q = 0.1 … 1.0). These are termed next-mutation recall and PSSM precision in the paper, respectively. Baselines come from `data/baselines*/` plus two built from the root PSSM
-(`pssm_root` and the position-only `pssm_root_position`). Ties at a top-q boundary are broken
-**fractionally** (the expected value under random tie-breaking).
+It reports **next-mutation recall** (how often the mutations that occur next fall in a
+model's top-q predictions) per mutation, and `antiGen/list_macro.py` reports it per cell
+(each (site, residue) counted once) over a mutation list or every cell of a region. The
+statistical baselines are fitted on the train corpus only, the data the checkpoints saw.
+Ties at a top-q boundary are counted fractionally (the expected value under random
+tie-breaking).
 
-The SLURM scripts used for the manuscript runs are in [`examples/slurm/`](examples/slurm/); they
-embed lab-specific paths/partitions and are meant to be copied and edited for your environment.
+The paper's evaluations, one named step per figure family, are in
+[`reproduce/eval.sh`](reproduce/eval.sh) (Slurm; paths and partitions in
+`reproduce/config.sh`):
+
+```bash
+bash reproduce/stage_checkpoints.sh          # check the checkpoint directories the evals read
+bash reproduce/eval.sh                       # list the steps
+bash reproduce/eval.sh rbd_2023              # submit one; outputs under $OUT/rbd_2023-01-01/
+bash reproduce/stage.sh                      # outputs -> antiGen-figures/data/
+```
+
+[`REPRODUCE.md`](REPRODUCE.md) maps every figure to its staged data, the step that
+produces it, the checkpoints it reads and the published output it reproduces.
+`python reproduce/train_commands.py` prints the `antiGen-train` command behind every
+checkpoint. The training recipes are in [`examples/slurm/`](examples/slurm/).
 
 ---
 
 # 5. Reproducing the paper figures
 
-[`antiGen-figures/`](antiGen-figures/) is R code that plots the evaluation outputs into the
-manuscript figures (it trains and evaluates nothing). From that directory, `Rscript run_all.R`
-regenerates everything into `figs/` (PNG) and `figs_vector/` (PDF), or `Rscript figures/<script>.R`
-runs a single figure; the inputs it reads live in `antiGen-figures/data/` and sibling directories.
-Requires R with ggplot2, cowplot, reshape2, dplyr, tidyr, tibble, forcats, magick, ggtext,
-jsonlite, and scales.
+[`antiGen-figures/`](antiGen-figures/) is R code that draws the staged evaluation outputs
+into the manuscript figures; it trains and evaluates nothing, and everything it reads is
+committed. From that directory:
+
+```bash
+bash render_all.sh                    # every current figure -> figs/*.png, figs_vector/*.pdf
+bash render_all.sh supp_cd1_series    # one figure
+```
+
+It needs R (4.5.3 was used) with cowplot, dplyr, forcats, ggpattern, ggplot2, ggtext,
+magick, reshape2, scales, tibble and tidyr.
 
 ---
 

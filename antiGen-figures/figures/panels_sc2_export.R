@@ -1,0 +1,165 @@
+## Export the sc2_results_aa20 panels that fig_sc2_revised.R reuses.
+## Own process, for the reason in panels_coguk_export.R.
+out <- Sys.getenv("REVISED_PANELS_RDS", unset = "")
+stopifnot(nzchar(out))
+
+source("R/common.R")
+
+options(sc2.fig_main = "scratch_revised_sc2", sc2.fig_prefix = "scratch_revised_",
+        sc2.fig1_auc = "",
+        ## The same pruning the coguk panels get, by LABEL because that is what the
+        ## DMS frame carries: the three plain mean rules (orange), the hybrid blend,
+        ## and the base antiGen rung -- which stays on panel H, drawn by a different
+        ## loader from `sc2.gate_rows` and untouched by this.
+        sc2.dms_drop = c("antiGen",
+                         "Mean of ranks", "Mean of log-probs", "Mean of z-scores",
+                         "Where x which + PSSM, val-selected (10x)"),
+        ## The surviving val-selected rule takes antiGen's dark blue, for the reason
+        ## it does on the coguk panels: it is the only antiGen line left there.
+        sc2.ensemble_colors = c("Val-selected (10x)" = ANTIGEN_BLUE),
+        ## Short enough to read at this figure's scale; the full name
+        ## ("antiGen, 10x val-selected epoch (mean of log-probs)") is four times the
+        ## width of any other label on the panel.
+        sc2.ensemble_labels = c(ens_8a91fbbf88 = "antiGen (val x10)"),
+        ## PANEL G IS SPEARMAN, two bars per model instead of four.
+        ##
+        ## The four Pearson bars were {native space, log space} x {prediction,
+        ## position-only control}. Under a RANK correlation the space pair collapses --
+        ## a monotone transform cannot change ranks, verified at 1e-9 over 27 models --
+        ## so the only distinction left that carries information is prediction against
+        ## control. The control is the ROW-MEAN OF RANKS rather than of scores: the
+        ## score version is not transform-invariant and disagreed in SIGN between the
+        ## two spaces for BLOSUM62 and both MSA Transformers, so which bar you drew
+        ## decided whether the control looked positive or negative.
+        ##
+        ## Switching this on needs the Spearman frame, which is built only when the
+        ## dump option below is set.
+        ## Only the dump option is global; the LABELS are passed to the builder, so
+        ## they cannot reach the published panel M this file also causes to be drawn.
+        sc2.dms_spearman_csv = file.path(tempdir(), "dms_spearman.csv"))
+## sc2_results_revised2's MCM-alone rung on the cutoff series (NOTES s121). Set before
+## fig_sc2_aa20.R's option block, which reads it; off unless the caller asks.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) options(sc2.gate_rows_extra = c(mcm = "MCM"))
+source("figures/fig_sc2_aa20.R")
+
+## BAKED TO GROBS, NOT SHIPPED AS GGPLOTS. A ggplot stores its aesthetics as
+## quosures that are evaluated at DRAW time against the environment they were
+## written in -- `gate_plot` has `linetype = (model %in% GATE_BASELINES)`, and
+## GATE_BASELINES exists only in the drawer. Drawn in another session that is an
+## "object not found" at render, long after the panel looked fine. `ggplotGrob`
+## evaluates everything here, where the drawer's globals are still in scope.
+as_grob <- function(p) if (inherits(p, "ggplot")) ggplot2::ggplotGrob(p) else p
+
+## Panel H drops the ESM-2 rung. REBUILT, not configured ahead of the source, for the
+## reason the DMS panel is: `fig_sc2_aa20.R` sets `sc2.gate_drop_main` (to
+## `character(0)`) and `sc2.gate_colors_main` in its OWN options() call, which runs
+## after ours and wins. `make_gate_plot` reads both at CALL time, so setting them here
+## and re-calling it is what takes effect.
+##
+## NAMED colours, not the drawer's positional vector. `scale_color_manual` matches an
+## UNNAMED vector to the scale's limits in order, and dropping a line drops a limit --
+## so with the drawer's eight-colour vector every rung after ESM-2 would quietly take
+## its neighbour's colour, handing the gate's blue to `Where x which`. Naming them
+## makes the mapping independent of who is on the panel.
+options(
+  sc2.gate_colors_main = c(
+    "antiGen"                = ANTIGEN_BLUE,
+    "ESM-2 35M, partial FT"  = FINETUNE_COLORS[5],
+    "antiGen / PSSM gate"    = GATE_BLUE,
+    "Where x which"          = FINETUNE_COLORS[1],
+    "Site x Substitution"    = "#3d7068",
+    "Where x which + events" = FINETUNE_COLORS[2],
+    "SxS, MCM interpolation" = "#8fb5ad",
+    "MCM"                    = "#a08c7a",
+    "PSSM"                   = MODEL_TYPE_COLORS[4],
+    "BLOSUM62"               = MODEL_TYPE_COLORS[2],
+    "EVEscape"               = MODEL_TYPE_COLORS[3]),
+  sc2.gate_drop_main = "ESM-2 35M, partial FT")
+## sc2_results_revised2's display names (NOTES s116); off unless the caller asks,
+## so sc2_results_revised and the arm's own figures are unchanged.
+if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
+  source("figures/revised2_labels.R")
+  options(sc2.gate_label_map = REVISED2_LABELS)
+}
+gate_plot <- make_gate_plot(gate_recall, "recall", "Recall, top decile",
+                            "P(obs. mut. in top decile)",
+                            SUPP = FALSE, show_legend = TRUE)
+
+saveRDS(list(
+  cartoon = as_grob(plot_cartoon(file.path(CARTOON_DIR, "recall_definition.png"),
+                                 "Definition of next-mutation recall",
+                                 base_theme = theme_paper())),
+  ## REBUILT, not reused. `fig_sc2_aa20.R` sets `sc2.ensemble_colors` in its own
+  ## options() call, which runs AFTER ours and wins -- so the val-selected rule keeps
+  ## its cyan however we set that option here. `make_dms_corr_plot` reads the palette
+  ## at CALL time via `group_colors()`, so recolouring it afterwards and re-calling is
+  ## what actually takes effect.
+  dms     = as_grob(local({
+    ## The Spearman frame, not the Pearson one. Same shape and same display names;
+    ## it carries its own two-level `transformation`, which the plotter uses as given.
+    stopifnot(exists("dms_long_sp"))
+    dms_long <- dms_long_sp
+    ## All THREE places the group name lives, or `group_colors()` drops the rows:
+    ## it factors on MODEL_TYPE_LEVELS and then asserts every surviving level has a
+    ## palette entry, so renaming the frame alone turns those rows into NA.
+    SHORT <- "Val-selected (10x)"
+    LONG  <- "Val-selected, averaged over 10 holdouts"
+    ## ...and MOVED TO THE FRONT, because the DMS panel orders its x axis by GROUP:
+    ## `fct_reorder(model, as.integer(factor(group)))` (fig2:835). Releveling `model`
+    ## cannot move it -- the group's position is what decides, and an appended group
+    ## sorts last. This is also why the relevel below is not enough on its own.
+    MODEL_TYPE_LEVELS <<- c(SHORT, setdiff(MODEL_TYPE_LEVELS, c(LONG, SHORT)))
+    names(GROUP_PALETTE)[names(GROUP_PALETTE) == LONG] <<- SHORT
+    GROUP_PALETTE[[SHORT]] <<- ANTIGEN_BLUE
+    ## The label is baked into `dms_long$model` during the source (via
+    ## `longform_names`), so `sc2.ensemble_labels` cannot reach it from here -- the
+    ## wrapper's options() wins and the frame is already built. Renamed in the frame
+    ## itself, which is the only place it still exists as data.
+    ## The label as `fig_sc2_aa20.R` sets it, not the sidecar's full name -- that
+    ## wrapper already shortens it once (NOTES s79), so the string present in the
+    ## frame is the shortened one and renaming the long one matched nothing.
+    long <- "antiGen, val-selected (10x)"
+    SHORTLAB <- "antiGen (val x10)"
+    d <- dms_long
+    lv <- levels(d$model)
+    if (!is.null(lv)) levels(d$model)[lv == long] <- SHORTLAB
+    else d$model[d$model == long] <- SHORTLAB
+    ## ...and the group, which is the legend key that was being cut mid-word.
+    glv <- levels(d$group)
+    if (!is.null(glv)) levels(d$group)[glv == LONG] <- SHORT
+    else d$group[d$group == LONG] <- SHORT
+    ## ...and FIRST on the x axis, which is level order here. `make_dms_corr_plot`
+    ## has no equivalent of the bar panels' top-model hook, so the frame is
+    ## releveled directly.
+    ## Works whether `model` is a factor or a character vector. The earlier rename
+    ## has a branch for both, and guarding this on `levels()` alone meant that on
+    ## the character path the relevel silently did nothing and the panel kept its
+    ## old order.
+    ord <- if (is.factor(d$model)) levels(d$model) else unique(as.character(d$model))
+    if (SHORTLAB %in% ord) {
+      d$model <- factor(as.character(d$model),
+                        levels = c(SHORTLAB, setdiff(ord, SHORTLAB)))
+    }
+    ## THE GROUP MUST BE A FACTOR IN THE SAME ORDER AS `MODEL_TYPE_LEVELS`.
+    ## `dms_long$group` is left a character vector by the drawer, and the x order
+    ## comes from `fct_reorder(model, as.integer(factor(group)))` -- `factor()` on a
+    ## character sorts ALPHABETICALLY, so "Val-selected (10x)" landed last whatever
+    ## MODEL_TYPE_LEVELS said, while `group_colors()` read the colours off
+    ## MODEL_TYPE_LEVELS. The two orders disagreed and the panel came back with the
+    ## right bars in the wrong colours. Setting the factor fixes both at once.
+    d$group <- factor(as.character(d$group),
+                      levels = intersect(MODEL_TYPE_LEVELS, unique(as.character(d$group))))
+    make_dms_corr_plot(d, "Expression", SUPP = FALSE,
+                       title = "DMS correlation (Spearman)",
+                       ## "Spearman (Expression)" is longer than the panel is tall and
+                       ## ran into the top tick; the title already names the metric.
+                       ylab = quote(rho ~ "(Expression)"), alpha_lab = "Score",
+                       shade_fill = TRUE)
+  })),
+  gate    = as_grob(gate_plot + ggtitle("Top decile recall, all mutations")),
+  ## The same panel, titled to name its pooling, for a figure that draws the per-cell
+  ## cutoff series beside it. `gate` keeps the unqualified title the revised figure uses.
+  gate_pm = as_grob(gate_plot +
+                      ggtitle("Top decile recall, all RBD cells (per mutation)"))
+), out)
+cat("exported sc2 panels ->", out, "\n")

@@ -12,7 +12,7 @@ from antiGen.eval_utils import compute_probs, compute_loss_batch
 from antiGen.infer import score_batch
 
 SEQ_LEN = 12
-ALPHA = AlphabetConfig().amino_acids  # "ACDEFGHIKLMNPQRSTVWY*-"
+ALPHA = AlphabetConfig().amino_acids  # the 20 standard residues
 
 
 def _tiny_model():

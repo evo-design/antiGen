@@ -1,0 +1,4 @@
+#arm	cutoff	gene	impute	train_tree	train_root	test_tree	test_root	fasta	metadata
+h3n2	2025-01-01	HA1,HA2	none	h3n2/tree_2024-12-29.json	h3n2/ref_2024-12-29.json	h3n2/tree_2026-10-29.json	h3n2/ref_2026-10-29.json	h3n2/output/nextclade.cds_translation.HA1.fasta,h3n2/output/nextclade.cds_translation.HA2.fasta	h3n2/metadata.tsv
+rsv-a	2025-01-01	F	none	rsv-a/tree_2024-12-24.json	rsv-a/ref_2024-12-24.json	rsv-a/tree_2026-10-27.json	rsv-a/ref_2026-10-27.json	rsv-a/output/nextclade.cds_translation.F.fasta	rsv-a/metadata.tsv
+denv2	2025-01-01	E	month	denv2/tree_2024-12-31.json	denv2/ref_2024-12-31.json	denv2/tree_2026-10-29.json	denv2/ref_2026-10-29.json	denv2/output/nextclade.cds_translation.E.fasta	denv2/metadata.tsv

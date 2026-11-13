@@ -1,0 +1,94 @@
+[
+ {
+  "norm": "pctile",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t33_650M_UR50D_lr1e-05_full"
+  ],
+  "figure_label": "Mean of ranks",
+  "figure_group": "Ensembles"
+ },
+ {
+  "norm": "logsoftmax",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t33_650M_UR50D_lr1e-05_full"
+  ],
+  "figure_label": "Mean of log-probs",
+  "figure_group": "Ensembles"
+ },
+ {
+  "norm": "zscore",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "simple_d128_n2_lr0.0001",
+   "eve_ft_lr0.0001",
+   "tranception_ft_both_lr0.0001",
+   "esm2_esm2_t12_35M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t12_35M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t12_35M_UR50D_lr1e-05_full",
+   "esm2_esm2_t33_650M_UR50D_lr0.0001_partial4",
+   "esm2_esm2_t33_650M_UR50D_lr0.001_frozen",
+   "esm2_esm2_t33_650M_UR50D_lr1e-05_full"
+  ],
+  "figure_label": "Mean of z-scores",
+  "figure_group": "Ensembles"
+ },
+ {
+  "norm": "logsoftmax",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "vs10Antigen_s0",
+   "vs10Antigen_s1",
+   "vs10Antigen_s2",
+   "vs10Antigen_s3",
+   "vs10Antigen_s4",
+   "vs10Antigen_s5",
+   "vs10Antigen_s6",
+   "vs10Antigen_s7",
+   "vs10Antigen_s8",
+   "vs10Antigen_s9"
+  ],
+  "figure_label": "antiGen, 10x val-selected epoch (mean of log-probs)",
+  "figure_group": "Val-selected, averaged over 10 holdouts"
+ },
+ {
+  "norm": "logsoftmax",
+  "pool": "arith",
+  "nan": "union_min",
+  "members": [
+   "hybridWxwPssm_s0",
+   "hybridWxwPssm_s1",
+   "hybridWxwPssm_s2",
+   "hybridWxwPssm_s3",
+   "hybridWxwPssm_s4",
+   "hybridWxwPssm_s5",
+   "hybridWxwPssm_s6",
+   "hybridWxwPssm_s7",
+   "hybridWxwPssm_s8",
+   "hybridWxwPssm_s9"
+  ],
+  "figure_label": "Where x which + PSSM hybrid, 10x val-selected blend",
+  "figure_group": "Val-selected, averaged over 10 holdouts"
+ }
+]
