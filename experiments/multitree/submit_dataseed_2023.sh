@@ -17,7 +17,7 @@
 #
 # THE EVAL is the published 2023 all-RBD run's (evals_sc2_lists_macro_aa20_2023-01-01_
 # allcells_pooled, job 3682938): the same --train-examples (the PRODUCTION file, which
-# with --pool-examples decides only the root and the baselines), the same test file
+# decides only the root and the baselines), the same test file
 # cut at 2023-01-01, the same root counts (so the de novo set is the published one),
 # list and flags. Only the ensemble rung is scored (--baselines-only --skip-baselines),
 # from that seed's ten _best.pt. So every seed is scored on identical test data.
@@ -26,6 +26,7 @@
 #                this eval; it must reproduce the published ens_vs10_2023 row.
 #   STAGE=train  data seeds 2..5: a training array each, then its eval (afterany: the
 #                eval job itself refuses unless all ten final checkpoints exist).
+#                ARRAY=0,1,4,8 retrains only those members (finished ones are kept).
 #
 # gpu_batch (CLAUDE.md), GPUCACE excluded (NOTES s125).
 set -euo pipefail
@@ -77,7 +78,7 @@ train)
     [ -f "$EX" ] || { echo "missing $EX" >&2; exit 1; }
     ROOT=$W/seed_$k
     mkdir -p "$ROOT/valsel"
-    jt=$(sbatch --parsable "${SB[@]}" --job-name=dseed${k}_train --time=12:00:00 --array=0-9 \
+    jt=$(sbatch --parsable "${SB[@]}" --job-name=dseed${k}_train --time=12:00:00 --array=${ARRAY:-0-9} \
       --output=logs/dseed${k}_train_%A_%a.out --error=logs/dseed${k}_train_%A_%a.err \
       --export=ALL,REV=$REVISED/sc2-$D/train,EXAMPLES=$EX,OUT_ROOT=$ROOT/valsel,N=10,EPOCHS=256 \
       --wrap "cd $REPO; SEEDS=\$SLURM_ARRAY_TASK_ID bash examples/slurm/train_antigen_valsel10.sh")
