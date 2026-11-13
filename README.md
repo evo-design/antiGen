@@ -45,35 +45,59 @@ accelerates training and data generation but is optional. The software has been 
 
 ## Quickstart (generate → train → infer, runs on CPU)
 
-Runs the whole pipeline on a toy example in under a minute: **generate** training and
-test examples by placing newer sequences on a tiny Nextstrain tree with the included
-[`antiGen-data`](antiGen-data/) tool, then **train** a model and **score** substitutions.
-No GPU is required.
+Runs the whole pipeline on a toy example in under a minute: **generate** a train corpus
+and a test tree with the included [`antiGen-data`](antiGen-data/) tool, then **train** a
+model and **score** substitutions. No GPU is required.
+
+The train and test data come from **two separate `antiGen-data` runs**, exactly as in the
+paper:
+
+* the **train corpus**: an *earlier* tree (a build from before the cutoff) plus only the
+  sequences collected before the cutoff;
+* the **test tree**: a *later* tree plus the sequences collected up to a later date, each
+  record labelled with the cutoffs it falls after.
+
+Never train on any record of the test tree, including its pre-cutoff records: the later
+tree and the sequences placed on it carry information from after the cutoff.
+`antiGen-train` refuses a file that holds any post-cutoff record.
 
 ```bash
 # 1. build the data-generation tool (C++17 + OpenMP)
 cd antiGen-data && make && cd ..
+E=antiGen-data/example
 
-# 2. place the toy sequences on the toy tree; records first sampled after 2020-08-15
-#    are the test set
-antiGen-data/antigen prepare --tree antiGen-data/example/tree.json \
-    --root-seq antiGen-data/example/root-sequence.json \
-    --fasta antiGen-data/example/seqs.fasta --metadata antiGen-data/example/metadata.tsv \
-    --date-cutoff none --no-clock --out toy_prepared.tsv
-antiGen-data/antigen place --tree antiGen-data/example/tree.json \
-    --root-seq antiGen-data/example/root-sequence.json --prepared toy_prepared.tsv \
-    --post-cutoff 2020-08-15 --out toy_tree.tsv --out-examples toy_examples.txt
+# 2. TRAIN corpus: the earlier tree (a 2020-06-01 build) plus the sequences dated
+#    before the 2020-08-15 cutoff
+antiGen-data/antigen prepare --tree $E/tree.json --root-seq $E/root-sequence.json \
+    --fasta $E/seqs.fasta --metadata $E/metadata.tsv \
+    --date-cutoff 2020-08-15 --no-clock --out train_prepared.tsv
+antiGen-data/antigen place --tree $E/tree.json --root-seq $E/root-sequence.json \
+    --prepared train_prepared.tsv --out train_tree.tsv --out-examples train_examples.txt
 
-# 3. (optional) sanity-check the examples file
-antiGen-validate-examples toy_examples.txt --split-date 2020-08-15 --alphabet ACDEFGHIKLMNPQRSTVWY
+# 3. TEST tree: the later tree (a 2020-11-15 build) plus every sequence dated before
+#    2020-11-15; records first sampled on or after 2020-08-15 are the test set
+antiGen-data/antigen prepare --tree $E/tree_late.json --root-seq $E/root-sequence.json \
+    --fasta $E/seqs.fasta --metadata $E/metadata.tsv \
+    --date-cutoff 2020-11-15 --no-clock --out test_prepared.tsv
+antiGen-data/antigen place --tree $E/tree_late.json --root-seq $E/root-sequence.json \
+    --prepared test_prepared.tsv --post-cutoff 2020-08-15 \
+    --out test_tree.tsv --out-examples test_examples.txt
 
-# 4. train a small from-scratch transformer on the pre-2020-08-15 records
-antiGen-train --examples toy_examples.txt --split-date 2020-08-15 --model-type transformer \
+# 4. (optional) sanity-check both files
+antiGen-validate-examples train_examples.txt --alphabet ACDEFGHIKLMNPQRSTVWY
+antiGen-validate-examples test_examples.txt --split-date 2020-08-15 --alphabet ACDEFGHIKLMNPQRSTVWY
+
+# 5. train a small from-scratch transformer on the train corpus (and only on it)
+antiGen-train --examples train_examples.txt --model-type transformer \
     --d-model 32 --num-layers 1 --epochs 3 --batch-size 4 --output-dir ./checkpoints
 
-# 5. score substitutions for the toy query sequences
-antiGen-infer ./checkpoints/fitness_*.pt antiGen-data/example/seqs.fasta -o scores.csv
+# 6. score substitutions for the toy query sequences
+antiGen-infer ./checkpoints/fitness_*.pt $E/seqs.fasta -o scores.csv
 ```
+
+The train corpus holds 5 records, every one of them training data. The test tree holds 7,
+of which the 2 on or after 2020-08-15 are the test set; its other 5 are never used. The
+evaluations in Part 4 score a model on the test records of the test tree.
 
 **Just want predictions from the paper's model?** [TUTORIAL.md](TUTORIAL.md) scores a
 SARS-CoV-2 spike with the pretrained antiGen that ships with the package.
@@ -124,10 +148,10 @@ and integrity checks. See [`antiGen-data/README.md`](antiGen-data/README.md).
 
 # 2. Training antiGen
 
-**Pointing antiGen at data.** Give the examples file with `--examples <path>`, plus
-`--split-date D` when its records carry per-cutoff `POST_CUTOFF` labels. This is how every
-model in the paper was trained, on the train corpus of its cutoff from Part 1, e.g. the
-2023-01-01 base model:
+**Pointing antiGen at data.** Give the train corpus of the cutoff with `--examples <path>`.
+Train only on a train corpus (Part 1): a test tree, or any file holding a post-cutoff
+record, is refused, because none of its records, pre-cutoff ones included, is training
+data. This is how every model in the paper was trained, e.g. the 2023-01-01 base model:
 
 ```bash
 antiGen-train --examples output/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
@@ -145,7 +169,9 @@ from the record it carries.
 **Dataset shortcuts.** `--flu`, `--rsv-a`, `--denv2` and the SARS-CoV-2 default select a
 dataset's variant, alphabet and evaluation region. With `--cutoff` instead of `--examples`,
 they resolve `examples_cutoff_<cutoff>.txt` under `$FITNESS_DATA_ROOT` (or `--data-dir`),
-a local path only; nothing is downloaded.
+a local path only; nothing is downloaded. That is the original tool's single-tree layout,
+whose files hold `TESTING` records, so `antiGen-train` refuses them; train from a train
+corpus with `--examples`.
 
 | Flag | Dataset | Variant | Eval region |
 |------|---------|---------|-------------|

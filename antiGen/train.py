@@ -81,14 +81,11 @@ def parse_args():
                              'model jointly on all of them; each file is one "source" '
                              'phylogeny and may have its own sequence length (esm2 only).')
     parser.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
-                    help="Which train/test split to read, for a corpus whose "
-                         "POST_CUTOFF field is a SET of cutoff dates rather than one "
-                         "boolean (antiGen-data-revised's single test tree, which "
-                         "serves 24 of them). A record is a TEST example exactly when "
-                         "its set carries this date. Required the moment any record "
-                         "carries a non-empty set -- a default would silently pick a "
-                         "split -- and ignored on the train arms, whose sets are all "
-                         "empty.")
+                    help="Not needed for training: a train corpus has no post-cutoff "
+                         "records, so its POST_CUTOFF sets are all empty and this is "
+                         "ignored. A file whose records DO carry cutoffs is a test tree, "
+                         "and antiGen-train refuses it at any split date: none of a test "
+                         "tree's records, pre-cutoff ones included, is training data.")
     parser.add_argument('--alphabet', type=str, default=STANDARD_AAS,
                         help=f'Amino-acid alphabet, one character per output column '
                              f'(default: the 20 standard residues, {STANDARD_AAS}). '
@@ -102,11 +99,11 @@ def parse_args():
                              'min(--batch-size, N // L). Keeps a long-sequence source from '
                              'OOMing at a batch size tuned for a short one.')
     parser.add_argument('--val-mode', choices=['file', 'random'], default='file',
-                        help="'file' (default): the repo's temporal split — TRAINING examples "
-                             "train, TESTING examples validate. 'random': EXPERIMENTAL arm; "
-                             "drops every TESTING example and randomly splits the TRAINING "
-                             "pool. Nothing after the forecast date is read, but the resulting "
-                             "validation score is not a forecast.")
+                        help="'file' (default): every record of the train corpus trains and "
+                             "there is no validation split (a train corpus holds no TESTING "
+                             "records, and a file that does is refused). 'random': hold out a "
+                             "random --val-frac of the train corpus for validation (the "
+                             "validation-selected ensembles); the score is not a forecast.")
     parser.add_argument('--val-frac', type=float, default=0.1,
                         help='Validation fraction per source (--val-mode random only)')
     parser.add_argument('--test-frac', type=float, default=0.0,
@@ -531,6 +528,20 @@ def main():
         if args.ignore_dead_ends:
             # Filter before splitting so train and val are drawn from one population.
             examples = [e for e in examples if e.mat.sum() >= 0.5]
+        # NEVER train on a test tree. A file that holds any post-cutoff (TESTING) record
+        # was built from sequences past the cutoff, and so were its pre-cutoff records:
+        # their child mutations, and the tree they sit on, carry information from after
+        # the cutoff (antiGen-data's minLeafDated rule). Training data comes only from a
+        # TRAIN corpus -- an earlier tree plus sequences dated before the cutoff, built
+        # by its own antiGen-data run (docs/NOTES.md s163, s181).
+        n_post = sum(1 for e in examples if not e.is_training)
+        if n_post:
+            raise SystemExit(
+                f"Source '{name}': {path} holds {n_post} post-cutoff (test) record(s), "
+                f"so it is a TEST tree, and no record of a test tree may be used for "
+                f"training -- not even its pre-cutoff ones. Train on a train corpus: a "
+                f"separate antiGen-data run on an earlier tree with only the sequences "
+                f"dated before the cutoff (antiGen-data/README.md).")
         if not examples:
             raise SystemExit(f"Source '{name}': no examples left after filtering ({path})")
         lens = {len(e.aa_idx) for e in examples}

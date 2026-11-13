@@ -44,10 +44,10 @@ The options that matter most:
 ## Output: the examples file
 
 ```
-EXAMPLE_ID: 6
-PARENT_EXAMPLE_ID: 5
+EXAMPLE_ID: 5
+PARENT_EXAMPLE_ID: 4
 MUTATION_FROM_PARENT:
-I,20,V                      # from-residue, 0-based position, to-residue
+Q,21,R                      # from-residue, 0-based position, to-residue
 POST_CUTOFF:
 2020-08-15,True             # one line per cutoff this record is after (none in a train corpus)
 IS_DESCENDED_FROM_VARIANT:
@@ -55,29 +55,52 @@ IS_VARIANT_ROOT:
 MTEYKLVVVGAGGVGKSTLTVRLIQ   # the record's sequence
 MUTATIONS_TO_CHILDREN:
 4,N                         # 0-based position, to-residue; one line per child edge
+5,F
 ```
 
-(This is a record of the toy example below.) antiGen reads it with `antiGen.load.load_examples`. A file whose `POST_CUTOFF` lists
-cutoffs needs the split named: `--split-date` on `antiGen-train`, `antiGen-eval`,
-`antiGen-validate-examples` and the list evals. A record is training data at cutoff D
-exactly when D is not among its lines. Train every model on a **train corpus**, built
-from sequences before D only, and evaluate on the post-D records of the **test tree**.
-The test tree's pre-D records are not training data (docs/NOTES.md s163).
+(This is a record of the toy example's test tree below.) antiGen reads it with `antiGen.load.load_examples`.
+
+**Train and test come from two separate runs.** For a cutoff D:
+
+* the **train corpus** is an *earlier* tree (the last build before D) plus only the
+  sequences collected before D (`prepare --date-cutoff D`, `place` without
+  `--post-cutoff`). Its records list no cutoffs: every one is training data.
+* the **test tree** is a *later* tree plus the sequences collected up to a later date,
+  placed with `--post-cutoff` listing the cutoffs. The test set at D is its records that
+  list D. A test tree's other records are **not training data at any cutoff**: the later
+  tree and the sequences below them carry information from after D (s163 of
+  docs/NOTES.md). `antiGen-train` refuses any file that holds a post-cutoff record.
+
+Reading a test tree needs the split named: `--split-date D` on `antiGen-eval`,
+`antiGen-validate-examples` and the list evals. Every model, statistical baselines
+included, is fitted on the train corpus alone.
 
 ## Toy example (seconds, CPU)
 
-`example/` holds a 25-residue toy tree, its sidecar, seven newer sequences and their
-dates. Four of them form a clade first sampled after 2020-08-15.
+`example/` holds a 25-residue toy phylogeny as two Nextstrain builds, `tree.json` (dated
+2020-06-01) and `tree_late.json` (2020-11-15, the same tree plus a clade sampled in
+August and September), their sidecar, seven newer sequences and their dates. Three are
+dated before the 2020-08-15 cutoff and four after it.
 
 ```bash
+# train corpus: the earlier tree + the sequences before 2020-08-15
 ./antigen prepare --tree example/tree.json --root-seq example/root-sequence.json \
     --fasta example/seqs.fasta --metadata example/metadata.tsv \
-    --date-cutoff none --no-clock --out toy_prepared.tsv
+    --date-cutoff 2020-08-15 --no-clock --out train_prepared.tsv
 ./antigen place --tree example/tree.json --root-seq example/root-sequence.json \
-    --prepared toy_prepared.tsv --post-cutoff 2020-08-15 --out toy_tree.tsv \
-    --out-examples toy_examples.txt
-#   2020-08-15: 2 records at or after it, 6 before it
-antiGen-validate-examples toy_examples.txt --split-date 2020-08-15 --alphabet ACDEFGHIKLMNPQRSTVWY
+    --prepared train_prepared.tsv --out train_tree.tsv --out-examples train_examples.txt
+
+# test tree: the later tree + the sequences before 2020-11-15, labelled against 2020-08-15
+./antigen prepare --tree example/tree_late.json --root-seq example/root-sequence.json \
+    --fasta example/seqs.fasta --metadata example/metadata.tsv \
+    --date-cutoff 2020-11-15 --no-clock --out test_prepared.tsv
+./antigen place --tree example/tree_late.json --root-seq example/root-sequence.json \
+    --prepared test_prepared.tsv --post-cutoff 2020-08-15 --out test_tree.tsv \
+    --out-examples test_examples.txt
+#   2020-08-15: 2 records at or after it, 5 before it
+
+antiGen-validate-examples train_examples.txt --alphabet ACDEFGHIKLMNPQRSTVWY
+antiGen-validate-examples test_examples.txt --split-date 2020-08-15 --alphabet ACDEFGHIKLMNPQRSTVWY
 ```
 
 ## The paper's SARS-CoV-2 corpora

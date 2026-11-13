@@ -14356,3 +14356,33 @@ best_epoch.py, eval_sc2_list_macro.sh, train_valsel_seed.sh, train_antigen_valse
 default to gpu_batch; download_covfit.sh to cpu_batch.
 
 README Parts 4-5 rewritten (reproduce/, render_all.sh, the R packages).
+
+## 181. Train and test from two antiGen-data runs, everywhere; antiGen-train refuses a test tree (2026-11-13)
+
+The README Quickstart (and the antiGen-data README's toy example) built ONE tree, labelled
+it against 2020-08-15 and trained on its pre-cutoff records with `antiGen-train
+--split-date`. That is the s163 leak in the documentation: the pre-cutoff records of a
+tree that later sequences were placed on carry post-cutoff information (their child
+mutations and the tree itself). It is never allowed. Training data come only from a
+train corpus: an EARLIER tree plus the sequences dated before the cutoff, built by its
+own antiGen-data run. The test tree is a separate run: a LATER tree plus sequences up to a
+later date, `--post-cutoff` labelled, read only for its post-cutoff records.
+
+* **The paper's models were not affected.** All 92 trained checkpoints behind the
+  figures (and so the two shipped in antiGen/pretrained) were trained on train corpora
+  (`.../train/examples_<D>_cur.txt`) with no --split-date.
+* **antiGen-train now refuses any examples file holding a post-cutoff record**, in all
+  three label dialects (`TESTING`, `POST_CUTOFF: True`, a cutoff set read with
+  --split-date): a file like that is a test tree, and none of its records is training
+  data. The original tool's single-tree `examples_cutoff_<N>.txt` files (reached through
+  the dataset shortcuts' `--cutoff`) mix TRAINING and TESTING records from one tree, so
+  they are refused too. `--split-date` and `--val-mode file` help texts say so.
+  tests/test_train_refuses_test_tree.py covers both dialects and the legal case.
+* **Toy example:** `antiGen-data/example/tree_late.json`, a later build (2020-11-15) of the
+  toy phylogeny with a clade sampled in August and September (new3, late1). Quickstart:
+  train corpus = tree.json + sequences before 2020-08-15 (5 records, all training); test
+  tree = tree_late.json + sequences before 2020-11-15, labelled against 2020-08-15 (7
+  records, 2 test). Both READMEs' blocks were run verbatim from a clean export.
+* Still in the code, opt-in and unused by any current output: the legacy
+  `--pool-examples` of eval.py / list_macro.py (s163), which fits the statistical
+  baselines on the test tree's pre-cutoff records -- the same leak.
