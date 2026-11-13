@@ -14426,3 +14426,21 @@ all now closed through one check:
   left on device"); their evals then refused for lack of checkpoints.
 * Released as antigen-model 0.2.1 (tag v0.2.1), so the package on PyPI and its project
   page carry the guarded training and the corrected README.
+
+## 183. The tutorial as Python chunks: notebook, script and TUTORIAL.md from one source (2026-11-13)
+
+* **tutorial/tutorial.py** is the source: `# %%` cells (markdown and code). The same cells
+  in **tutorial/tutorial.ipynb** (with a live `%pip install antigen-model` cell; a Colab
+  link opens it from GitHub) and in **TUTORIAL.md** (each code chunk followed by its
+  output). `python tutorial/build.py --outputs <executed copy>` writes both; it refuses
+  an executed copy whose code cells differ, so the outputs shown are the code's.
+* **The query is a one-click download**: `BA.2.86_spike.fasta` is attached to the v0.2.1
+  GitHub release, and the tutorial links
+  `releases/latest/download/BA.2.86_spike.fasta` (served `content-disposition:
+  attachment`). The query cell fetches it if it is missing. It is also committed at
+  tutorial/BA.2.86_spike.fasta, byte-identical to the copy in antiGen/pretrained/examples.
+  A later release must attach it again for the `latest` link to keep working.
+* Checked: the notebook validates (nbformat 4.5) and executes cleanly from a fresh kernel
+  in an empty directory (installs antigen-model, fetches the query); the outputs are the
+  paper's numbers (S446G first; R346T 9th, L455S 114th of 3,819 with CV x10; L455S 98th
+  with the base model). `python tutorial.py` prints the same.

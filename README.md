@@ -2,9 +2,14 @@
 
 Welcome to antiGen, a model that predicts future mutations to viral proteins based on inferred phylogenetic trees. This repository is intended for (1) generating training data from phylogenetic trees, (2) training antiGen on said data, (3) querying substitution probabilities predicted by antiGen, (4) running the evaluations reported in the antiGen manuscript, and (5) reproducing the manuscript figures.
 
-**Just want predictions?** [TUTORIAL.md](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md) scores every substitution of a
-SARS-CoV-2 spike (BA.2.86 in the example) with the pretrained 2023-01-01 antiGen that
-ships with the package, and lists the top-decile RBD mutations. CPU only, no download.
+**Just want predictions?** [TUTORIAL.md](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md)
+scores every substitution of a SARS-CoV-2 spike (BA.2.86 in the example) with the
+pretrained 2023-01-01 antiGen that ships with the package, and lists the top-decile RBD
+mutations, in a few chunks of Python. It is also a
+[notebook](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb)
+([open in Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb))
+and a [script](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py). CPU
+only; no model download.
 
 ## Install
 
