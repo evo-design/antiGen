@@ -49,6 +49,7 @@ antiGen-train = "antiGen.train:main"
 antiGen-infer = "antiGen.infer:main"
 antiGen-eval = "antiGen.eval:main"
 antiGen-validate-examples = "antiGen.validate_examples:main"
+antiGen-top-decile = "antiGen.top_decile:main"
 
 [tool.setuptools.packages.find]
 # "antiGen.*" (with the dot) matches the package and its subpackages but NOT the
@@ -57,7 +58,8 @@ include = ["antiGen", "antiGen.*"]
 exclude = ["antiGen.tests*", "antiGen-data*"]
 
 [tool.setuptools.package-data]
-"antiGen" = ["configs/*.yaml"]
+# configs, and the pretrained 2023-01-01 SARS-CoV-2 models (~25 MB; TUTORIAL.md).
+"antiGen" = ["configs/*.yaml", "pretrained/*/*.pt", "pretrained/*/*/*.pt"]
 
 [tool.pytest.ini_options]
 testpaths = ["antiGen/tests"]

@@ -14156,3 +14156,30 @@ history.
   not part of the repo and are untouched.
 
 All 256 tests pass after the move.
+
+## 175. TUTORIAL.md: pretrained 2023-01-01 antiGen shipped with the package (2026-11-13)
+
+User: a tutorial scoring mutations relative to a query (BA.2.86) with pretrained
+antiGen at the 2023-01-01 cutoff. It produces the substitution probabilities and a ranked
+top-decile list in a coordinate range (the RBD, as in the paper's all-RBD eval), CPU
+only. The pip install had no checkpoints; now it does.
+
+* `antiGen/pretrained/` (package data, 25 MB): `sc2-2023-01-01` = antiGen (CV x10),
+  the ten ckpt_stage_vs10_2023-01-01 members; `sc2-2023-01-01-base` = the single base
+  model of panel B (cutoff_series/2023-01-01/base). Weights-only copies: model_state_dict
+  and config, with a small provenance record and no optimizer state or file paths.
+  `pretrained.load()` wraps the ten in eval_utils.MeanLogProbEnsemble (the paper's
+  "Mean of log-probs"); `substitution_probs()` is the training-consistent distribution.
+* `antiGen-infer --pretrained NAME`; its long output gains `position_1based` and
+  `mutation` columns (appended), and prob is written in %.6e.
+* `antiGen-top-decile` (antiGen/top_decile.py): non-wild-type cells in [start, end],
+  ranked; rank = 1 + #cells strictly higher (rank_path_cells' rank_best); top decile =
+  rank <= ceil(q n).
+* `examples/tutorial/BA.2.86_spike.fasta`: the test-corpus node EXAMPLE_ID 43436, panel
+  B's BA.2.86 (all its defining RBD residues checked).
+* `antiGen/tests/test_pretrained.py`: both models load and normalise on CPU. The BASE
+  model reproduces panel B exactly (L455S rank 98 of 3,819; top decile 382). CV x10
+  gives L455S 114.
+* Checked from a wheel installed into a fresh venv, run outside the repo with
+  CUDA_VISIBLE_DEVICES="": every command and snippet in TUTORIAL.md, every number
+  quoted. ~2 s a command. 260 tests pass.
