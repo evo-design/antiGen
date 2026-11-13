@@ -45,6 +45,23 @@ REGISTRY = {
 }
 DEFAULT = "sc2-2023-01-01"
 
+#: example queries shipped with the package (the tutorial's BA.2.86)
+EXAMPLES = {"BA.2.86": "examples/BA.2.86_spike.fasta"}
+
+
+def example_fasta(name="BA.2.86"):
+    """Path to a shipped example query FASTA (aligned to the 1273-residue spike frame)."""
+    if name not in EXAMPLES:
+        raise KeyError(f"unknown example {name!r}; available: {sorted(EXAMPLES)}")
+    return os.path.join(_HERE, EXAMPLES[name])
+
+
+def write_example(dest, name="BA.2.86"):
+    """Copy a shipped example query FASTA to ``dest`` and return ``dest``."""
+    import shutil
+    shutil.copyfile(example_fasta(name), dest)
+    return dest
+
 
 def available():
     """Names of the shipped models, with a one-line description each."""

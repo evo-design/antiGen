@@ -14,15 +14,18 @@ You will:
 
 ## 1. Install
 
-The package needs Python ≥ 3.10 and PyTorch. To stay CPU-only, install the CPU build of
-PyTorch first, then the package from a clone of this repository:
+The package is on PyPI as `antigen-model` (Python ≥ 3.10; version 0.2.0 or later ships
+the pretrained models). To stay CPU-only, install the CPU build of PyTorch first. Plain
+`pip install torch` would pull the much larger CUDA build on Linux.
 
 ```bash
-git clone https://github.com/evo-design/antiGen.git
-cd antiGen
 pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install .
+pip install antigen-model
 ```
+
+The distribution is named `antigen-model`; the import name and the command-line tools
+keep the `antiGen` spelling (`import antiGen`, `antiGen-infer`, `antiGen-top-decile`).
+To work from source instead, clone the repository and run `pip install .` in it.
 
 **The pretrained models come with the install.** No download step and no GPU are
 needed. Two models are included, about 25 MB in all:
@@ -43,10 +46,11 @@ pretrained.available()
 
 The models read a spike protein in the 20-letter amino-acid alphabet, **aligned to the
 1,273-residue Wuhan-Hu-1 frame**: position *i* of the query is spike position *i*. The
-BA.2.86 spike is provided in that frame, exactly as the paper scored it:
+BA.2.86 spike ships with the package in that frame, exactly as the paper scored it.
+Write it to the working directory:
 
-```
-examples/tutorial/BA.2.86_spike.fasta
+```bash
+python -c "from antiGen import pretrained; pretrained.write_example('BA.2.86_spike.fasta')"
 ```
 
 To score your own sequence, align it to the Wuhan-Hu-1 spike (GenBank NC_045512.2) and
@@ -56,7 +60,7 @@ length or character, rather than silently scoring a misaligned sequence.
 ## 3. Substitution probabilities for every mutation
 
 ```bash
-antiGen-infer --pretrained sc2-2023-01-01 examples/tutorial/BA.2.86_spike.fasta -o ba286_scores.csv
+antiGen-infer --pretrained sc2-2023-01-01 BA.2.86_spike.fasta -o ba286_scores.csv
 ```
 
 `ba286_scores.csv` has one row for each of the 1,273 × 19 = 24,187 possible
@@ -84,7 +88,7 @@ import torch
 from antiGen import pretrained
 
 model, info = pretrained.load("sc2-2023-01-01", device="cpu")
-seq = "".join(l.strip() for l in open("examples/tutorial/BA.2.86_spike.fasta")
+seq = "".join(l.strip() for l in open("BA.2.86_spike.fasta")
               if not l.startswith(">"))
 x = pretrained.encode(seq, info["alphabet"])          # (1, 1273) residue indices
 with torch.no_grad():
@@ -102,7 +106,7 @@ asking whether the mutations that actually happen next fall in the top decile. T
 that list for the receptor-binding domain (positions 331–531):
 
 ```bash
-antiGen-top-decile examples/tutorial/BA.2.86_spike.fasta --start 331 --end 531 -o ba286_top_rbd.csv
+antiGen-top-decile BA.2.86_spike.fasta --start 331 --end 531 -o ba286_top_rbd.csv
 ```
 
 ```
@@ -157,7 +161,7 @@ JN.1.11.1 → KP.3 with the single base model. Its first step, L455S from BA.2.8
 reproduced exactly:
 
 ```bash
-antiGen-top-decile examples/tutorial/BA.2.86_spike.fasta --start 331 --end 531 \
+antiGen-top-decile BA.2.86_spike.fasta --start 331 --end 531 \
     --pretrained sc2-2023-01-01-base --all -o base_rbd.csv
 grep ",L455S," base_rbd.csv        # rank 98 of 3,819, as in the figure
 ```

@@ -14183,3 +14183,24 @@ only. The pip install had no checkpoints; now it does.
 * Checked from a wheel installed into a fresh venv, run outside the repo with
   CUDA_VISIBLE_DEVICES="": every command and snippet in TUTORIAL.md, every number
   quoted. ~2 s a command. 260 tests pass.
+
+## 176. antigen-model 0.2.0: the tutorial installs from PyPI (2026-11-13)
+
+User: the tutorial should use `pip install antigen-model`, as the README does, so that
+it is distributed like a real Python package. PyPI had only 0.1.0 (July), which has no
+pretrained models or antiGen-top-decile, so a new release is needed.
+
+* Version 0.2.0 (pyproject.toml, CITATION.cff).
+* The tutorial query ships IN the package: antiGen/pretrained/examples/BA.2.86_spike.fasta,
+  with `pretrained.example_fasta()` / `write_example()`. examples/tutorial/ is gone; a
+  pip-only user has no repo checkout.
+* TUTORIAL.md installs the CPU PyTorch build, then `pip install antigen-model`, and writes
+  the query with write_example(). The README's link to it is absolute, so it works on
+  the PyPI page.
+* Built with `python -m build --no-isolation`: dist/antigen_model-0.2.0-py3-none-any.whl
+  (23.4 MB) and .tar.gz (23.3 MB; package, README, LICENSE, build metadata only). Both
+  pass `twine check`. Installed from the wheel into a fresh venv and run outside the
+  repo with no GPU: every tutorial step and quoted number reproduces.
+* NOT YET UPLOADED. The upload is the user's, with their PyPI credentials:
+  `twine upload dist/antigen_model-0.2.0*`. Until then, `pip install antigen-model`
+  installs 0.1.0, which has none of this.

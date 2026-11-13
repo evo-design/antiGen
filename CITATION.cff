@@ -24,7 +24,7 @@ authors:
     given-names: Brian L.
     affiliation: "Stanford University, Stanford, CA, USA; Arc Institute, Palo Alto, CA, USA"
     email: brianhie@stanford.edu
-version: 0.1.0
+version: 0.2.0
 license: MIT
 repository-code: "https://github.com/evo-design/antiGen"
 # Ivan Specht and Soyoon Park are co-first authors; Brian L. Hie is the corresponding author.

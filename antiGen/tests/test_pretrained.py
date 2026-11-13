@@ -7,8 +7,7 @@ import torch
 from antiGen import pretrained
 from antiGen.top_decile import rank_substitutions, score_query, top_decile
 
-FASTA = os.path.join(os.path.dirname(__file__), "..", "..", "examples", "tutorial",
-                     "BA.2.86_spike.fasta")
+FASTA = pretrained.example_fasta("BA.2.86")
 
 
 def _seq():
