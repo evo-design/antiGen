@@ -14463,3 +14463,7 @@ all now closed through one check:
 * Notes gain one bullet: a query's gaps, `X`s and uncalled sites are filled with the
   residue of a known recent ancestor at that position, since the model has no gap or
   unknown symbol.
+* Section 5 (new): writes `ba286_top{K}_variants.fasta`, the query followed by its K = 10
+  best single-amino-acid variants from the RBD ranking (headers carry the mutation, rank
+  and prob). Checked: each variant differs from the query only at its named position, by
+  its named residue; the notebook and the script write the same file.

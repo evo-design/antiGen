@@ -108,6 +108,32 @@ print(top.head(10).to_string(index=False))
 print(ranked.set_index("mutation").loc[["L455S", "R346T"], ["rank", "prob", "percentile"]])
 
 # %% [markdown]
+# ## 5. A FASTA of the query and its top k variants
+#
+# The query followed by its `k` best single-amino-acid variants from the RBD ranking
+# above, each the query with that one substitution, ready to pass to anything that reads
+# FASTA. For the whole spike instead, rank with
+# `rank_substitutions(scores[0], seq, alphabet)` (no `start` / `end`).
+
+# %%
+K = 10
+NAME = "BA.2.86"
+
+records = [(NAME, seq)]
+for r in ranked.head(K).itertuples():
+    i = r.position - 1
+    assert seq[i] == r.ref_aa
+    records.append((f"{NAME}_{r.mutation} rank={r.rank} prob={r.prob:.3g}",
+                    seq[:i] + r.alt_aa + seq[i + 1:]))
+
+out = f"ba286_top{K}_variants.fasta"
+with open(out, "w") as f:
+    for header, s in records:
+        f.write(f">{header}\n" + "\n".join(s[j:j + 60] for j in range(0, len(s), 60)) + "\n")
+print(f"wrote {out}: the query + {len(records) - 1} variants")
+print("\n".join(h for h, _ in records))
+
+# %% [markdown]
 # ## Notes
 #
 # * **Your own sequence.** Align it to the Wuhan-Hu-1 spike (GenBank NC_045512.2), write
