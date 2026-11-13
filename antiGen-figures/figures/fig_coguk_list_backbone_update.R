@@ -6,7 +6,7 @@
 ## TWO BACKBONE FIGURES NOW EXIST AND BOTH ARE KEPT.
 ##
 ##   fig_coguk_list_backbone.R         antiGen-data/tree.json   56 listed cells
-##   fig_coguk_list_backbone_update.R  sc2_update.json          79 listed cells  <- this one
+##   fig_coguk_list_backbone_update.R  data/mutation-annotated-trees/sc2_update.json          79 listed cells  <- this one
 ##
 ## They are the same script (`fig_coguk_list.R`) through different options, so
 ## they cannot drift apart, and the whole point of keeping both is that the
@@ -36,7 +36,7 @@
 ## either the attachment or the recurrence weighting, the two figures disagree.
 ##
 ## ===========================================================================
-## THIS FIGURE IS BUILT ON `sc2_update.json`; THE SIBLING USES antiGen-data/tree.json
+## THIS FIGURE IS BUILT ON `data/mutation-annotated-trees/sc2_update.json`; THE SIBLING USES antiGen-data/tree.json
 ## ===========================================================================
 ## The guide tree the rest of the repo uses is a subsampled Nextstrain build
 ## with 2,839 spike mutation events in total, and its post-cutoff RBD branches
@@ -44,13 +44,13 @@
 ## not a sample: over its ENTIRE history, branches of that tree only ever
 ## produce 69 of the 247. Most of the list never arises on it at all.
 ##
-## `sc2_update.json` is an ncov global build, meta.updated 2026-10-18. It has
+## `data/mutation-annotated-trees/sc2_update.json` is an ncov global build, meta.updated 2026-10-18. It has
 ## FEWER nodes (5,880 vs 8,859) and fewer tips (3,018 vs 4,549) but MORE spike
 ## mutation events (3,369 vs 2,839), and runs to 2026.75 rather than 2026.21 --
 ## denser branches over a longer span rather than more tips. Every count this
 ## figure rests on goes up:
 ##
-##                            old tree   sc2_update.json
+##                            old tree   data/mutation-annotated-trees/sc2_update.json
 ##   listed cells observed         56          79     (above the old CEILING of 69)
 ##   listed target events         211         263
 ##   de novo listed cells          20          30
@@ -115,7 +115,7 @@
 ## is computed on the guide tree before attachment in both and there was no
 ## attached-vs-backbone distinction for it to make. That argument held only while
 ## every figure used the SAME guide tree. This one does not, so K-L is recomputed
-## here on `sc2_update.json` and is a genuinely independent measurement -- 79 cells
+## here on `data/mutation-annotated-trees/sc2_update.json` and is a genuinely independent measurement -- 79 cells
 ## against 53, 30 de novo against 19. This is the only one of the three figures
 ## whose K-L is not a copy of the other two.
 ##

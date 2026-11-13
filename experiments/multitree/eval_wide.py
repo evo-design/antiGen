@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Score the held-out post-cutoff tree: the wide corpus against its panel control.
 
-`eval_tree.json` is the ongoing 2026 Bundibugyo ebolavirus outbreak (DRC & Uganda,
+`eval_tree.json` (moved out of the repo root to STORE/inputs/eval_tree_bundibugyo_2026.json) is the ongoing 2026 Bundibugyo ebolavirus outbreak (DRC & Uganda,
 1048 nodes, 813 tips). **Every tip dates 2026.330-2026.697**, i.e. after the
 D = 2026-05-01 cutoff by construction -- the earliest is one day past it -- so nothing
 in it can have reached training through either inclusion route. Only GP is scored: the

@@ -74,7 +74,7 @@ python "$REPO/antiGen/list_macro.py" \
     --output-dir "$OUTDIR" \
     --dump-scores "$DUMPDIR" \
     --qtiles "$QTILES" \
-    --mutation-list coguk="$REPO/coguk.csv" "${EXTRA[@]}"
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" "${EXTRA[@]}"
 STATUS=$?
 
 echo "Job finished at: $(date) (exit $STATUS)"

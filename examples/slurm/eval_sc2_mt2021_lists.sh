@@ -33,5 +33,5 @@ python "$REPO/antiGen/eval.py" \
     --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference/ckpt_stage_mt2021 \
     --output-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_mt2021 \
     --include-experimental \
-    --mutation-list coguk="$REPO/coguk.csv"
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv"
 echo "MT2021 EXIT: $?"

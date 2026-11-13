@@ -5,8 +5,8 @@
 ##
 ##   fig_coguk_list.R                  attached test set   CoG-UK   235 cells
 ##   fig_coguk_list_backbone.R         antiGen-data tree   CoG-UK    56 cells
-##   fig_coguk_list_backbone_update.R  sc2_update.json     CoG-UK    79 cells
-##   fig_backbone_update_allrbd.R      sc2_update.json     ALL RBD  191 cells  <- this one
+##   fig_coguk_list_backbone_update.R  data/mutation-annotated-trees/sc2_update.json     CoG-UK    79 cells
+##   fig_backbone_update_allrbd.R      data/mutation-annotated-trees/sc2_update.json     ALL RBD  191 cells  <- this one
 ##
 ## WHAT CHANGES AND WHAT DOES NOT. Only the TARGET set. The queries, the
 ## candidate pool, the wild-type and gap/stop masking, the fractional tie rule,
@@ -22,7 +22,7 @@
 ## every panel, which matters on a backbone test set: 191 cells against 79, and
 ## on the de novo cut 65 against 30.
 ##
-## REVERSIONS ARE INCLUDED, AND THAT IS NOT FREE. `rbd_all_cells.csv` lists all
+## REVERSIONS ARE INCLUDED, AND THAT IS NOT FREE. `data/mutation_lists/rbd_all_cells.csv` lists all
 ## 201 x 22 = 4,422 cells of the eval range, INCLUDING each position's Wuhan
 ## residue. 27 of the backbone's 191 observed RBD cells are reversions to that
 ## residue (339G, 346R, 417K, 452L, 484E, 501N, ...), and a list built the
@@ -63,7 +63,7 @@ options(
   coguk.mt2021       = c("mt2021joint_s0_partial4", "mt2021single_s0_partial4"),
 
   ## The target set: `allrbd` is the label backbone_list_eval.py was given for
-  ## rbd_all_cells.csv, and `rbd` is what background_contrast.py already calls
+  ## data/mutation_lists/rbd_all_cells.csv, and `rbd` is what background_contrast.py already calls
   ## the same cells.
   coguk.list         = "allrbd",
   coguk.bg_list      = "rbd",

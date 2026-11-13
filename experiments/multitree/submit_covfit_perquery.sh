@@ -27,7 +27,7 @@ LM=(--dataset sc2 --alphabet ACDEFGHIKLMNPQRSTVWY
     --test-examples "$DATA/sc2-test/examples_all_cur.txt" --split-date "$D"
     --root-counts "$DATA/sc2-$D/train/counts_${D}_cur.tsv"
     --checkpoint-dir "$W" --baselines-only --skip-baselines
-    --mutation-list coguk="$REPO/coguk.csv")
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv")
 case $STAGE in
 gate)
   exec sbatch --job-name=covfitq_gate --partition=cpu_batch --time=02:00:00 \
@@ -35,7 +35,7 @@ gate)
     --wrap "set -e; cd $REPO
 $PY antiGen/baselines/covfit_perquery.py select --train-examples $DATA/sc2-$D/train/examples_${D}_cur.txt \
     --test-examples $DATA/sc2-test/examples_all_cur.txt --split-date $D \
-    --mutation-list coguk=$REPO/coguk.csv --out $W/queries.npz
+    --mutation-list coguk=$REPO/data/mutation_lists/coguk.csv --out $W/queries.npz
 $PY -I -c \"
 import csv, numpy as np
 z = np.load('$W/queries.npz'); er = z['eval_range']

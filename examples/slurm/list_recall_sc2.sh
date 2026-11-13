@@ -32,8 +32,8 @@ python "$REPO/antiGen/list_recall.py" \
     --dataset sc2 \
     --data-dir /home/ivan.specht/antiGen-data/output1 \
     --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
-    --mutation-list ecdc="$REPO/ecdc.csv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list ecdc="$REPO/data/mutation_lists/ecdc.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --output-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_list_recall
 
 echo "Job finished at: $(date)"

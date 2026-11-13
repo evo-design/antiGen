@@ -62,6 +62,6 @@ python "$REPO/antiGen/list_variant_recall.py" \
     --output-dir "$OUTDIR" \
     --qtile "$QTILE" \
     --multitree-baselines \
-    --mutation-list coguk="$REPO/coguk.csv" "${EXTRA[@]}" || exit 1
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" "${EXTRA[@]}" || exit 1
 
 echo "Job finished at: $(date)"

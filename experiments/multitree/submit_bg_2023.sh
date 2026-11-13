@@ -72,5 +72,5 @@ echo \"reference query = \$REF\"
 $PYTHON -u antiGen/background_contrast.py \
     --background-dir '$OUT' \
     --root-counts '$ROOT_COUNTS' \
-    --mutation-list coguk=$REPO/coguk.csv \
+    --mutation-list coguk=$REPO/data/mutation_lists/coguk.csv \
     --reference-query \$REF --min-hosts 1 --min-controls 1"

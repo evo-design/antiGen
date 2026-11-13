@@ -26,7 +26,7 @@ python -u antiGen/list_macro.py \
     --checkpoint-dir "$EMPTY" \
     --ensemble-dir "$STORE/ckpt_stage_vs10_aa20" --ensemble-name ens_gate \
     --output-dir "$OUT" --skip-baselines \
-    --mutation-list coguk="$REPO/coguk.csv" || { echo "GATE RUN FAILED"; exit 1; }
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" || { echo "GATE RUN FAILED"; exit 1; }
 python - "$OUT/list_macro_summary.csv" <<'PY'
 import csv, sys
 want = {"list_coguk_fullpool": (0.54512071, 0.83055240),

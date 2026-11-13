@@ -20,5 +20,5 @@ exec sbatch --job-name=refit_bg_2023 --partition=${PARTITION:-cpu_batch_high_mem
 REF=\$(/home/ivan.specht/miniconda/bin/python -I -c \"import json; q=json.load(open('/large_storage/hielab/ispecht/fitness-inference/evals_sc2_background_aa20_2023-01-01_refit/backbone_manifest.json'))['variant_root_query']; assert q >= 0, q; print(q)\")
 /home/ivan.specht/miniconda/bin/python -u antiGen/background_contrast.py --background-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_background_aa20_2023-01-01_refit \
     --root-counts /home/ivan.specht/antiGen-data-revised/output/sc2-2023-01-01/train/counts_2023-01-01_cur.tsv \
-    --mutation-list coguk=/home/ivan.specht/antiGen/coguk.csv \
+    --mutation-list coguk=/home/ivan.specht/antiGen/data/mutation_lists/coguk.csv \
     --reference-query \$REF --min-hosts 1 --min-controls 1"

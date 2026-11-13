@@ -80,7 +80,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$COUNTS" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "$VS_PREFIX,$HY_PREFIX,$COMPARE" \
     --compare "$COMPARE" \
     --rule-json "$WORK/rules2.json" \

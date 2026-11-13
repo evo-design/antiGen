@@ -94,7 +94,7 @@ python -u "$REPO/antiGen/list_macro.py" \
     --dump-scores "$MAPS" \
     --skip-baselines \
     --include-experimental \
-    --mutation-list coguk="$REPO/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
 
 echo ""
 echo "=== 3. the rule, and its report ==="
@@ -115,7 +115,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$COUNTS" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members vs10Antigen,simple_d128_n2_lr0.0001 \
     --compare simple_d128_n2_lr0.0001 \
     --rule-json "$WORK/rules1.json" \

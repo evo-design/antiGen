@@ -50,5 +50,5 @@ REF=\$($PYTHON -I -c \"import json; print(int(json.load(open('$BG/backbone_manif
 $PYTHON -u antiGen/background_contrast.py \
     --background-dir $SIDE \
     --root-counts $REVISED/sc2-2021/train/counts_2021_cur.tsv \
-    --mutation-list coguk=$REPO/coguk.csv \
+    --mutation-list coguk=$REPO/data/mutation_lists/coguk.csv \
     --reference-query \$REF --min-hosts 1 --min-controls 1"

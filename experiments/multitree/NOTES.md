@@ -14132,3 +14132,27 @@ User: complete A-D without the ESM-2 650M full FT, which is still training (job
 * **When the 650M full FT lands:** run the original finish_ft_2023.sh, pointed at the
   train-only run with ANTIGEN_TOPQ_LEGACY=1, then drop the two REVISED2 overrides; the
   9-member rows are already staged at 2021.
+
+## 174. Repo root cleanup before the PR (2026-11-13)
+
+Files added to the root on this branch, moved or removed. References elsewhere are
+rewritten; earlier NOTES sections and recorded run manifests keep their old paths, as
+history.
+
+* Mutation lists -> `data/mutation_lists/`: `coguk.csv` (the CoG-UK escape list, ~30
+  scripts), `ecdc.csv`, `escape.csv` (input to make_escape_baseline.py) and
+  `rbd_all_cells.csv`.
+* `sc2_update.json` (the backbone-update tree) -> `data/mutation-annotated-trees/`, next
+  to SARS-CoV-2.json.
+* `ba286_to_kp3_path.csv` (rank_path_cells.py's --path-csv, panel B) ->
+  `antiGen-figures/data/`, next to its ranks files.
+* Untracked: `dms_spearman.csv` deleted. It was a stale copy of an output that
+  panels_sc2_export.R now writes to tempdir(). `eval_tree.json` (the 2026 Bundibugyo
+  ebolavirus tree; no code reads it) moved out of the repo to
+  `STORE/inputs/eval_tree_bundibugyo_2026.json`.
+* Left at root: `CLAUDE.md` (working rules) and the files already on main (README,
+  LICENSE, CITATION.cff, pyproject.toml, requirements.txt). The gitignored local
+  files (papers, inspiration images, `tree_pulled_2026-09-28.json`, `.DS_Store`) are
+  not part of the repo and are untouched.
+
+All 256 tests pass after the move.

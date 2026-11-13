@@ -43,7 +43,7 @@ echo "=== GATE 1: --legacy-pool must reproduce the PRE-s51 published CSVs ==="
 mkdir -p "$W/legacy_gate"
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models "$GATEMODELS" --rule-json "$W/rules9.json" \
     --variants fullpool,unseen_fullpool \
     --legacy-pool --output-dir "$W/legacy_gate" > "$W/legacy_gate.log" 2>&1 || {
@@ -56,7 +56,7 @@ echo "=== GATE 2: --ungrounded-queries score must reproduce the SHIPPED s51 CSVs
 mkdir -p "$W/s51_gate"
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models "$GATEMODELS" --rule-json "$W/rules9.json" \
     --variants fullpool,unseen_fullpool \
     --ungrounded-queries score --output-dir "$W/s51_gate" > "$W/s51_gate.log" 2>&1 || {
@@ -68,7 +68,7 @@ echo "=== full query-pool re-score (--ungrounded-queries $MODE) ==="
 mkdir -p "$W/querypool" "$W/report_qp"
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models "$(cat "$W/models.txt")" \
     --rule-json "$W/rules9.json" \
     --variants fullpool,unseen_fullpool \
@@ -80,7 +80,7 @@ MEMBERS=$(python -c "
 import json; print(','.join(json.load(open('$W/rules9.json'))[0]['members']))")
 python -u antiGen/ensemble_report.py \
     --substrate list --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "$MEMBERS" --rule-json "$W/rules9.json" \
     --ungrounded-queries "$MODE" \
     --output-dir "$W/report_qp" > "$W/report_qp.log" 2>&1 &

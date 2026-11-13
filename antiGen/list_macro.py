@@ -41,7 +41,7 @@ Usage:
         --data-dir /home/ivan.specht/antiGen-data/output1 \
         --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
         --output-dir /large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists_macro \
-        --mutation-list coguk=coguk.csv
+        --mutation-list coguk=data/mutation_lists/coguk.csv
 """
 from __future__ import annotations
 

@@ -73,7 +73,7 @@ exec sbatch \
     --wrap "cd $REPO && python antiGen/background_contrast.py \
         --background-dir '$BG' \
         --root-counts '$REVISED/sc2-2021/train/counts_2021_cur.tsv' \
-        --mutation-list coguk=$REPO/coguk.csv \
+        --mutation-list coguk=$REPO/data/mutation_lists/coguk.csv \
         --reference-query $REF \
         --min-hosts $MIN_HOSTS \
         --min-controls $MIN_CONTROLS"

@@ -14,7 +14,7 @@
 # post-cutoff RBD branches carry only 56 of CoG-UK's 247 listed cells (20 de novo).
 # That is not a sampling accident that more models would fix: the whole tree, over
 # its entire history, only ever produces 69 of the 247, because it is a subsampled
-# Nextstrain build with 2,839 spike mutation events in total. `sc2_update.json`
+# Nextstrain build with 2,839 spike mutation events in total. `data/mutation-annotated-trees/sc2_update.json`
 # (ncov global, meta.updated 2026-10-18) carries 3,369 spike events on FEWER nodes
 # and runs a year longer, and gives 79 listed cells / 263 events, 30 of them de
 # novo -- above the old tree's ceiling, so it is more of the list and not just the

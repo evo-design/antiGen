@@ -132,8 +132,8 @@ python "$REPO/antiGen/eval.py" \
     --data-dir /home/ivan.specht/antiGen-data/output1 \
     --checkpoint-dir /large_storage/hielab/ispecht/fitness-inference \
     --output-dir "/large_storage/hielab/ispecht/fitness-inference/evals_sc2_lists${SUFFIX}" \
-    --mutation-list ecdc="$REPO/ecdc.csv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list ecdc="$REPO/data/mutation_lists/ecdc.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     "${MTB_ARGS[@]}" \
     --priority-models blosum62,esm2
 

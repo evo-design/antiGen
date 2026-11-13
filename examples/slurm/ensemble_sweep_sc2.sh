@@ -63,7 +63,7 @@ echo "qtiles=$QTILES q0=$Q0 top=$TOP block=$BLOCK extra=${EXTRA[*]}"
 
 common=(--substrate list --maps-dir "$MAPS"
         --data-dir /home/ivan.specht/antiGen-data/output1
-        --mutation-list coguk="$REPO/coguk.csv"
+        --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv"
         --query-block "$BLOCK")
 
 # The maps must be complete before anything is swept over them: a mixture quietly
@@ -143,6 +143,6 @@ echo "Frozen rule is in $OUTDIR/frozen_rule.json; the decision trail is beside i
 echo "NOTHING has read the reported cells yet. The next step is the only one that does:"
 echo "  python $REPO/antiGen/ensemble_report.py --substrate list --maps-dir $MAPS \\"
 echo "      --data-dir /home/ivan.specht/antiGen-data/output1 \\"
-echo "      --mutation-list coguk=$REPO/coguk.csv \\"
+echo "      --mutation-list coguk=$REPO/data/mutation_lists/coguk.csv \\"
 echo "      --rule-json $OUTDIR/frozen_rule.json --output-dir $OUTDIR/report"
 echo "Job finished at: $(date)"

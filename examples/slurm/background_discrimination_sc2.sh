@@ -88,6 +88,6 @@ python "$REPO/antiGen/background_discrimination.py" \
 python -u "$REPO/antiGen/background_contrast.py" \
     --background-dir "$OUT" \
     "${DATA_ARG[@]}" \
-    --mutation-list coguk="$REPO/coguk.csv" "${CONTRAST_ARGS[@]}"
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" "${CONTRAST_ARGS[@]}"
 
 echo "Job finished at: $(date)"

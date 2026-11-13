@@ -77,7 +77,7 @@ python -u "$REPO/antiGen/list_macro.py" \
     --checkpoint-dir "$STAGE" \
     --output-dir "$OUT" \
     "${MTB_ARG[@]}" \
-    --mutation-list coguk="$REPO/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
 
 echo ""; echo "=== outputs ==="; ls -la "$OUT"
 echo "Job finished at: $(date)"

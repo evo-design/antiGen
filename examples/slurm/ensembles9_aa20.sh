@@ -141,7 +141,7 @@ python -u "$REPO/antiGen/ensemble_sweep.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$REV/counts_2021_cur.tsv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --rules-json "$WORK/rules9_sweep.json" \
     --ungrounded-queries drop \
     --device cuda \
@@ -157,7 +157,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$REV/counts_2021_cur.tsv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "$NINE" \
     --compare "$NINE" \
     --rule-json "$WORK/rules9_report.json" \
@@ -170,7 +170,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$REV/counts_2021_cur.tsv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "vs10Antigen,hybridWxwPssm,simple_d128_n2_lr0.0001,where_times_which,pssm_root" \
     --compare "simple_d128_n2_lr0.0001,where_times_which,pssm_root" \
     --rule-json "$WORK/rules2_report.json" \

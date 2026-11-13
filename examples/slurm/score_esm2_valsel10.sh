@@ -115,7 +115,7 @@ python -u "$REPO/antiGen/list_macro.py" \
     --dump-scores "$MAPS" \
     --skip-baselines \
     --include-experimental \
-    --mutation-list coguk="$REPO/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" || { echo "SCORING FAILED"; exit 1; }
 
 echo ""
 echo "=== 3. the eight rules, built against the maps that actually exist ==="
@@ -174,7 +174,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$REV/counts_2021_cur.tsv" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "vs10Esm,vs10Antigen,hybridWxwPssm_s,esm2_esm2_t12,esm2_esm2_t33,simple_d128_n2_lr0.0001,where_times_which,pssm_root" \
     --compare "$COMPARE" \
     --rule-json "$WORK/rules8.json" \

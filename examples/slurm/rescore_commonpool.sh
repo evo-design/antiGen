@@ -44,7 +44,7 @@ export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
 echo "=== launching rescore_common_pool and ensemble_report concurrently ==="
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models "$(cat "$WORK/models.txt")" \
     --rule-json "$WORK/rules9.json" \
     --variants fullpool,unseen_fullpool \
@@ -53,7 +53,7 @@ PID_RESCORE=$!
 
 python -u antiGen/ensemble_report.py \
     --substrate list --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "$MEMBERS" \
     --rule-json "$WORK/rules9.json" \
     --output-dir "$WORK/report_cp" > "$WORK/report_cp.log" 2>&1 &

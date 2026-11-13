@@ -29,7 +29,7 @@ echo "=== GATE: --legacy-pool must reproduce the published CSVs ==="
 mkdir -p "$W/legacy_gate"
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models simple_d128_n2_lr0.0001,eve_ft_lr0.0001,blosum62,EVEscape \
     --rule-json "$W/rules9.json" \
     --variants fullpool,unseen_fullpool \
@@ -43,7 +43,7 @@ echo "=== full common-pool re-score ==="
 mkdir -p "$W/commonpool"
 python -u antiGen/rescore_common_pool.py \
     --maps-dir "$MAPS" --data-dir "$DATA" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --models "$(cat "$W/models.txt")" \
     --rule-json "$W/rules9.json" \
     --variants fullpool,unseen_fullpool \

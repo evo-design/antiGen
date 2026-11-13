@@ -116,7 +116,7 @@ python -u "$REPO/antiGen/ensemble_report.py" \
     --substrate list --maps-dir "$MAPS" \
     --alphabet "$ALPHABET" \
     --root-counts "$COUNTS" \
-    --mutation-list coguk="$REPO/coguk.csv" \
+    --mutation-list coguk="$REPO/data/mutation_lists/coguk.csv" \
     --members "$PREFIX,where_times_which,pssm_root,simple_d128_n2_lr0.0001" \
     --compare where_times_which,pssm_root,simple_d128_n2_lr0.0001 \
     --rule-json "$WORK/rule.json" \

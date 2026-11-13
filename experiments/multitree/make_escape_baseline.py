@@ -14,7 +14,7 @@ THREE THINGS THIS FILE HAS TO GET RIGHT, and each is checked rather than assumed
   file that is self-consistent, in range, and wrong -- the defect class NOTES s53 spent a
   section on. So the frame is DETECTED from the data: the table carries a ``wildtype``
   column, and the offset is accepted only if every site's wildtype matches the reference
-  sequence at that offset and the other offset does worse. For `escape.csv` against the
+  sequence at that offset and the other offset does worse. For `data/mutation_lists/escape.csv` against the
   BA.2 root that is 173/173 against 6/173, which is not a close call.
 
 * THE BACKGROUND. ``--reference`` names the genotype the wildtype column is checked

@@ -378,7 +378,7 @@ def parse_args():
     parser.add_argument('--mutation-list', action='append', default=None,
                         metavar='LABEL=PATH',
                         help='Curated mutation list to evaluate as its own subset, '
-                             'e.g. --mutation-list ecdc=ecdc.csv. Repeatable. Each adds '
+                             'e.g. --mutation-list ecdc=data/mutation_lists/ecdc.csv. Repeatable. Each adds '
                              'quantile_hit_rates_list_<LABEL>* and '
                              'variant_emergence_list_<LABEL>* outputs, scored exactly '
                              'like the de novo subset: the listed (position, alt) cells '

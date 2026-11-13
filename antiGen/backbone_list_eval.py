@@ -46,7 +46,7 @@ Usage:
         --background-dir .../evals_sc2_background \\
         --data-dir /home/ivan.specht/antiGen-data/output1 \\
         --tree-json antiGen-data/tree.json --ref-json antiGen-data/ref.json \\
-        --mutation-list coguk=coguk.csv \\
+        --mutation-list coguk=data/mutation_lists/coguk.csv \\
         --output-dir .../evals_sc2_lists_macro_backbone
 """
 from __future__ import annotations
