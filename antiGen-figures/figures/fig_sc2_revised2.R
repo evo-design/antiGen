@@ -388,9 +388,14 @@ if (VARIANT == "main") {
                         nrow = 1, labels = c("O", "P"))),
     plot_grid(NULL, gm$gate_legend, nrow = 1, rel_widths = c(HDR_W, 1)), NULL,
     ncol = 1, rel_heights = c(1, 0.1, 0.07))
+  ## The fixed-split panel back in the main figure, as its bottom row Q (user): each
+  ## external model fit once at a fixed date, against the base antiGen at that cutoff.
+  blk_fs <- hdr_block("Fixed splits",
+                      plot_grid(NULL, plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
+                                nrow = 1, rel_widths = c(0.035, 1), labels = c("Q", "")))
 }
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, NULL, blk_var)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, NULL, blk_var, NULL, blk_fs)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -398,7 +403,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4] + LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4] + LEG_IN, GAP_IN, ROW_IN[2], GAP_IN, M_IN + 0.25) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -408,15 +413,10 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + LEG_IN + 2 * GAP_IN + M_IN + 0.25 else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
 
-## THE FIXED-SPLIT PANEL AS ITS OWN SUPPLEMENT (user, s169): formerly K, then O, of the main
-## figure. It replaces nothing: supp_fixed_split (figS_fixed_split.R) is the older
-## vertical version, with CoVFit's static map rather than its per-query scores.
-if (VARIANT == "main") {
-  save_figure(plot_grid(row5, key_row, ncol = 1, rel_heights = c(M_IN + 0.25, LEG_IN)),
-              "supp_fixed_split_revised2", width = 11, height = M_IN + 0.25 + LEG_IN)
-  cat("wrote figs/supp_fixed_split_revised2.png (+ .pdf)\n")
-}
+## The fixed-split panel is row Q of the main figure again (user); it was its own
+## supplement, supp_fixed_split_revised2, from s169 until then.
+

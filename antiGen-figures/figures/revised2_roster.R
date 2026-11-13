@@ -15,4 +15,6 @@ DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (b
                "pssm_root_position",                      # PFM Conservation
                "Omicron_BA1_bind", "Omicron_BA2_bind",    # the two DMS (bind)
                ## Third pass (s133):
-               "substitution")                            # Codon-B62 mixture
+               "substitution",                            # Codon-B62 mixture
+               ## Supplement only (user):
+               "codon_blosum_k4")                         # Codon-aware B62

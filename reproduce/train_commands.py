@@ -33,6 +33,9 @@ FAMILIES = {
     "2023-roster": (f"{STORE}/ckpt_stage_bg_2023-01-01", "2023 arm: base, gate, ESM-2, EVE / Tranception frozen, BLOSUM62"),
     "2023-cv10": (f"{STORE}/ckpt_stage_vs10_2023-01-01", "2023 arm: antiGen (CV x10) members"),
     "2023-finetunes": (f"{STORE}/ckpt_stage_ft_2023-01-01", "2023 arm: ESM-2 / EVE / Tranception fine-tunes"),
+    "2023-codon-blosum": (f"{STORE}/ckpt_codon_blosum_2023-01-01", "2023 arm: codon-aware BLOSUM62 (training-free)"),
+    **{f"dataseed-{k}": (f"{STORE}/dataseed_2023-01-01/seed_{k}/stage", f"antiGen (CV x10) on the corpus built with antigen --seed {k}")
+       for k in (2, 3)},
     **{f"cutoff-{d}": (f"{STORE}/cutoff_stage_aa20/{d}", f"cutoff series at {d}: base, gate, ESM-2 35M partial, BLOSUM62")
        for d in ["2020-04-01", "2020-07-01", "2020-10-01", "2021-01-01", "2021-04-01", "2021-07-01",
                  "2021-10-01", "2022-01-01", "2022-04-01", "2022-07-01", "2022-10-01", "2023-01-01",

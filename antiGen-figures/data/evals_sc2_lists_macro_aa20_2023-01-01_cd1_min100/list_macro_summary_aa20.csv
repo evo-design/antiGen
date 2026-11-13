@@ -57,3 +57,5 @@ where_times_which,list_allcells_fullpool,0.10,0.45037295,0.53729784,183,8904
 where_times_which,list_allcells_unseen_fullpool,0.10,1.00000000,1.00000000,1,13
 wxw_dirichlet,list_allcells_fullpool,0.10,0.60976034,0.74079066,183,8904
 wxw_dirichlet,list_allcells_unseen_fullpool,0.10,1.00000000,1.00000000,1,13
+codon_blosum_k4,list_allcells_fullpool,0.10,0.23143943,0.25447738,183,8904
+codon_blosum_k4,list_allcells_unseen_fullpool,0.10,0.00000000,0.00000000,1,13

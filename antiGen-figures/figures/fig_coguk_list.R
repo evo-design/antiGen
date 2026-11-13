@@ -438,6 +438,10 @@ MODEL_GROUP <- c(
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "Pre-Pandemic Data Only",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "Pre-Pandemic Data Only",
   blosum62                                   = "Pre-Pandemic Data Only",
+  ## BLOSUM62 corrected for single-nucleotide codon reachability (kappa = 4): fixed
+  ## external constants, no training data (ModelType.CODON_BLOSUM). Not the fitted
+  ## `substitution` model ("Codon-B62 mixture"), which is fitted on the train corpus.
+  codon_blosum_k4                            = "Pre-Pandemic Data Only",
   ## The genetic code and nothing else -- no training data (ModelType.CODON).
   codon                                      = "Pre-Pandemic Data Only"
 )
@@ -486,6 +490,7 @@ MODEL_LABEL <- c(
   esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), untrained",
   esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), untrained",
   blosum62                                   = "BLOSUM62",
+  codon_blosum_k4                            = "Codon-aware B62",
   codon                                      = "Codon table"
 )
 

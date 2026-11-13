@@ -17,7 +17,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from antiGen.config import (ModelConfig, ModelType, TransformerConfig, AlphabetConfig, ESM2Config,
-                            EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig,
+                            EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig, CodonBlosumConfig,
                             SubstitutionConfig, GatedFitnessConfig, STANDARD_AAS, LEGACY_AAS)
 from antiGen.models.factory import create_model
 from antiGen.load import load_examples, require_train_corpus
@@ -51,8 +51,8 @@ def parse_args():
     parser.add_argument('--cutoff', type=float, default=1.0, help='Train/test cutoff (years since MRCA)')
     parser.add_argument('--ignore-dead-ends', action='store_true', default=False, help='Do not make examples for sequences with no downstream mutants')
 
-    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'codon', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
-                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors')
+    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'codon', 'codon_blosum', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
+                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), codon-aware BLOSUM62 (codon_blosum, eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors')
     parser.add_argument('--d-model', type=int, default=512, help='Model dimension (transformer only)')
     parser.add_argument('--num-layers', type=int, default=4, help='Number of transformer layers (transformer only)')
     parser.add_argument('--esm2-model-name', type=str, default='facebook/esm2_t12_35M_UR50D',
@@ -66,6 +66,9 @@ def parse_args():
                              '(1.0 = every nucleotide change counts equally)')
     parser.add_argument('--codon-pseudocount', type=float, default=0.01,
                         help='Floor for codon-inaccessible substitutions')
+    parser.add_argument('--codon-blosum-kappa', type=float, default=4.0,
+                        help='Transition/transversion ratio of --model-type codon_blosum '
+                             '(a fixed external constant, not fitted)')
     parser.add_argument('--no-blosum', action='store_true', default=False,
                         help='Drop the BLOSUM62 term from --model-type substitution, '
                              'leaving a codon-only model with learned kappa')
@@ -223,6 +226,7 @@ _PARTNER_SHORT = {
     'fitness_predictor': 'xfmr',
     'blosum62': 'blosum62',
     'codon': 'codon',
+    'codon_blosum': 'cb62',
     'substitution': 'subst',
     'pssm': 'pssm',
     'evcouplings': 'evc',
@@ -555,6 +559,7 @@ def main():
         variable_ok = {'esm2': ModelType.ESM2_FITNESS_PREDICTOR,
                        'blosum62': ModelType.BLOSUM62,
                        'codon': ModelType.CODON,
+                       'codon_blosum': ModelType.CODON_BLOSUM,
                        'substitution': ModelType.SUBSTITUTION}
         if variable_ok.get(args.model_type) not in VARIABLE_LENGTH_OK:
             raise SystemExit(
@@ -655,6 +660,15 @@ def main():
         )
         model = create_model(model_config, device)
         print(f"Model: codon accessibility (kappa={args.codon_kappa}, no training, eval only)")
+    elif args.model_type == 'codon_blosum':
+        model_config = ModelConfig(
+            model_type=ModelType.CODON_BLOSUM,
+            seq_len=seq_len_aa,
+            alphabet=alphabet_config,
+            codon_blosum=CodonBlosumConfig(kappa=args.codon_blosum_kappa),
+        )
+        model = create_model(model_config, device)
+        print(f"Model: codon-aware BLOSUM62 (kappa={args.codon_blosum_kappa}, no training, eval only)")
     elif args.model_type == 'substitution':
         model_config = ModelConfig(
             model_type=ModelType.SUBSTITUTION,
@@ -805,6 +819,8 @@ def main():
         run_prefix = f"blosum62_{timestamp}"
     elif args.model_type == 'codon':
         run_prefix = f"codon_k{args.codon_kappa:g}_{timestamp}"
+    elif args.model_type == 'codon_blosum':
+        run_prefix = f"codon_blosum_k{args.codon_blosum_kappa:g}_{timestamp}"
     elif args.model_type == 'substitution':
         tag = "codononly" if args.no_blosum else "blosum"
         run_prefix = f"subst_{tag}_lr{args.lr}_{timestamp}"
@@ -846,7 +862,7 @@ def main():
     best_val_nll, best_epoch = float('inf'), None
     best_val_nll_by_source, best_epoch_by_source = {}, {}
 
-    skip_training = args.model_type in ('blosum62', 'codon', 'pssm', 'evcouplings') or \
+    skip_training = args.model_type in ('blosum62', 'codon', 'codon_blosum', 'pssm', 'evcouplings') or \
         (args.model_type == 'eve' and args.freeze_backbone) or \
         (args.model_type == 'tranception' and args.freeze_backbone)
     if skip_training:

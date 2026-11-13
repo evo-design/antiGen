@@ -51,7 +51,7 @@ committed.
 | ″ K–N (de novo, ≥ 100 sequences, 2021-01-01) | `evals_sc2_lists_macro_aa20_2021_allcells_min100/`, `…_2021_allcells_cd1_min100/` | `cd1_2021_allcells`, `postcutoff_counts` |
 | ″ O/P (cutoff series) | `gating_aa20/<D>/` (per mutation), `gating_macro_aa20/<D>/` (per cell) | `cutoff_eval`, `cutoff_rbd` |
 | ″ model-type key | `evals_sc2_lists_macro_aa20/` | `list2021` |
-| `supp_fixed_split_revised2` (written by the same script) | `evals_fixedsplit_{2022-01-01,2023-10-01,2024-10-01}/` | `fixedsplit` (+ CoVFit per query, §4) |
+| `sc2_results_revised2` Q (fixed splits) | `evals_fixedsplit_{2022-01-01,2023-10-01,2024-10-01}/` | `fixedsplit` (+ CoVFit per query, §4) |
 | `sc2_results_revised2_supp` | as C–J and O/P | as above |
 | `supp_cd1` | `evals_sc2_lists_macro_aa20_cd1/`, `…_2023-01-01_cd1/` | `cd1_2021`, `rbd_2023` |
 | `supp_cd1_min100` (2023) | `evals_sc2_lists_macro_aa20_2023-01-01_cd1_min100/` | `rbd_2023` |
@@ -62,6 +62,7 @@ committed.
 | `supp_query_adapt` | `evals_sc2_background_aa20{,_eventwtd}/`, `…_2023-01-01{,_eventwtd}/` | `background_2021`, `background_2023` |
 | `supp_dms_revised2` | `sc2_aa20/`, `sc2_aa20_extra/` (+ `baselines/`, `dms/`) | `list2021`, `dms_dumps` |
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
+| `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
 
 `<D>` runs over the sixteen quarterly cutoffs 2020-04-01 … 2024-01-01; the de novo 1-nt
@@ -78,7 +79,7 @@ without submitting it. Each submitted job's script is kept as `logs/rp_<step>.sh
 | `dms_dumps` | each model's prediction at the BA.2 clade root, from those maps (CPU) | — | — | written straight into `data/sc2_aa20{,_extra}` | min |
 | `cd1_2021` | 2021 arm, COG-UK list, + 1-nt variants | `evals_cd1_2021/ckpt` | legacy | `evals_cd1_2021/out` | ~30 min |
 | `cd1_2021_allcells` | 2021 arm, every RBD cell, + 1-nt variants | `evals_cd1_2021/ckpt` | current | `evals_cd1_2021_allcells/out` | ~30 min |
-| `rbd_2023` | 2023-01-01, every RBD cell, full roster with fine-tunes + CV ×10, + 1-nt | `ckpt_stage_rbd_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_cd1_2023-01-01/out_trainonly` | ~1 h |
+| `rbd_2023` | 2023-01-01, every RBD cell, full roster with fine-tunes + CV ×10, + 1-nt | `ckpt_stage_rbd_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_cd1_2023-01-01/out_trainonly`; the codon-aware B62 rows from `evals_cb62_2023-01-01` (same flags, run later) | ~1 h |
 | `ens8_2023` | the three mean-rule ensembles of eight members | `ckpt_stage_ens8_2023-01-01` | legacy | `ensembles8_aa20_2023-01-01/report` | ~1 h |
 | `fullspike_2023` | 2023-01-01, whole spike, + 1-nt | `ckpt_stage_bg_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_sc2_lists_macro_aa20_2023-01-01_allcells_fullspike_cd1` | ~50 min |
 | `cutoff_eval <D>` | antiGen-eval per cutoff (per mutation) | `cutoff_stage_aa20/<D>` | legacy | `cutoff_evals_aa20_trainonly/<D>` | 4 min – 1.3 h |
@@ -89,6 +90,7 @@ without submitting it. Each submitted job's script is kept as `logs/rp_<step>.sh
 | `postcutoff_counts` | all-lineage residue counts dated ≥ each cutoff (the ≥ 100 masks; CPU) | — | — | `postcutoff_counts` | min |
 | `background_2021` | background discrimination + contrast, then the host-weighted summary | `ckpt_stage_aa20`, `ckpt_stage_vs10_aa20` | legacy | `evals_sc2_background_aa20` (+ `_topup`, see §5) | ~2.5 h |
 | `background_2023` | the same at 2023-01-01 | `ckpt_stage_bg_2023-01-01`, `ckpt_stage_vs10_2023-01-01` | legacy | `evals_sc2_background_aa20_2023-01-01_trainonly` | hours |
+| `dataseed <k>` | antiGen (CV ×10) retrained on the 2023-01-01 corpus rebuilt with `antigen --seed k` (k = 1, 2, 3; 1 is the production corpus), scored as C–J | `ckpt_stage_vs10_2023-01-01` (k = 1), `dataseed_2023-01-01/seed_<k>/stage` | legacy | `dataseed_2023-01-01/seed_<k>/eval_cd1` | ~2 min |
 | `fixedsplit <D>` | base antiGen of cutoff D against the fixed maps, COG-UK list | `cutoff_series/<D>/base` | legacy | `evals_fixedsplit_<D>` | ~30 min |
 | `gate_units` | training-set size per cutoff in three units (CPU) | — | — | — | ~2 min |
 | `panel_b` | ranks of each BA.2.86 → KP.3 step, and the panel image (CPU) | `cutoff_stage_aa20/2023-01-01` base | — | — | ~20 s |
@@ -120,6 +122,8 @@ pick one, `--sh` for bare commands). The families:
 | `2023-roster` | `ckpt_stage_bg_2023-01-01` | 2023 base, gate, ESM-2, EVE / Tranception frozen, BLOSUM62 |
 | `2023-cv10` | `ckpt_stage_vs10_2023-01-01` | 2023 antiGen (CV ×10) |
 | `2023-finetunes` | `ckpt_stage_ft_2023-01-01` | 2023 ESM-2 / EVE / Tranception fine-tunes |
+| `2023-codon-blosum` | `ckpt_codon_blosum_2023-01-01` | codon-aware BLOSUM62 (`--model-type codon_blosum`, κ = 4): training-free, so its "checkpoint" is the fixed lookup table |
+| `dataseed-<k>` | `dataseed_2023-01-01/seed_<k>/stage` | the CV ×10 members trained on the seed-k corpus |
 | `cutoff-<D>` | `cutoff_stage_aa20/<D>` | per cutoff: base antiGen, the gate, ESM-2 35M partial, BLOSUM62 |
 
 Inputs beyond a plain `antiGen-train` call:

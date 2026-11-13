@@ -48,6 +48,9 @@ def create_model(
     elif config.model_type == ModelType.CODON:
         from antiGen.models.codon_fitness_predictor import CodonFitnessPredictor
         model = CodonFitnessPredictor(config)
+    elif config.model_type == ModelType.CODON_BLOSUM:
+        from antiGen.models.codon_blosum_fitness_predictor import CodonBLOSUMFitnessPredictor
+        model = CodonBLOSUMFitnessPredictor(config)
     elif config.model_type == ModelType.SUBSTITUTION:
         from antiGen.models.substitution_fitness_predictor import SubstitutionFitnessPredictor
         model = SubstitutionFitnessPredictor(config)

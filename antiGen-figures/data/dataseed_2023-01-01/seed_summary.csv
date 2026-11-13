@@ -1,0 +1,25 @@
+seed,panel,row,subset,variant,pooling,recall,n_cells,n_events
+1,C,All RBD,All RBD mutations,list_allcells_fullpool,per cell,0.59915406,730,12008
+1,D,All RBD,All RBD mutations,list_allcells_fullpool,per mutation,0.93029648,730,12008
+1,E,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per cell,0.49702659,71,141
+1,F,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per mutation,0.68794328,71,141
+1,G,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per cell,0.33199397,694,11333
+1,H,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per mutation,0.77650219,694,11333
+1,I,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per cell,0.55694443,48,104
+1,J,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per mutation,0.63461536,48,104
+2,C,All RBD,All RBD mutations,list_allcells_fullpool,per cell,0.59650058,730,12008
+2,D,All RBD,All RBD mutations,list_allcells_fullpool,per mutation,0.92804796,730,12008
+2,E,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per cell,0.48285004,71,141
+2,F,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per mutation,0.68085104,71,141
+2,G,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per cell,0.34027314,694,11333
+2,H,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per mutation,0.77014029,694,11333
+2,I,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per cell,0.55694443,48,104
+2,J,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per mutation,0.63461536,48,104
+3,C,All RBD,All RBD mutations,list_allcells_fullpool,per cell,0.6107766,730,12008
+3,D,All RBD,All RBD mutations,list_allcells_fullpool,per mutation,0.93112928,730,12008
+3,E,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per cell,0.46447578,71,141
+3,F,All RBD,De novo RBD mutations,list_allcells_unseen_fullpool,per mutation,0.65248227,71,141
+3,G,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per cell,0.34383643,694,11333
+3,H,1 nt,"All RBD mutations, 1 nt",list_allcells_cd1_fullpool,per mutation,0.77156091,694,11333
+3,I,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per cell,0.54305553,48,104
+3,J,1 nt,"De novo RBD mutations, 1 nt",list_allcells_unseen_cd1_fullpool,per mutation,0.63461536,48,104

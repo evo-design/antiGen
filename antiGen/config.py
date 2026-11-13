@@ -35,6 +35,7 @@ class ModelType(str, Enum):
     BLOSUM62 = "blosum62"  # BLOSUM62 substitution matrix (no training)
     PSSM = "pssm"  # Per-position log(count+1) from variant-root PSSM (no training)
     CODON = "codon"  # Genetic-code single-nucleotide accessibility (no training)
+    CODON_BLOSUM = "codon_blosum"  # BLOSUM62 x codon accessibility, fixed constants (no training)
     SUBSTITUTION = "substitution"  # Learned codon x BLOSUM62 log-linear mixture (5 params)
     SITE_SUBSTITUTION = "site_substitution"  # s_i * M[wt_i, a] from COUNTED statistics (no training)
     MCM_INTERPOLATION = "mcm_interpolation"  # (N + kappa*s*M)/(N_total+kappa), kappa=N_total (no training)
@@ -231,6 +232,32 @@ class CodonConfig:
 
 
 @dataclass(frozen=True)
+class CodonBlosumConfig:
+    """Configuration for the codon-aware BLOSUM62 baseline (codon_blosum_fitness_predictor).
+
+    Every ingredient is external (BLOSUM62, the standard genetic code), so the predictor is
+    training-free and virus-agnostic like BLOSUM62; the defaults are not fitted to any
+    antiGen dataset. Contrast SubstitutionConfig, the same two ingredients FITTED to a
+    train corpus.
+
+    Attributes:
+        kappa: transition:transversion weighting in the codon term (4: the textbook RNA-virus
+            ratio, inside the 4.3-9.2 the fitted substitution baseline recovers).
+        epsilon: uniform floor, so substitutions two or more nucleotides away are unlikely
+            rather than impossible.
+        w_blosum: exponent on the BLOSUM62 exchangeability term.
+        w_codon: exponent on the codon-accessibility term.
+        use_mutability: add a PAM30-derived per-residue mutability term (off by default; see
+            the predictor's module docstring).
+    """
+    kappa: float = 4.0
+    epsilon: float = 0.05
+    w_blosum: float = 1.0
+    w_codon: float = 1.0
+    use_mutability: bool = False
+
+
+@dataclass(frozen=True)
 class SubstitutionConfig:
     """Configuration for the learned codon x BLOSUM62 substitution baseline.
 
@@ -302,6 +329,7 @@ class ModelConfig:
     tranception: TranceptionConfig = field(default_factory=TranceptionConfig)
     pssm: PSSMConfig = field(default_factory=PSSMConfig)
     codon: CodonConfig = field(default_factory=CodonConfig)
+    codon_blosum: CodonBlosumConfig = field(default_factory=CodonBlosumConfig)
     substitution: SubstitutionConfig = field(default_factory=SubstitutionConfig)
     gated: GatedFitnessConfig = field(default_factory=GatedFitnessConfig)
 
@@ -366,6 +394,13 @@ class ModelConfig:
             "codon": {
                 "kappa": self.codon.kappa,
                 "pseudocount": self.codon.pseudocount,
+            },
+            "codon_blosum": {
+                "kappa": self.codon_blosum.kappa,
+                "epsilon": self.codon_blosum.epsilon,
+                "w_blosum": self.codon_blosum.w_blosum,
+                "w_codon": self.codon_blosum.w_codon,
+                "use_mutability": self.codon_blosum.use_mutability,
             },
             "substitution": {
                 "init_kappa": self.substitution.init_kappa,
@@ -441,6 +476,15 @@ class ModelConfig:
             pseudocount=codon_dict.get("pseudocount", 0.01),
         )
 
+        cb_dict = d.get("codon_blosum", {})
+        codon_blosum_config = CodonBlosumConfig(
+            kappa=cb_dict.get("kappa", 4.0),
+            epsilon=cb_dict.get("epsilon", 0.05),
+            w_blosum=cb_dict.get("w_blosum", 1.0),
+            w_codon=cb_dict.get("w_codon", 1.0),
+            use_mutability=cb_dict.get("use_mutability", False),
+        )
+
         sub_dict = d.get("substitution", {})
         substitution_config = SubstitutionConfig(
             init_kappa=sub_dict.get("init_kappa", 1.0),
@@ -472,6 +516,7 @@ class ModelConfig:
             tranception=tranception_config,
             pssm=pssm_config,
             codon=codon_config,
+            codon_blosum=codon_blosum_config,
             substitution=substitution_config,
             gated=gated_config,
         )

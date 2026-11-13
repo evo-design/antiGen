@@ -221,6 +221,20 @@ $PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --outpu
 cp $o/background_cellsets.csv ${o}_eventwtd/"
 }
 
+# antiGen-data seed study (supp_dataseed): antiGen (CV x10) retrained on the 2023-01-01
+# train corpus rebuilt under antigen --seed k, scored as C-J are (+ 1-nt variants). Seed 1
+# is the production corpus, i.e. the published ensemble; the corpora are built by
+# antiGen-data's seed_study.sbatch and the members by reproduce/slurm/submit_dataseed_2023.sh.
+dataseed() {
+    for k in "$@"; do
+        local ens=$CKPT/dataseed_2023-01-01/seed_$k/stage name=ens_vs10_2023_dseed$k
+        [ "$k" = 1 ] && { ens=$CKPT/ckpt_stage_vs10_2023-01-01; name=ens_vs10_2023; }
+        submit dataseed_$k 02:00:00 gpu 1 "mkdir -p $OUT/dataseed/empty; $(lm default "$OUT/dataseed/empty" "$OUT/dataseed/seed_$k/eval_cd1" \
+            $(split_args 2023-01-01) --substitution-seed 0 --mutation-list allcells=$RBD_CELLS \
+            --cd1-variants --baselines-only --skip-baselines --ensemble-dir $ens --ensemble-name $name)"
+    done
+}
+
 # Fixed train/test splits (supp_fixed_split_revised2): the base antiGen of cutoff D
 # against the fixed external maps, COG-UK list. At 2024-10-01 the per-query CoVFit maps
 # join if built (reproduce/slurm/submit_covfit_perquery.sh STAGE=gate|score|eval).
@@ -252,7 +266,7 @@ $PYTHON reproduce/tools/draw_path_panel.py --ranks $OUT/panel_b/ba286_to_kp3_ran
 # ---------------------------------------------------------------------------------
 STEPS="list2021 dms_dumps cd1_2021 cd1_2021_allcells rbd_2023 ens8_2023 fullspike_2023
        cutoff_eval cutoff_rbd cutoff_spike cd1_series_denovo cd1_series_rare100
-       postcutoff_counts background_2021 background_2023 fixedsplit gate_units panel_b"
+       postcutoff_counts background_2021 background_2023 dataseed fixedsplit gate_units panel_b"
 if [ $# = 0 ]; then
     echo "steps (bash reproduce/eval.sh <step> [cutoff ...]):"
     for s in $STEPS; do echo "  $s"; done
@@ -264,5 +278,6 @@ case $step in
     cutoff_eval|cutoff_rbd|cutoff_spike|cd1_series_rare100) [ $# = 0 ] && set -- $CUTOFFS ;;
     cd1_series_denovo) [ $# = 0 ] && set -- $DENOVO_CUTOFFS ;;
     fixedsplit) [ $# = 0 ] && set -- $FIXED_SPLITS ;;
+    dataseed) [ $# = 0 ] && set -- 1 2 3 ;;
 esac
 "$step" "$@"

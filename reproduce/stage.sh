@@ -97,6 +97,9 @@ fixedsplit() {
         cp "$OUT/fixedsplit/$D/list_macro_summary.csv" "$FIGDATA/evals_fixedsplit_$D/"; echo "  evals_fixedsplit_$D"
     done
 }
+dataseed() {
+    have "$OUT/dataseed/seed_1/eval_cd1/list_macro_summary.csv" && $PYTHON $X/stage_dataseed.py "$OUT/dataseed"
+}
 gate_units() {
     have "$OUT/gate_units/training_size_by_cutoff.csv" && cp "$OUT/gate_units/training_size_by_cutoff.csv" "$FIGDATA/gate_units_aa20/"
 }
@@ -106,7 +109,7 @@ panel_b() {
     cp "$OUT/panel_b/ba286_to_kp3.png" "${CARTOONS:-$REPO/antiGen-figures/cartoons}/"
 }
 
-TARGETS="list2021 dms cd1_2021 rbd_2023 gating cutoff_spike fullspike_2023 cd1_series background fixedsplit gate_units panel_b"
+TARGETS="list2021 dms cd1_2021 rbd_2023 gating cutoff_spike fullspike_2023 cd1_series background dataseed fixedsplit gate_units panel_b"
 for t in ${*:-$TARGETS}; do
     case " $(echo $TARGETS) " in *" $t "*) ;; *) echo "unknown target: $t (have: $TARGETS)" >&2; exit 1 ;; esac
     echo "== $t"; "$t"
