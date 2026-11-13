@@ -157,7 +157,9 @@ for (f in c("scratch_revised_coguk", "scratch_revised_coguk_supp",
 case_study <- plot_cartoon(file.path("cartoons", "ba286_to_kp3.png"),
                            ## Names the structure drawn (user, s137): chain E of 6M0J, the
                            ## spike RBD alone (residues 333-526), Wuhan-Hu-1 sequence.
-                           "Case study: BA.2.86 to KP.3 (spike RBD, PDB 6M0J)",
+                           ## The structure's source is now drawn in the panel, small, under the
+                           ## first structure (user, s172), not in the title.
+                           "Case study: BA.2.86 to KP.3",
                            base_theme = theme_paper())
 
 ## Unchanged from the revised figure: the first column carries the wide cartoon and the

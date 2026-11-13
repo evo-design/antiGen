@@ -208,12 +208,21 @@ def main():
                                                  shrinkA=1, shrinkB=4))
                 t.set_path_effects([pe.withStroke(linewidth=2.0, foreground="white")])
     arr_style = ArrowStyle("simple", head_length=0.70, head_width=0.52, tail_width=0.09)
+    ## NEAR MID-HEIGHT AND LONGER (user, s172): from the edge of one protein to the edge of
+    ## the next (the render leaves ~0.1 in of white either side of the body). At 0.40 of
+    ## the glyph height rather than 0.50, so the arrow into JN.1.11.1 passes under R346T's
+    ## label, which sits at mid-height on that glyph's left.
     for i in range(n - 1):
-        a0, a1 = lefts[i] + gw + 0.14, lefts[i + 1] - 0.14
-        ay = gy + 0.16 * gh      # low, under the on-glyph labels
+        a0, a1 = lefts[i] + gw - 0.08, lefts[i + 1] + 0.08
+        ay = gy + 0.40 * gh
         bg.add_patch(FancyArrowPatch((a0, ay), (a1, ay), arrowstyle=arr_style,
                                      mutation_scale=9, linewidth=0, facecolor=ARROW,
                                      edgecolor="none"))
+
+    ## The structure's source, small and beside it rather than in the panel title (user,
+    ## s172): centred under the first structure, in the white strip above the key row.
+    bg.text(lefts[0] + gw / 2, gy + 0.005, "Spike RBD, PDB 6M0J", ha="center", va="center",
+            fontsize=5.5, style="italic", color=MUTED)
 
     # --- the percentile chart -----------------------------------------------------
     ax_l, ax_r = 0.55, 4.25          # 0..100 percentile; names + ranks to its right

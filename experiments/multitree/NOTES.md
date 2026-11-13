@@ -14087,3 +14087,18 @@ mutations, variable cutoffs" (O/P), all at 11 pt. Measured: the 2021 text is 3.7
 12 pt ("and") against a ~2.96 in row, so it uses "&" and 11 pt (3.32 in), and its header
 also spans the model-type key under K-N (3.36 in). The key now sits inside that block,
 with the same gutter.
+
+## 172. sc2_results_revised2 panel B: arrows between the structures, PDB note in the panel (2026-11-12)
+
+User: the transition arrows were low and short. They now run from the edge of one
+structure to the edge of the next, at 0.40 of the glyph height. At 0.50 the arrow into
+JN.1.11.1 crossed R346T's label, which sits at mid-height on that glyph's left. The PDB
+source moves out of the panel title ("Case study: BA.2.86 to KP.3") into the panel:
+"Spike RBD, PDB 6M0J", 5.5 pt italic, centred under the BA.2.86 structure.
+`draw_path_panel.py` reproduced the previous png byte for byte before the edit.
+Rebuild with the base Python (the antigen-figs env has no python binary; Arial comes from
+its fonts dir):
+
+    /home/ivan.specht/miniconda/bin/python experiments/multitree/draw_path_panel.py \
+      --ranks antiGen-figures/data/ba286_to_kp3_ranks_2023-01-01.csv \
+      --pdb antiGen-figures/ref/6M0J.pdb --output antiGen-figures/cartoons/ba286_to_kp3.png
