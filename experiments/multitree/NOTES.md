@@ -14069,3 +14069,12 @@ figure, along with their left gutter (HDR_W 0.002 in main). The supplement is un
   bars, CoVFit's static map) is left as is.
 * The cutoff series is relettered P/Q -> O/P, under a new section subtitle,
   "Forecasting RBD mutations, variable cutoffs".
+
+## 170. sc2_results_revised2: rotated row headers instead of section subtitles (2026-11-12)
+
+User: back to row headers, at 12 pt (the s169 subtitles were 14). "Forecasting RBD
+mutations, 2023 cutoff" spans BOTH 2023 bar rows (C-F and G-J), centred between them.
+"Forecasting novel and prevalent / RBD mutations, 2021 cutoff" sits beside K-N, and
+"Forecasting RBD mutations, / variable cutoffs" beside O/P, each on two lines to fit its
+row. The O/P line key sits outside that header's span. Left gutter HDR_W 0.05 in main.
+Pair sub-headers and panel titles are unchanged.

@@ -204,7 +204,9 @@ row_header <- function(txt) {
 }
 ## MAIN: no rotated row headers (user, s168) -- the section subtitles and pair
 ## sub-headers say it -- so no left gutter either; the supplement keeps both.
-HDR_W <- if (VARIANT == "main") 0.002 else 0.045
+## MAIN (user, s170): rotated row headers again, in place of s168's section subtitles,
+## two lines where the text is long; slightly wider gutter for them.
+HDR_W <- if (VARIANT == "main") 0.05 else 0.045
 with_header <- function(txt, panels) {
   plot_grid(row_header(txt), panels, nrow = 1, rel_widths = c(HDR_W, 1))
 }
@@ -334,14 +336,13 @@ bar_block_h <- function(panels, letters, left, right, panel_in) {
     ncol = 1, rel_heights = c(SUBHDR_IN, panel_in))   # both in inches
 }
 if (VARIANT == "main") {
-  with_header <- function(txt, panels) panels   # no row headers in the main figure (s168)
-  ## SECTION SUBTITLES (user, s168): larger than the pair sub-headers, left-aligned.
-  SEC_IN <- 0.42
-  section <- function(txt) ggdraw() + draw_label(txt, x = 0.5, hjust = 0.5, y = 0.45,
-                                                 size = 14, fontface = "bold")
-  sec_2023 <- section("Forecasting RBD mutations, 2023 cutoff")
-  sec_2021 <- section("Forecasting novel and prevalent RBD mutations, 2021 cutoff")
-  sec_var  <- section("Forecasting RBD mutations, variable cutoffs")
+  ## ROW HEADERS (user, s170), rotated, 12 pt (the s168 subtitles were 14). The 2023
+  ## header spans BOTH of its bar rows (C-F and G-J), centred between them.
+  row_header <- function(txt) ggdraw() + draw_label(txt, angle = 90, fontface = "bold",
+                                                     size = 12, lineheight = 0.95)
+  with_header <- function(txt, panels) panels   # headers are attached per block below
+  hdr_block <- function(txt, panels) plot_grid(row_header(txt), panels, nrow = 1,
+                                               rel_widths = c(HDR_W, 1))
   row3 <- with_header("All RBD, 2023 cutoff", bar_block_h(
     list(ca$decile_all_pc, ca$decile_all_evt, ca$decile_dn_pc, ca$decile_dn_evt),
     LETTERS[3:6], "All RBD mutations", "De novo RBD mutations", PANEL_IN[["rbd"]]))
@@ -360,8 +361,20 @@ if (VARIANT == "main") {
   ROW_IN[4] <- PANEL_IN[["esc"]] + 0.15 + SUBHDR_IN
   ROW3B_IN <- PANEL_IN[["rbd"]] + SUBHDR_IN
 }
+if (VARIANT == "main") {
+  blk_2023 <- hdr_block("Forecasting RBD mutations, 2023 cutoff",
+                        plot_grid(row3, row3b, ncol = 1, rel_heights = c(ROW_IN[3], ROW3B_IN)))
+  blk_2021 <- hdr_block("Forecasting novel and prevalent\nRBD mutations, 2021 cutoff", row4)
+  ## The line key stays under O/P, outside the header's span.
+  blk_var <- plot_grid(
+    hdr_block("Forecasting RBD mutations,\nvariable cutoffs",
+              plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
+                        nrow = 1, labels = c("O", "P"))),
+    plot_grid(NULL, gm$gate_legend, nrow = 1, rel_widths = c(HDR_W, 1)), NULL,
+    ncol = 1, rel_heights = c(1, 0.1, 0.07))
+}
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, sec_2023, row3, row3b, sec_2021, row4, key_row, NULL, sec_var, row2)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, key_row, NULL, blk_var)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -369,7 +382,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[1], SEC_IN, ROW_IN[3], ROW3B_IN, SEC_IN, ROW_IN[4], LEG_IN, GAP_IN, SEC_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4], LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -379,7 +392,7 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + 3 * SEC_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
 
