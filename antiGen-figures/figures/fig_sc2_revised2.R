@@ -77,24 +77,28 @@ gm <- run_export("figures/panels_gate_macro_export.R", RS("gatemacro"))
 ## PANELS I-L (NOTES s125): E-H's own export, pointed at ALL RBD cells at the
 ## 2023-01-01 cutoff. Same script, so the same roster, pruning, names and colours.
 message("  [4/4] exporting the 2023-01-01 all-cells panels ...")
+## MAIN: the pair sub-headers name the subset, so the panel titles name only the pooling
+## (user, s168). The supplement keeps its full titles.
+PER_TITLES <- "REVISED2_T4=all_pc=Per cell;all_evt=Per mutation;dn_pc=Per cell;dn_evt=Per mutation"
 ca <- run_export("figures/panels_coguk_export.R", RS("allcells2023"),
-                 c("REVISED2_ARM=allcells_2023", BAR_ENV))
+                 c("REVISED2_ARM=allcells_2023", BAR_ENV,
+                   if (VARIANT == "main") PER_TITLES))
 ## MAIN ONLY (user, s165): supp_cd1's A-D as a row under C-F, and supp_cd1_min100_2021's
 ## de novo pair leading the 2021 row. Each of these panels fits its x axis to its own
 ## bars (REVISED2_OWN_XRANGE).
 if (VARIANT == "main") {
   message("  [5/6] exporting the codon-distance-1 panels (2023) ...")
   c1 <- run_export("figures/panels_coguk_export.R", RS("cd1_2023"),
-                   c("REVISED2_ARM=cd1_2023", BAR_ENV, "REVISED2_OWN_XRANGE=1"))
+                   c("REVISED2_ARM=cd1_2023", BAR_ENV, "REVISED2_OWN_XRANGE=1", PER_TITLES))
   message("  [6/6] exporting the >= 100-sequence de novo panels (2021) ...")
   m21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021"),
                     c("REVISED2_ARM=cd1min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1",
-                      "REVISED2_T4=dn_pc=De novo, 1 nt, per cell;dn_evt=De novo, 1 nt, per mutation"))
+                      PER_TITLES))
   ## The same >= 100-sequence de novo set on the FULL pool (supp_min100_2021's C/D,
   ## NOTES s166): with m21 it makes the 2021 row a full-pool / 1-nt split (s167).
   message("  [7/7] exporting the >= 100-sequence de novo panels, full pool (2021) ...")
   f21 <- run_export("figures/panels_coguk_export.R", RS("min100_2021_full"),
-                    c("REVISED2_ARM=min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1"))
+                    c("REVISED2_ARM=min100_2021", BAR_ENV, "REVISED2_OWN_XRANGE=1", PER_TITLES))
 }
 
 ## DISPLAY NAMES FOR THIS FIGURE ONLY (NOTES s116): PFM for PSSM, S×S / S×M and their
@@ -198,7 +202,9 @@ row2 <- plot_grid(
 row_header <- function(txt) {
   ggdraw() + draw_label(txt, angle = 90, fontface = "bold", size = 11)
 }
-HDR_W <- 0.045
+## MAIN: no rotated row headers (user, s168) -- the section subtitles and pair
+## sub-headers say it -- so no left gutter either; the supplement keeps both.
+HDR_W <- if (VARIANT == "main") 0.002 else 0.045
 with_header <- function(txt, panels) {
   plot_grid(row_header(txt), panels, nrow = 1, rel_widths = c(HDR_W, 1))
 }
@@ -324,25 +330,33 @@ bar_block_h <- function(panels, letters, left, right, panel_in) {
     ncol = 1, rel_heights = c(SUBHDR_IN, panel_in))   # both in inches
 }
 if (VARIANT == "main") {
+  with_header <- function(txt, panels) panels   # no row headers in the main figure (s168)
+  ## SECTION SUBTITLES (user, s168): larger than the pair sub-headers, left-aligned.
+  SEC_IN <- 0.42
+  section <- function(txt) ggdraw() + draw_label(txt, x = 0.005, hjust = 0, y = 0.45,
+                                                 size = 14, fontface = "bold")
+  sec_2023 <- section("Forecasting RBD mutations, 2023 cutoff")
+  sec_2021 <- section("Forecasting novel and prevalent RBD mutations, 2021 cutoff")
   row3 <- with_header("All RBD, 2023 cutoff", bar_block_h(
     list(ca$decile_all_pc, ca$decile_all_evt, ca$decile_dn_pc, ca$decile_dn_evt),
-    LETTERS[3:6], "All mutations", "De novo mutations", PANEL_IN[["rbd"]]))
+    LETTERS[3:6], "All RBD mutations", "De novo RBD mutations", PANEL_IN[["rbd"]]))
   row3b <- with_header("All RBD, 1 nt, 2023 cutoff", bar_block_h(
     list(c1$decile_all_pc, c1$decile_all_evt, c1$decile_dn_pc, c1$decile_dn_evt),
-    LETTERS[7:10], "All mutations, 1 nt", "De novo mutations, 1 nt", PANEL_IN[["rbd"]]))
+    LETTERS[7:10], "All RBD mutations, 1 nt", "De novo RBD mutations, 1 nt", PANEL_IN[["rbd"]]))
   ## THE 2021 ROW (user, s167): de novo RBD cells seen in >= 100 sequences after the
   ## cutoff, on the full pool (K/L) and within one nucleotide (M/N). The COG-UK escape
   ## panels are no longer in the main figure.
   row4 <- with_header("De novo, \u2265100 seqs, 2021", bar_block_h(
     list(f21$decile_dn_pc_named, f21$decile_dn_evt, m21$decile_dn_pc, m21$decile_dn_evt),
-    LETTERS[11:14], "All substitutions", "Within 1 nt",
+    LETTERS[11:14], "Novel and prevalent RBD mutations",
+    "Novel and prevalent RBD mutations, 1 nt",
     PANEL_IN[["esc"]] + 0.15))
   ROW_IN[3] <- PANEL_IN[["rbd"]] + SUBHDR_IN
   ROW_IN[4] <- PANEL_IN[["esc"]] + 0.15 + SUBHDR_IN
   ROW3B_IN <- PANEL_IN[["rbd"]] + SUBHDR_IN
 }
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, row3, row3b, row4, row5, key_row, NULL, row2)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, sec_2023, row3, row3b, sec_2021, row4, row5, key_row, NULL, row2)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -350,7 +364,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[c(1, 3)], ROW3B_IN, ROW_IN[4], M_IN, LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], SEC_IN, ROW_IN[3], ROW3B_IN, SEC_IN, ROW_IN[4], M_IN, LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -360,6 +374,6 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + M_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + 2 * SEC_IN + M_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))

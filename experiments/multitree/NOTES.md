@@ -14045,3 +14045,14 @@ substitutions" / "Within 1 nt". K/L: S×S 1st, S×S-MCM 2nd, antiGen 3rd (0.67/0
 de novo escape pair leaves the main figure; it remains in coguk_list_aa20, supp_cd1 E-H
 and sc2_results_revised2_supp. The full-pool pair is a new export (`f21`, arm
 min100_2021, own x range, named leading panel).
+
+## 168. sc2_results_revised2: section subtitles, simpler titles, no row headers (2026-11-12)
+
+User: larger section subtitles, "Forecasting RBD mutations, 2023 cutoff" above C-J and
+"Forecasting novel and prevalent RBD mutations, 2021 cutoff" above K-N (14 pt, bold,
+left-aligned). Pair sub-headers: C-F "All RBD mutations" / "De novo RBD mutations",
+G-J the same with ", 1 nt", K-N "Novel and prevalent RBD mutations" (+ ", 1 nt"). Here
+"novel and prevalent" = de novo AND seen in >= 100 sequences after the cutoff. Panel
+titles C-N are now just "Per cell" / "Per mutation" (REVISED2_T4 override; the
+supplement keeps its full titles). The rotated row headers are gone from the main
+figure, along with their left gutter (HDR_W 0.002 in main). The supplement is unchanged.
