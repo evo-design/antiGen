@@ -14078,3 +14078,12 @@ mutations, 2023 cutoff" spans BOTH 2023 bar rows (C-F and G-J), centred between 
 "Forecasting RBD mutations, / variable cutoffs" beside O/P, each on two lines to fit its
 row. The O/P line key sits outside that header's span. Left gutter HDR_W 0.05 in main.
 Pair sub-headers and panel titles are unchanged.
+
+## 171. sc2_results_revised2: one-line row headers without "Forecasting" (2026-11-12)
+
+User: drop "Forecasting" and fit each header on one line. Now "RBD mutations, 2023
+cutoff" (spanning C-J), "Novel & prevalent RBD mutations, 2021 cutoff" (K-N) and "RBD
+mutations, variable cutoffs" (O/P), all at 11 pt. Measured: the 2021 text is 3.79 in at
+12 pt ("and") against a ~2.96 in row, so it uses "&" and 11 pt (3.32 in), and its header
+also spans the model-type key under K-N (3.36 in). The key now sits inside that block,
+with the same gutter.

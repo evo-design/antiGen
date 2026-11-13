@@ -338,8 +338,10 @@ bar_block_h <- function(panels, letters, left, right, panel_in) {
 if (VARIANT == "main") {
   ## ROW HEADERS (user, s170), rotated, 12 pt (the s168 subtitles were 14). The 2023
   ## header spans BOTH of its bar rows (C-F and G-J), centred between them.
+  ## One line each, 11 pt (user, s171): at 12 pt the 2021 header (3.6 in) does not fit
+  ## its row (~3.0 in), so it also spans the model-type key under K-N.
   row_header <- function(txt) ggdraw() + draw_label(txt, angle = 90, fontface = "bold",
-                                                     size = 12, lineheight = 0.95)
+                                                     size = 11)
   with_header <- function(txt, panels) panels   # headers are attached per block below
   hdr_block <- function(txt, panels) plot_grid(row_header(txt), panels, nrow = 1,
                                                rel_widths = c(HDR_W, 1))
@@ -362,19 +364,20 @@ if (VARIANT == "main") {
   ROW3B_IN <- PANEL_IN[["rbd"]] + SUBHDR_IN
 }
 if (VARIANT == "main") {
-  blk_2023 <- hdr_block("Forecasting RBD mutations, 2023 cutoff",
+  blk_2023 <- hdr_block("RBD mutations, 2023 cutoff",
                         plot_grid(row3, row3b, ncol = 1, rel_heights = c(ROW_IN[3], ROW3B_IN)))
-  blk_2021 <- hdr_block("Forecasting novel and prevalent\nRBD mutations, 2021 cutoff", row4)
+  blk_2021 <- hdr_block("Novel & prevalent RBD mutations, 2021 cutoff",
+                        plot_grid(row4, cg$legend, ncol = 1, rel_heights = c(ROW_IN[4], LEG_IN)))
   ## The line key stays under O/P, outside the header's span.
   blk_var <- plot_grid(
-    hdr_block("Forecasting RBD mutations,\nvariable cutoffs",
+    hdr_block("RBD mutations, variable cutoffs",
               plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
                         nrow = 1, labels = c("O", "P"))),
     plot_grid(NULL, gm$gate_legend, nrow = 1, rel_widths = c(HDR_W, 1)), NULL,
     ncol = 1, rel_heights = c(1, 0.1, 0.07))
 }
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, key_row, NULL, blk_var)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, NULL, blk_var)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -382,7 +385,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4], LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4] + LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
