@@ -150,6 +150,11 @@ R346T        9  0.028749   99.790521
   it at length 1,273 using only `ACDEFGHIKLMNPQRSTVWY`, save it in `queries/`, and put
   its file name in section 2. `pretrained.encode` refuses any other character, and the
   model any other length, rather than silently scoring a misaligned sequence.
+* **Gaps and missing data in the query.** The model has no gap or unknown symbol, so
+  every position needs a real amino acid. Where your sequence has a gap, an `X` or an
+  uncalled site, fill in the residue of a known recent ancestor at that position (for
+  example the lineage's parent, or the nearest ancestral node on the tree), so the
+  query is a genotype that actually exists rather than an imputed one.
 * **What the scores are not.** antiGen predicts which substitution happens next on the
   query's background, learned from the phylogeny. It is not a measured fitness or
   escape value.

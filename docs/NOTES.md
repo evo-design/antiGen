@@ -14460,3 +14460,6 @@ all now closed through one check:
 * Checked: the notebook validates and executes from a fresh kernel in a directory holding
   only tutorial.ipynb and queries/; `python tutorial.py` likewise; same numbers (S446G
   first; R346T 9th, L455S 114th of 3,819). The release download link is unchanged.
+* Notes gain one bullet: a query's gaps, `X`s and uncalled sites are filled with the
+  residue of a known recent ancestor at that position, since the model has no gap or
+  unknown symbol.
