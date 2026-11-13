@@ -62,7 +62,7 @@ committed.
 | `supp_query_adapt` | `evals_sc2_background_aa20{,_eventwtd}/`, `…_2023-01-01{,_eventwtd}/` | `background_2021`, `background_2023` |
 | `supp_dms_revised2` | `sc2_aa20/`, `sc2_aa20_extra/` (+ `baselines/`, `dms/`) | `list2021`, `dms_dumps` |
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
-| `usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
+| `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
 
 `<D>` runs over the sixteen quarterly cutoffs 2020-04-01 … 2024-01-01; the de novo 1-nt
 arm uses 2020-04-01 … 2021-10-01, and its stopping rule draws the first six.

@@ -3,14 +3,14 @@
 ## genomes -- runtime and parsimony of the final tree.
 ##
 ## Data: runtime/usher_benchmark_results.csv, copied from the benchmark in
-## antiGen-data-revised/bench (results.csv there; one row per tool x N x run).
+## antiGen-data/bench (results.csv there; one row per tool x N x run).
 ## Every tool places the same samples (UCSC public tree, 2026-07-03) in the
 ## same chronological order onto the same 4,549-tip Nextstrain guide tree, on
 ## 32 threads, with UShER's SPR optimisation off. Parsimony is the final tree
 ## re-scored by one common judge (UShER's Fitch-Sankoff over every tip), so
 ## every tool's tree is scored the same way.
 ##
-## Output: figs/usher_benchmark.png, figs_vector/usher_benchmark.pdf
+## Output: figs/supp_usher_benchmark.png, figs_vector/supp_usher_benchmark.pdf
 ## ---------------------------------------------------------------------------
 
 source("R/common.R")
@@ -120,4 +120,4 @@ legend <- extract_legend(
 panels <- plot_grid(p_place, p_wall, p_pars, nrow = 1, labels = c("A", "B", "C"))
 fig <- plot_grid(panels, legend, ncol = 1, rel_heights = c(1, 0.16))
 
-save_figure(fig, "usher_benchmark", width = 11, height = 4.2)
+save_figure(fig, "supp_usher_benchmark", width = 11, height = 4.2)

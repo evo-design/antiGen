@@ -26,11 +26,11 @@ declare -A CMD=(
   [supp_query_adapt]="figures/figS_query_adapt.R"
   [supp_dms_revised2]="figures/figS_dms_revised2.R"
   [supp_gate_units]="figures/figS_gate_units.R"
-  [usher_benchmark]="figures/figS_usher_benchmark.R"
+  [supp_usher_benchmark]="figures/figS_usher_benchmark.R"
 )
 ORDER=(sc2_results_revised2 sc2_results_revised2_supp supp_cd1 supp_cd1_min100
        supp_cd1_min100_2021 supp_min100_2021 supp_cd1_series supp_lm_cd1 supp_fullspike
-       supp_query_adapt supp_dms_revised2 supp_gate_units usher_benchmark)
+       supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark)
 [ $# -gt 0 ] && ORDER=("$@")
 
 for fig in "${ORDER[@]}"; do

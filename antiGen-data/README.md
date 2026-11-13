@@ -120,5 +120,5 @@ Inputs: the Nextstrain trees and sidecars under `data/` (fetch with `fetch_trees
 `slurm/run_arms*.sbatch` (with `arms*.tsv`) build the H3N2, RSV-A and DENV2 corpora the
 same way. `check_examples.py` and `check_variant_counts.py` audit a corpus;
 `seed_study.py` rebuilds one under other seeds; `bench/` is the placement benchmark
-behind `antiGen-figures/figs/usher_benchmark.png`.
+behind `antiGen-figures/figs/supp_usher_benchmark.png`.
 
