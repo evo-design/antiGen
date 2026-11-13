@@ -190,7 +190,7 @@ strip_inside_legend <- function(g) {
 ## directly beneath C and D, then white space before the bar rows begin.
 row2 <- plot_grid(
   plot_grid(strip_inside_legend(gm$gate_macro), strip_inside_legend(sc$gate_pm),
-            nrow = 1, rel_widths = c(1, 1), labels = if (VARIANT == "main") c("P", "Q") else c("L", "M")),   # the bottom row (s150; P/Q s165)
+            nrow = 1, rel_widths = c(1, 1), labels = if (VARIANT == "main") c("O", "P") else c("L", "M")),   # the bottom row (s150; O/P s169)
   gm$gate_legend, NULL,
   ncol = 1, rel_heights = c(1, 0.1, 0.07))
 ## THE FIRST PANEL IS WIDER because it alone carries the model names.
@@ -305,7 +305,7 @@ fs_pair <- function(arm) {
 ## No row header for K (user, s131), but the same left gutter, so K lines up with C-J.
 row5 <- plot_grid(NULL, NULL,
                   plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
-                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "O", ""))   # K before s165
+                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "", ""))   # K, then O; own figure since s169
 ## Panel K's row, sized so its bars come out the same height as C-J's.
 M_IN <- 1.05
 
@@ -322,21 +322,26 @@ pair_hdr <- function(txt, x0) {
     draw_label(txt, x = (x0 + 1) / 2, y = 0.52, size = 9.5, fontface = "bold", colour = "grey20")
 }
 NAMES_FRAC <- 0.62 / (1.75 + 1.1)   # the model-name column's share of the left pair
+LEAD_LAB_X <- 0.285                  # the leading panel's letter, before its title
 bar_block_h <- function(panels, letters, left, right, panel_in) {
   plot_grid(
     plot_grid(pair_hdr(left, NAMES_FRAC), pair_hdr(right, 0.02), nrow = 1,
               rel_widths = c(1.75 + 1.1, 1.1 + 1.1)),
-    plot_grid(plotlist = panels, nrow = 1, rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters),
+    ## The leading panel's letter sits just before its title, as in the other three
+    ## (user, s169), not out at the left of the model-name column.
+    plot_grid(plotlist = panels, nrow = 1, rel_widths = c(1.75, 1.1, 1.1, 1.1), labels = letters,
+              label_x = c(LEAD_LAB_X, 0, 0, 0)),
     ncol = 1, rel_heights = c(SUBHDR_IN, panel_in))   # both in inches
 }
 if (VARIANT == "main") {
   with_header <- function(txt, panels) panels   # no row headers in the main figure (s168)
   ## SECTION SUBTITLES (user, s168): larger than the pair sub-headers, left-aligned.
   SEC_IN <- 0.42
-  section <- function(txt) ggdraw() + draw_label(txt, x = 0.005, hjust = 0, y = 0.45,
+  section <- function(txt) ggdraw() + draw_label(txt, x = 0.5, hjust = 0.5, y = 0.45,
                                                  size = 14, fontface = "bold")
   sec_2023 <- section("Forecasting RBD mutations, 2023 cutoff")
   sec_2021 <- section("Forecasting novel and prevalent RBD mutations, 2021 cutoff")
+  sec_var  <- section("Forecasting RBD mutations, variable cutoffs")
   row3 <- with_header("All RBD, 2023 cutoff", bar_block_h(
     list(ca$decile_all_pc, ca$decile_all_evt, ca$decile_dn_pc, ca$decile_dn_evt),
     LETTERS[3:6], "All RBD mutations", "De novo RBD mutations", PANEL_IN[["rbd"]]))
@@ -348,15 +353,15 @@ if (VARIANT == "main") {
   ## panels are no longer in the main figure.
   row4 <- with_header("De novo, \u2265100 seqs, 2021", bar_block_h(
     list(f21$decile_dn_pc_named, f21$decile_dn_evt, m21$decile_dn_pc, m21$decile_dn_evt),
-    LETTERS[11:14], "Novel and prevalent RBD mutations",
-    "Novel and prevalent RBD mutations, 1 nt",
+    LETTERS[11:14], "De novo RBD mutations, observed \u2265100 times",
+    "De novo RBD mutations, observed \u2265100 times, 1 nt",
     PANEL_IN[["esc"]] + 0.15))
   ROW_IN[3] <- PANEL_IN[["rbd"]] + SUBHDR_IN
   ROW_IN[4] <- PANEL_IN[["esc"]] + 0.15 + SUBHDR_IN
   ROW3B_IN <- PANEL_IN[["rbd"]] + SUBHDR_IN
 }
 save_figure(
-  plot_grid(plotlist = if (VARIANT == "main") list(row1, sec_2023, row3, row3b, sec_2021, row4, row5, key_row, NULL, row2)
+  plot_grid(plotlist = if (VARIANT == "main") list(row1, sec_2023, row3, row3b, sec_2021, row4, key_row, NULL, sec_var, row2)
                        else list(row3, row4),
             ncol = 1,
             ## Row 3 carries 24 model rows and gets the most height; the two image
@@ -364,7 +369,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[1], SEC_IN, ROW_IN[3], ROW3B_IN, SEC_IN, ROW_IN[4], M_IN, LEG_IN, GAP_IN, ROW_IN[2]) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], SEC_IN, ROW_IN[3], ROW3B_IN, SEC_IN, ROW_IN[4], LEG_IN, GAP_IN, SEC_IN, ROW_IN[2]) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -374,6 +379,15 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + 2 * SEC_IN + M_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + 3 * SEC_IN + LEG_IN + GAP_IN else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
+
+## THE FIXED-SPLIT PANEL AS ITS OWN SUPPLEMENT (user, s169): formerly K, then O, of the main
+## figure. It replaces nothing: supp_fixed_split (figS_fixed_split.R) is the older
+## vertical version, with CoVFit's static map rather than its per-query scores.
+if (VARIANT == "main") {
+  save_figure(plot_grid(row5, key_row, ncol = 1, rel_heights = c(M_IN + 0.25, LEG_IN)),
+              "supp_fixed_split_revised2", width = 11, height = M_IN + 0.25 + LEG_IN)
+  cat("wrote figs/supp_fixed_split_revised2.png (+ .pdf)\n")
+}

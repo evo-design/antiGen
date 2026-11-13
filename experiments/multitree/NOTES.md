@@ -14056,3 +14056,16 @@ G-J the same with ", 1 nt", K-N "Novel and prevalent RBD mutations" (+ ", 1 nt")
 titles C-N are now just "Per cell" / "Per mutation" (REVISED2_T4 override; the
 supplement keeps its full titles). The rotated row headers are gone from the main
 figure, along with their left gutter (HDR_W 0.002 in main). The supplement is unchanged.
+
+## 169. sc2_results_revised2: K-N headers, centred section titles, lead letters, panel O to a supplement (2026-11-12)
+
+* K/L header "De novo RBD mutations, observed >=100 times"; M/N the same + ", 1 nt".
+* Section subtitles are centred.
+* The leading panel's letter (C, G, K) sits just before its "Per cell" title, as at E,
+  I, M (`label_x = LEAD_LAB_X` 0.285 on the first panel), not left of the model names.
+* The fixed-split panel (K, then O) moves to its own supplement,
+  `figs/supp_fixed_split_revised2.png`, written by fig_sc2_revised2.R (main variant),
+  with the model-type key. The older `supp_fixed_split` (figS_fixed_split.R, vertical
+  bars, CoVFit's static map) is left as is.
+* The cutoff series is relettered P/Q -> O/P, under a new section subtitle,
+  "Forecasting RBD mutations, variable cutoffs".
