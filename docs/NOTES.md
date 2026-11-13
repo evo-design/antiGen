@@ -14386,3 +14386,43 @@ later date, `--post-cutoff` labelled, read only for its post-cutoff records.
 * Still in the code, opt-in and unused by any current output: the legacy
   `--pool-examples` of eval.py / list_macro.py (s163), which fits the statistical
   baselines on the test tree's pre-cutoff records -- the same leak.
+
+## 182. No leaky model can be trained or fitted; README teaches only the paper's procedure (2026-11-13)
+
+s181 stopped antiGen-train from reading a test tree. The same leak had three more routes,
+all now closed through one check:
+
+* **load.py.** `load_examples` tags every record of a file holding ANY post-cutoff record
+  (a `TESTING` label, `POST_CUTOFF: True`, or a non-empty cutoff set at any date) with
+  `Example.test_tree = <path>`, the pre-cutoff records included. `require_train_corpus`
+  refuses any training/fitting pool containing a tagged record. Every place that trains
+  or fits calls it: antiGen-train, and the baseline fits of eval.py, list_macro.py,
+  background_discrimination.py, list_variant_recall.py and hybrid_baseline.py.
+* **`--pool-examples` removed** from eval.py, list_macro.py and background_discrimination.py:
+  it fitted the statistical baselines on the test tree's pre-cutoff records (the s163
+  leak, kept opt-in until now). list_macro's `--history-model`, which had been wired only
+  into the pooled path, now attaches histories to the test file's records directly.
+* **The original single-tree layout is refused everywhere it trains or fits.**
+  antiGen-train requires `--examples` (the `--cutoff` / `--data-dir` fallback to
+  `examples_cutoff_<N>.txt` is gone), and the evals' `--data-dir` mode fails the guard,
+  because its one file is a test tree. Tools that only read a root sequence or PSSMs from
+  that layout (ensemble_panels, rescore_common_pool, list_recall) fit nothing and are
+  unchanged.
+* **Nothing published moves.** Every train corpus (the 2021 arm and all 25 quarterly
+  cutoffs) carries no post-cutoff record, so passes the guard; the published evals used
+  train files only (s163). Re-run through reproduce/eval.sh with the new code:
+  see below.
+* **README:** Parts 1-2 teach only the paper's procedure: two antiGen-data runs (earlier
+  tree + pre-cutoff sequences; later tree + later sequences, labelled), `--examples
+  <train corpus>` required, validation only by `--val-mode random` within the train
+  corpus, and the paper's own ESM-2 / EVE / gated commands (from reproduce/
+  train_commands.py) in place of the old `--flu` examples on the single-tree layout. The
+  dataset-shortcut table (`--flu`, `--rsv-a`, `--denv2`) is dropped from the README; the
+  flags still set a dataset's variant and evaluation region.
+* tests/test_train_refuses_test_tree.py: + the tagging of both label dialects and the
+  shared guard. 266 tests pass.
+* Unrelated, found here: both 2023 CV x10 data-seed replicates failed overnight when
+  /large_storage filled (seed 4: every training task; seed 5: tasks 0, 1, 4, 8, "No space
+  left on device"); their evals then refused for lack of checkpoints.
+* Released as antigen-model 0.2.1 (tag v0.2.1), so the package on PyPI and its project
+  page carry the guarded training and the corrected README.

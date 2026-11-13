@@ -20,6 +20,10 @@ class Example:
     is_testing_root: bool = False
     is_descended_from_variant: bool = False
     source: str = None   # name of the examples file this came from (multi-source training)
+    # The path of the file this record came from WHEN that file is a test tree (it holds
+    # any post-cutoff record, at any cutoff); None for a train corpus. No record with
+    # this set may be trained or fitted on (require_train_corpus).
+    test_tree: str = None
 
 
 def _match_variant(label, variant):
@@ -291,6 +295,14 @@ def load_examples(filepath, allowed_aas, variant, source=None, split_date=None):
             f"this corpus carries {len(seen_cutoffs)} cutoff(s): "
             f"{', '.join(sorted(seen_cutoffs))}")
 
+    # A file holding ANY post-cutoff record -- a TESTING label, POST_CUTOFF: True, or a
+    # non-empty cutoff set at any date -- is a test tree. Every one of its records is
+    # tagged, the pre-cutoff ones included: they sit on a later tree with sequences from
+    # after the cutoff placed below them, so none is training data (s163, s181).
+    if seen_cutoffs or any(not r["is_training"] for r in raw):
+        for ex in examples:
+            ex.test_tree = filepath
+
     n_testing_roots = sum(1 for ex in examples if ex.is_testing_root)
     n_variant_desc = sum(1 for ex in examples if ex.is_descended_from_variant)
     n_train = sum(1 for ex in examples if ex.is_training)
@@ -459,3 +471,24 @@ def load_counts_series(counts_dir, allowed_aas, since=None):
           f"{dates[0]}..{dates[-1]}, {total.sum():.0f} total observations; "
           f"keeping {len(keep)} step(s) from {dates[keep[0]]}")
     return [dates[i] for i in keep], [emerged[i] for i in keep]
+
+
+def require_train_corpus(examples, what="training"):
+    """Refuse to train or fit on any record of a test tree.
+
+    Training data -- for antiGen and for every fitted baseline alike -- come only from a
+    TRAIN corpus: an earlier tree plus the sequences dated before the cutoff, built by
+    its own antiGen-data run. A file holding any post-cutoff record is a test tree, and
+    none of its records is training data, pre-cutoff ones included: the later tree and
+    the sequences placed on it carry information from after the cutoff (docs/NOTES.md
+    s163, s181). Raises SystemExit naming the offending file(s); returns ``examples``.
+    """
+    bad = sorted({e.test_tree for e in examples if e.test_tree})
+    if bad:
+        raise SystemExit(
+            f"Refusing to use records of a TEST tree for {what}: {', '.join(bad)} "
+            f"holds post-cutoff records, so none of its records -- not even the "
+            f"pre-cutoff ones -- is training data. Use a train corpus: a separate "
+            f"antiGen-data run on an earlier tree with only the sequences dated before "
+            f"the cutoff (antiGen-data/README.md).")
+    return examples

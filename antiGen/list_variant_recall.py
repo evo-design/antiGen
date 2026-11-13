@@ -80,7 +80,7 @@ from antiGen.eval_utils import (RBD_RANGE, build_model_gap_stop_mask, topq_bound
                                 where_times_which_dirichlet,
                                 WhereTimesWhichPredictor)
 from antiGen.config import LEGACY_AAS
-from antiGen.load import (load_counts_matrix, load_counts_series,
+from antiGen.load import (require_train_corpus, load_counts_matrix, load_counts_series,
                           load_examples, load_pssms)
 from antiGen.models.factory import create_model
 from antiGen.mutation_lists import describe as describe_list, load_mutation_list
@@ -265,6 +265,9 @@ def main():
     training_examples = [e for e in all_examples if e.is_training]
     if args.train_examples:
         training_examples = [e for e in training_examples if id(e) not in from_test_file]
+    # Fitted on the train corpus alone; refuses a test tree, including the original
+    # tool's single-file layout (--data-dir) (s163, s181).
+    require_train_corpus(training_examples, "fitting the baselines")
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
     print(f"Variant root: '{variant}', {len(roots)} candidate(s), querying the first")
     print(f"Eval range: {len(eval_range)} positions "

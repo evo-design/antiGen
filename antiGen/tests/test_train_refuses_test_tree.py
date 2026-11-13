@@ -43,3 +43,26 @@ def test_trains_on_a_train_corpus(tmp_path):
     r = _train(tmp_path, TRAIN)
     assert r.returncode == 0, r.stderr[-2000:]
     assert list((tmp_path / "ck").glob("fitness_*.pt"))
+
+
+# The evals fit their statistical baselines through the same guard (load.require_train_corpus).
+@pytest.mark.parametrize("text,split_date", [(TEST_TREE, "2020-08-15"), (TEST_TREE_LEGACY, None)],
+                         ids=["cutoff-set", "TESTING-label"])
+def test_every_record_of_a_test_tree_is_tagged(tmp_path, text, split_date):
+    from antiGen.load import load_examples, require_train_corpus
+    p = tmp_path / "test.txt"
+    p.write_text(text)
+    ex = load_examples(str(p), "ACDEFGHIKLMNPQRSTVWY", "BA.2", split_date=split_date)
+    assert any(e.is_training for e in ex)            # pre-cutoff records exist ...
+    assert all(e.test_tree == str(p) for e in ex)    # ... and are tagged all the same
+    with pytest.raises(SystemExit, match="TEST tree"):
+        require_train_corpus([e for e in ex if e.is_training])
+
+
+def test_train_corpus_passes_the_guard(tmp_path):
+    from antiGen.load import load_examples, require_train_corpus
+    p = tmp_path / "train.txt"
+    p.write_text(TRAIN)
+    ex = load_examples(str(p), "ACDEFGHIKLMNPQRSTVWY", "BA.2")
+    assert all(e.test_tree is None for e in ex)
+    assert require_train_corpus(ex) is ex

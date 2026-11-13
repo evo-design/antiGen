@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antigen-model"
-version = "0.2.0"
+version = "0.2.1"
 description = "Train sequence models of viral fitness and score amino-acid substitutions for any query sequence."
 readme = "README.md"
 requires-python = ">=3.10"

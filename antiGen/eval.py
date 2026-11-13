@@ -31,7 +31,7 @@ from antiGen import score_cache as sc
 from antiGen.config import AlphabetConfig, CodonConfig, ModelConfig, ModelType
 from antiGen.models.factory import create_model
 from antiGen.config import LEGACY_AAS
-from antiGen.load import (load_counts_matrix, load_counts_series,
+from antiGen.load import (require_train_corpus, load_counts_matrix, load_counts_series,
                           load_examples, load_pssms)
 from antiGen.mutation_lists import (cells_to_mask, describe as describe_list,
                                     load_mutation_list)
@@ -323,10 +323,6 @@ def parse_args():
                         help='The revised corpus writes the two halves as separate '
                              'files; naming them replaces the data-dir glob.')
     parser.add_argument('--test-examples', type=str, nargs='+', default=None)
-    parser.add_argument('--pool-examples', action='store_true',
-                        help='LEGACY, wrong for any comparison (NOTES s163): also fit the '
-                             'training-fitted baselines on the test corpus\'s pre-cutoff '
-                             'records. Default: training data is --train-examples only.')
     parser.add_argument('--split-date', type=str, default=None, metavar='YYYY-MM-DD',
                         help='Which train/test split to read, for a corpus whose '
                              'POST_CUTOFF field is a set of cutoff dates.')
@@ -665,12 +661,15 @@ def main():
     testing_examples = [e for e in all_examples if not e.is_training]
     variant_testing_examples = [e for e in testing_examples if e.is_descended_from_variant]
     training_examples = [e for e in all_examples if e.is_training]
-    if args.train_examples and not args.pool_examples:
+    if args.train_examples:
         n_pooled = len(training_examples)
         training_examples = [e for e in training_examples if id(e) not in from_test_file]
         print(f"Training examples: {len(training_examples)} from --train-examples "
-              f"({n_pooled - len(training_examples)} pre-cutoff test-corpus records "
-              f"excluded; NOTES s163)")
+              f"({n_pooled - len(training_examples)} pre-cutoff test-tree records "
+              f"excluded: never training data, s163)")
+    # Every fitted baseline is fitted on the train corpus alone. This also refuses the
+    # original tool's single-file layout (--data-dir), whose one tree is a test tree.
+    require_train_corpus(training_examples, "fitting the baselines")
     global_wt_aa_idx = training_examples[0].aa_idx.clone()
     print(f"Testing examples: {len(testing_examples)}, "
           f"variant-descended: {len(variant_testing_examples)}")

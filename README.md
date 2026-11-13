@@ -124,17 +124,25 @@ antigen place   --tree <dataset.json> --root-seq <root-sequence.json> --prepared
 (`{"S": "MFVF…*"}`), an aligned FASTA of the sequences to place (protein, in the sidecar's
 frame), and a `strain`⇥`date` metadata TSV.
 
-**Train and test.** A *train corpus* for cutoff D is built from the latest tree before D
-plus every sequence collected before D (`--date-cutoff D`). The *test tree* is built once,
-from every sequence, with `--post-cutoff` listing all cutoffs. Each record then lists the
-cutoffs it falls after, and the test set at D is the records carrying D. Every model,
-statistical baselines included, is trained on the train corpus alone; the test tree's
-pre-D records are never training data.
+**Train and test come from two separate runs.** For a cutoff D:
+
+* the **train corpus** is an *earlier* tree, the last build before D, plus only the
+  sequences collected before D (`prepare --date-cutoff D`; `place` without
+  `--post-cutoff`). Every one of its records is training data.
+* the **test tree** is a *later* tree plus the sequences collected up to a later date,
+  placed with `--post-cutoff` listing the cutoffs. Each record lists the cutoffs it falls
+  after, and the test set at D is the records that list D.
+
+Every model, the statistical baselines included, is trained or fitted on the train
+corpus alone. No record of the test tree is training data, including its pre-cutoff
+records: the later tree and the sequences placed on it carry information from after D.
+`antiGen-train` and the evaluations refuse any training file that holds a post-cutoff
+record. The Quickstart above is this procedure in miniature.
 
 **The examples file.** One record per internal node: its sequence, the mutation from its
 parent, its `POST_CUTOFF` cutoffs, variant flags, and the mutations to its children (the
 training target; a mutation listed twice is a count of two). Positions are 0-based.
-`antiGen-validate-examples <file> --split-date D` checks a file.
+`antiGen-validate-examples <file>` checks a file (add `--split-date D` for a test tree).
 
 **The paper's corpora.** `antiGen-data/slurm/` holds the drivers. `run_series.sbatch`
 builds a train corpus per quarterly cutoff (2020-04-01 … 2026-01-01), `run_all.sbatch`
@@ -148,37 +156,25 @@ and integrity checks. See [`antiGen-data/README.md`](antiGen-data/README.md).
 
 # 2. Training antiGen
 
-**Pointing antiGen at data.** Give the train corpus of the cutoff with `--examples <path>`.
-Train only on a train corpus (Part 1): a test tree, or any file holding a post-cutoff
-record, is refused, because none of its records, pre-cutoff ones included, is training
-data. This is how every model in the paper was trained, e.g. the 2023-01-01 base model:
+**Pointing antiGen at data.** `--examples` names the train corpus of the cutoff (Part 1),
+and is required. Every model in the paper was trained this way; for example the
+2023-01-01 base model:
 
 ```bash
-antiGen-train --examples output/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
-    --model-type transformer --d-model 128 --num-layers 2 \
-    --epochs 32 --batch-size 64 --lr 1e-4 --variant BA.2 --ignore-dead-ends \
-    --output-dir ./checkpoints
+antiGen-train --examples $CORPORA/sc2-2023-01-01/train/examples_2023-01-01_cur.txt \
+    --model-type transformer --d-model 128 --num-layers 2 --epochs 32 --batch-size 64 \
+    --variant BA.2 --ignore-dead-ends --output-dir ./checkpoints
 ```
 
-[`REPRODUCE.md`](REPRODUCE.md) lists the exact command for every checkpoint the figures
-use: the cross-validated ten (`--val-mode random --save-best --split-seed i --seed 100+i`,
-256 epochs), the gated model, the ESM-2 / EVE / Tranception fine-tunes, and the per-cutoff
-series. Each checkpoint also stores its `train_args`, so a model can always be retrained
-from the record it carries.
+`python reproduce/train_commands.py` prints the exact command behind every checkpoint the
+figures use, read back from the `train_args` each checkpoint stores
+([`REPRODUCE.md`](REPRODUCE.md)).
 
-**Dataset shortcuts.** `--flu`, `--rsv-a`, `--denv2` and the SARS-CoV-2 default select a
-dataset's variant, alphabet and evaluation region. With `--cutoff` instead of `--examples`,
-they resolve `examples_cutoff_<cutoff>.txt` under `$FITNESS_DATA_ROOT` (or `--data-dir`),
-a local path only; nothing is downloaded. That is the original tool's single-tree layout,
-whose files hold `TESTING` records, so `antiGen-train` refuses them; train from a train
-corpus with `--examples`.
-
-| Flag | Dataset | Variant | Eval region |
-|------|---------|---------|-------------|
-| *(default)* | SARS-CoV-2 spike | BA.2 (or `--variant`) | RBD (330–530, 0-indexed) |
-| `--flu` | Influenza HA | J or K | full sequence |
-| `--rsv-a` | RSV-A F | A.D.1.6 | full sequence |
-| `--denv2` | Dengue 2 envelope | 2II_F.1.1.2_annotated | full sequence |
+**Validation.** By default every record of the train corpus trains, for a fixed number of
+epochs. `--val-mode random --val-frac 0.1 --save-best` instead holds out a random tenth
+of the train corpus and keeps the epoch that scores best on it. The paper's antiGen
+(CV ×10) is ten such models (`--split-seed 0…9`, `--seed 100…109`, 256 epochs), combined
+as the mean of their log-probabilities. Validation never reads the test tree.
 
 **Alphabet.** antiGen trains over the **20 standard amino acids** by default, with no gap
 and no stop column. `--alphabet ACDEFGHIKLMNPQRSTVWY*-` trains in the older 22-token
@@ -195,30 +191,32 @@ frame, for data that still carries gaps and stops. A checkpoint stores its alpha
 | Codon | `codon` | — (core) | Single-nucleotide accessibility under the standard genetic code (no training, eval only) |
 | PSSM | `pssm` | — (core) | Per-position `log(count+1)` from the root PSSM (no training, eval only) |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
-| EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from a pandemic MSA via `plmc` (pseudo-likelihood; eval only) |
-| EVE | `eve` | — (core) | EVE VAE (frozen or finetuned) trained on a pandemic MSA |
+| EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from an MSA via `plmc` (pseudo-likelihood; eval only) |
+| EVE | `eve` | — (core) | EVE VAE (frozen or finetuned) trained on an MSA |
 | Tranception | `tranception` | — (core) | Tranception autoregressive scorer (frozen or finetuned) |
 
-For the pretrained ESM-2 backbone, we provide three finetuning strategies: **frozen**
+For the pretrained ESM-2 backbone there are three finetuning strategies: **frozen**
 (`--freeze-backbone`, head only), **partial** (`--freeze-backbone --finetune-layers N`), and
-**full** (no freeze flags). MSA models (`evcouplings`/`eve`/`tranception`) additionally need
-`--msa` / `--metadata`; their date cutoff is derived from the dataset MRCA + `--cutoff` (or
-`--date-cutoff`).
+**full** (no freeze flags). The MSA models (`evcouplings`/`eve`/`tranception`) also take
+`--msa`: the alignment of the train corpus's own sequences, all dated before the cutoff,
+which antiGen-data writes alongside it (`antiGen-data/slurm/msa_2023-01-01.sbatch`). The
+paper's commands, all on the 2023-01-01 train corpus (`TRAIN=$CORPORA/sc2-2023-01-01/train`):
 
 ```bash
-# from-scratch transformer (the default)
-antiGen-train --model-type transformer --d-model 128 --num-layers 2 \
-    --epochs 64 --batch-size 64 --lr 1e-4 --flu --output-dir ./checkpoints
+# ESM-2 35M, partial finetune of the last 4 layers
+antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type esm2 \
+    --freeze-backbone --finetune-layers 4 --epochs 32 --variant BA.2 --ignore-dead-ends
 
-# ESM-2, partial finetune of the last 4 layers
-antiGen-train --model-type esm2 --freeze-backbone --finetune-layers 4 --lr 1e-4 --flu
+# EVE, frozen, on the train corpus's alignment
+antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type eve \
+    --freeze-backbone --epochs 32 --msa $TRAIN/msa_2023-01-01_cur.fasta --max-seqs 351410 \
+    --variant BA.2 --ignore-dead-ends
 
-# codon-accessibility baseline (no training; --codon-kappa up-weights transitions)
-antiGen-train --model-type codon --codon-kappa 2.5 --flu
-
-# gated blend of a from-scratch transformer and the root PSSM
-antiGen-train --model-type gated --gate-partner-a fitness_predictor --gate-partner-b pssm \
-    --gate-variant static --flu
+# gated blend of a from-scratch transformer and the root PSSM of the train corpus
+# (pssm_root.csv from experiments/multitree/counts_to_pssm_csv.py on counts_2023-01-01_cur.tsv)
+antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type gated \
+    --gate-partner-b pssm --pssm-path pssm_root.csv --d-model 128 --num-layers 2 \
+    --epochs 32 --batch-size 64 --variant BA.2 --ignore-dead-ends
 ```
 
 Checkpoints are written to `--output-dir` as `fitness_<run_prefix>.pt`, alongside a

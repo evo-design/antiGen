@@ -12,7 +12,10 @@ ensembles (`train_antigen_valsel10.sh`, `train_valsel_seed.sh`, `train_esm2_vals
 `antiGen/list_macro.py`.
 
 **They are lab-specific**: they hard-code the maintainers' data paths and cluster
-partitions. Treat them as templates. `python reproduce/train_commands.py` prints the
+partitions. Treat them as templates. The per-model recipes pass any extra arguments
+through to `antiGen-train`, and must be given the train corpus that way
+(`--examples <train corpus>`); `antiGen-train` refuses to run without one, and refuses
+any file that holds a post-cutoff record. `python reproduce/train_commands.py` prints the
 exact `antiGen-train` command behind every checkpoint the figures use, and
 `reproduce/eval.sh` runs every evaluation; see [`REPRODUCE.md`](../REPRODUCE.md).
 

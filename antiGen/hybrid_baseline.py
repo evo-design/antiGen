@@ -66,7 +66,7 @@ from antiGen.config import (AlphabetConfig, LEGACY_AAS, ModelConfig, ModelType)
 from antiGen.eval_utils import (compute_probs, fit_substitution_baseline,
                                 positional_marginal_counts,
                                 WhereTimesWhichPredictor)
-from antiGen.load import load_counts_matrix, load_examples
+from antiGen.load import load_counts_matrix, load_examples, require_train_corpus
 from antiGen.train import split_examples
 
 REPORT = "hybrid_weights.csv"
@@ -189,10 +189,10 @@ def main():
     # ── The two components ──────────────────────────────────────────────────────
     train_examples = []
     for path in args.train_examples:
-        recs = load_examples(path, allowed_aas, args.variant)
-        kept = [e for e in recs if e.is_training]
-        print(f"  training pool: kept {len(kept)} of {len(recs)} from {path}")
-        train_examples += kept
+        recs = require_train_corpus(load_examples(path, allowed_aas, args.variant),
+                                    "fitting the hybrid")
+        print(f"  training pool: {len(recs)} from {path}")
+        train_examples += recs
     if not train_examples:
         raise SystemExit("no training examples")
     if len(train_examples[0].aa_idx) != seq_len:

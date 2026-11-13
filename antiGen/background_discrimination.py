@@ -78,7 +78,7 @@ from antiGen.eval_utils import (CountedStatPredictor, RBD_RANGE,
                                 where_times_which_dirichlet,
                                 WhereTimesWhichPredictor)
 from antiGen.config import LEGACY_AAS
-from antiGen.load import load_counts_matrix, load_examples, load_pssms
+from antiGen.load import load_counts_matrix, load_examples, load_pssms, require_train_corpus
 from antiGen.models.factory import create_model
 
 def peek_root_example(path):
@@ -374,12 +374,6 @@ def main():
     ap.add_argument('--mcm-baseline', action='store_true',
                     help='add the mutation count matrix alone, "mcm": log N[i,a], as '
                          'list_macro.py --mcm-baseline (NOTES s121)')
-    ap.add_argument('--pool-examples', action='store_true',
-                    help="fit the factored/counted baselines on --train-examples PLUS "
-                         "the training-window records of --backbone-examples, as "
-                         "list_macro.py --pool-examples does. Matters only with "
-                         "--split-date, where the shared test corpus carries pre-cutoff "
-                         "branches that belong to the training window (NOTES s138).")
     ap.add_argument('--ensemble-dir', default=None,
                     help="score the MeanLogProbEnsemble of every fitness_*.pt in this "
                          "directory as one rung, as list_macro.py --ensemble-dir does "
@@ -418,25 +412,15 @@ def main():
     # The full examples file is only needed to FIT the factored baselines; loading it
     # costs ~19 GB, so it is loaded only when they are asked for.
     training_examples = None
-    if args.pool_examples and not args.backbone_examples:
-        raise SystemExit("--pool-examples pools --train-examples with "
-                         "--backbone-examples; it needs the latter")
     if args.multitree_baselines or args.counted_baselines or args.mcm_baseline:
         all_examples = load_examples(examples_files[0], allowed_aas, variant,
                                      split_date=args.split_date)
         training_examples = [e for e in all_examples if e.is_training]
         if "".join(allowed_aas[i] for i in training_examples[0].aa_idx.tolist()) != examples_root:
             raise SystemExit("the root example parsed two ways disagree")
-        if args.pool_examples:
-            # list_macro.py's semantics (NOTES s111): pool both files, THEN split on
-            # is_training, so the shared test corpus's pre-cutoff branches count as
-            # training -- the fit E-H's own run used.
-            n0 = len(training_examples)
-            training_examples += [e for e in load_examples(
-                args.backbone_examples, allowed_aas, variant, split_date=args.split_date)
-                if e.is_training]
-            print(f"  --pool-examples: {n0} training examples from the train file + "
-                  f"{len(training_examples) - n0} from the backbone file")
+        # Fitted on the train corpus alone; refuses a test tree, including the
+        # original tool's single-file layout (--data-dir) (s163, s181).
+        require_train_corpus(training_examples, "fitting the baselines")
     print(f"Sequence length {seq_len}; eval range {len(eval_range)} positions "
           f"({eval_range[0] + 1}-{eval_range[-1] + 1}, 1-based)")
 

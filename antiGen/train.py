@@ -20,7 +20,7 @@ from antiGen.config import (ModelConfig, ModelType, TransformerConfig, AlphabetC
                             EVcouplingsConfig, EVEConfig, TranceptionConfig, PSSMConfig, CodonConfig,
                             SubstitutionConfig, GatedFitnessConfig, STANDARD_AAS, LEGACY_AAS)
 from antiGen.models.factory import create_model
-from antiGen.load import load_examples
+from antiGen.load import load_examples, require_train_corpus
 from antiGen.batching import LengthBucketBatchSampler
 from antiGen.eval_utils import (compute_probs, compute_loss_batch, compute_hit_rate,
                                 validate_per_source, frequency_baseline_scores,
@@ -76,8 +76,9 @@ def parse_args():
     parser.add_argument('--warmup-steps', type=int, default=0, help='LR warmup steps')
     parser.add_argument('--output-dir', type=str, default='.', help='Output directory')
     parser.add_argument('--examples', type=str, nargs='+', default=None,
-                        help='One or more examples_cutoff_*.txt paths, optionally NAME=PATH. '
-                             'Overrides dataset routing. More than one file trains a single '
+                        help='REQUIRED: the train corpus -- one or more examples files from '
+                             'antiGen-data train runs (an earlier tree + sequences before the '
+                             'cutoff), optionally NAME=PATH. More than one file trains a single '
                              'model jointly on all of them; each file is one "source" '
                              'phylogeny and may have its own sequence length (esm2 only).')
     parser.add_argument('--split-date', default=None, metavar='YYYY-MM-DD',
@@ -507,16 +508,18 @@ def main():
     dataset_name = 'flu' if args.flu else 'rsv_a' if args.rsv_a else 'denv2' if args.denv2 else 'sc2'
     if args.variant is None:
         args.variant = datasets.default_variant(dataset_name)
-    cutoff_int = int(args.cutoff)
 
     if args.examples:
         # Fully custom: train on any examples file(s) (new protein/pathogen, zero code edits).
         spec = [parse_source_spec(tok) for tok in args.examples]
         data_dir = args.data_dir  # may be None; pssm/gated partners need it (pssms/root.csv)
     else:
-        datasets.validate(dataset_name, cutoff_int, args.variant)
-        data_dir = args.data_dir or datasets.default_data_dir(dataset_name, cutoff_int)
-        spec = [(dataset_name, datasets.examples_path(data_dir, cutoff_int))]
+        # The original tool's layout -- one examples_cutoff_<N>.txt per cutoff, a single
+        # tree holding both TRAINING and TESTING records -- is no longer read: training
+        # comes only from a train corpus, built by its own antiGen-data run (s181).
+        raise SystemExit("antiGen-train needs --examples <train corpus>: the examples "
+                         "file of an antiGen-data run on an earlier tree with only the "
+                         "sequences dated before the cutoff (antiGen-data/README.md).")
 
     sources, examples_by_source = [], {}
     for name, path in spec:
@@ -528,20 +531,8 @@ def main():
         if args.ignore_dead_ends:
             # Filter before splitting so train and val are drawn from one population.
             examples = [e for e in examples if e.mat.sum() >= 0.5]
-        # NEVER train on a test tree. A file that holds any post-cutoff (TESTING) record
-        # was built from sequences past the cutoff, and so were its pre-cutoff records:
-        # their child mutations, and the tree they sit on, carry information from after
-        # the cutoff (antiGen-data's minLeafDated rule). Training data comes only from a
-        # TRAIN corpus -- an earlier tree plus sequences dated before the cutoff, built
-        # by its own antiGen-data run (docs/NOTES.md s163, s181).
-        n_post = sum(1 for e in examples if not e.is_training)
-        if n_post:
-            raise SystemExit(
-                f"Source '{name}': {path} holds {n_post} post-cutoff (test) record(s), "
-                f"so it is a TEST tree, and no record of a test tree may be used for "
-                f"training -- not even its pre-cutoff ones. Train on a train corpus: a "
-                f"separate antiGen-data run on an earlier tree with only the sequences "
-                f"dated before the cutoff (antiGen-data/README.md).")
+        # NEVER train on a test tree, not even on its pre-cutoff records (s163, s181).
+        require_train_corpus(examples, f"training (source '{name}')")
         if not examples:
             raise SystemExit(f"Source '{name}': no examples left after filtering ({path})")
         lens = {len(e.aa_idx) for e in examples}
