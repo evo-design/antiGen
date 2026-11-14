@@ -23,9 +23,11 @@ declare -A CMD=(
   [supp_gate_units]="figures/figS_gate_units.R"
   [supp_usher_benchmark]="figures/figS_usher_benchmark.R"
   [supp_dataseed]="figures/figS_dataseed.R"
+  [supp_cv10_loss]="figures/figS_cv10_loss.R"
 )
 ORDER=(sc2_results_revised2 sc2_results_revised2_supp supp_min100_2021 supp_fullspike
-       supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark supp_dataseed)
+       supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark supp_dataseed
+       supp_cv10_loss)
 [ $# -gt 0 ] && ORDER=("$@")
 
 for fig in "${ORDER[@]}"; do

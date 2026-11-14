@@ -59,6 +59,7 @@ committed.
 | `supp_dms_revised2` | `sc2_aa20/`, `sc2_aa20_extra/` (+ `baselines/`, `dms/`) | `list2021`, `dms_dumps` |
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
 | `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
+| `supp_cv10_loss` | `cv10_loss_2023-01-01/loss_by_epoch.csv` | none: read from the training logs by `reproduce/stage/stage_cv10_loss.py` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
 
 Retired to `figs/old/` (no longer rendered): `supp_cd1`, `supp_cd1_min100`, `supp_cd1_min100_2021`,
