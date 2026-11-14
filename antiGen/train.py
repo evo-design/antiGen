@@ -139,6 +139,9 @@ def parse_args():
                              'validation NLL, as fitness_<prefix>_best.pt. Without this '
                              'only the final epoch is kept, which is typically well past '
                              'the best epoch.')
+    parser.add_argument('--early-stop-patience', type=int, default=0, metavar='N',
+                        help='Stop once pooled validation NLL has not improved for N '
+                             'epochs (0: never).')
     parser.add_argument('--resume-state', type=str, default=None, metavar='PATH',
                         help='Resumable training. After every epoch the model, '
                              'optimizer, scheduler, RNG and validation history are written '
@@ -1097,6 +1100,10 @@ def main():
 
             save_resume_state()
             if args.max_batches is not None and global_step >= args.max_batches:
+                break
+            if (args.early_stop_patience and best_epoch is not None
+                    and epoch - best_epoch >= args.early_stop_patience):
+                print(f"Early stop at epoch {epoch}: best pooled val NLL was epoch {best_epoch}.")
                 break
 
         # Free training-only objects to reclaim memory before saving
