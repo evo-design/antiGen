@@ -246,6 +246,9 @@ row3 <- with_header("All RBD, 2023 cutoff", bar_block(ca, BAR_LETTERS[1:4]))
 ## under K, which it also colours (user, s135), followed by a gap before the cutoff
 ## series L-M (s150); in the supplement, which has no K, it ends the figure under E-H.
 GAP_IN <- 0.25
+## The gap above Q is smaller: the O/P block already ends in padding under its key, so
+## 0.10 leaves the same white space (0.32 in, measured) as above O/P.
+FS_GAP_IN <- 0.10
 key_row <- plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1))
 row4 <- if (VARIANT == "main") {
   with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8]))
@@ -407,7 +410,7 @@ save_figure(
             ## IN INCHES, so row 1 -- and panel B's 1:1 slot (s119) -- keeps its size
             ## whichever roster rows 3-4 carry. The bar rows scale with model count:
             ## 24 rows in the supplement, 16 in the main figure.
-            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4] + LEG_IN, GAP_IN, ROW_IN[2], GAP_IN, M_IN + 0.25) else ROW_IN[3:4]),
+            rel_heights = if (VARIANT == "main") c(ROW_IN[1], ROW_IN[3] + ROW3B_IN, ROW_IN[4] + LEG_IN, GAP_IN, ROW_IN[2], FS_GAP_IN, M_IN + 0.25) else ROW_IN[3:4]),
   paste0(getOption("revised2.fig_main", "sc2_results_revised2"),
          if (VARIANT == "supp") "_supp" else ""),
   ## The revised figure's canvas. Row 3 now holds two panels of the same shape rather
@@ -417,7 +420,7 @@ save_figure(
   ## Text is in POINTS and does not shrink with the canvas, so narrowing also makes
   ## every label larger relative to the figure; the limit is the four titles in row 3,
   ## which clip rather than wrap.
-  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + LEG_IN + 2 * GAP_IN + M_IN + 0.25 else sum(ROW_IN[3:4]))
+  width = 11, height = if (VARIANT == "main") sum(ROW_IN) + ROW3B_IN + LEG_IN + GAP_IN + FS_GAP_IN + M_IN + 0.25 else sum(ROW_IN[3:4]))
 cat("wrote", paste0("figs/sc2_results_revised2", if (VARIANT == "supp") "_supp" else "",
                     ".png (+ .pdf)\n"))
 
