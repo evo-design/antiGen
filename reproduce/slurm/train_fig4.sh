@@ -56,7 +56,7 @@ OUT=$ROOT/$NAME
 if find "$OUT" -maxdepth 1 -name 'fitness_*.pt' ! -name '*_best*.pt' -print -quit 2>/dev/null | grep -q .; then
     echo "done already: $OUT"; exit 0
 fi
-mkdir -p "$OUT"
+rm -rf "$OUT" && mkdir -p "$OUT"
 "$PYTHON" -m antiGen.train "${MODEL[@]}" --alphabet "$ALPHABET" --examples "${EXAMPLES[@]}" \
     --val-mode random --val-frac "$VAL_FRAC" --split-seed "$SEED" --seed $((42 + SEED)) \
     --ignore-dead-ends --batch-size 8 --max-batch-tokens 8192 --lr 1e-4 --save-best \
