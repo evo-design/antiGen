@@ -139,6 +139,13 @@ def parse_args():
                              'validation NLL, as fitness_<prefix>_best.pt. Without this '
                              'only the final epoch is kept, which is typically well past '
                              'the best epoch.')
+    parser.add_argument('--init-from', type=str, default=None, metavar='CKPT',
+                        help='eve / tranception only: start from this checkpoint\'s weights '
+                             'instead of pre-training on the MSA (hours). The checkpoint must be '
+                             'the same model type, alignment and --max-seqs; a frozen-backbone '
+                             'checkpoint of the same recipe holds exactly the pre-trained model. '
+                             'Fine-tuning then proceeds as usual (all parameters trainable; '
+                             'not combinable with --freeze-backbone).')
     parser.add_argument('--resume-state', type=str, default=None, metavar='PATH',
                         help='Resumable training. After every epoch the model, '
                              'optimizer, scheduler, RNG and validation history are written '
@@ -280,6 +287,33 @@ def build_checkpoint(model, model_config, args, run_prefix, seq_len_by_source,
         }
     return checkpoint
 
+
+
+def _init_msa_model_from(model_config, args, device):
+    """EVE / Tranception from a checkpoint's weights, skipping MSA pre-training (--init-from)."""
+    import dataclasses
+    if args.freeze_backbone:
+        raise SystemExit("--init-from fine-tunes every parameter; it does not combine with "
+                         "--freeze-backbone (the frozen checkpoint itself is that model).")
+    c = torch.load(args.init_from, map_location="cpu", weights_only=False)
+    ta, cfg = c.get("train_args") or {}, c.get("config") or {}
+    if cfg.get("model_type") != model_config.model_type.value:
+        raise SystemExit(f"--init-from {args.init_from} is a {cfg.get('model_type')} checkpoint, "
+                         f"not {model_config.model_type.value}")
+    for k in ("msa", "max_seqs"):
+        if ta.get(k) != getattr(args, k):
+            raise SystemExit(f"--init-from {args.init_from} was pre-trained with {k}={ta.get(k)!r}, "
+                             f"this run asks for {getattr(args, k)!r}")
+    if "eve_state" not in c:
+        raise SystemExit(f"--init-from {args.init_from} carries no eve_state (MSA dims)")
+    field = "eve" if model_config.model_type == ModelType.EVE else "tranception"
+    sub = dataclasses.replace(getattr(model_config, field), pretrained_state=c["eve_state"])
+    model_config = dataclasses.replace(model_config, **{field: sub})
+    model = create_model(model_config, device)
+    model.load_state_dict(c["model_state_dict"])
+    print(f"--init-from: loaded pre-trained {field} weights from {args.init_from} "
+          f"(pre-trained with seed {ta.get('seed')}); MSA pre-training skipped")
+    return model, model_config
 
 def held_out_split(examples_by_source, val_frac, test_frac, split_seed):
     """Three-way ``(train, val, test)`` split of the TRAINING pool, per source.
@@ -736,7 +770,10 @@ def main():
                 max_seqs=args.max_seqs,
             ),
         )
-        model = create_model(model_config, device)
+        if args.init_from:
+            model, model_config = _init_msa_model_from(model_config, args, device)
+        else:
+            model = create_model(model_config, device)
         print(f"Model: EVE VAE, freeze_backbone={args.freeze_backbone}")
     elif args.model_type == 'tranception':
         if args.msa is None:
@@ -761,7 +798,10 @@ def main():
                 scoring_direction=args.scoring_direction,
             ),
         )
-        model = create_model(model_config, device)
+        if args.init_from:
+            model, model_config = _init_msa_model_from(model_config, args, device)
+        else:
+            model = create_model(model_config, device)
         print(f"Model: Tranception LM, scoring={args.scoring_direction}, freeze_backbone={args.freeze_backbone}")
     elif args.model_type == 'gated':
         # Populate every per-partner sub-config so any partner_type works; the selected
