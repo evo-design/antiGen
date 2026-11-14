@@ -288,7 +288,7 @@ fs_panel <- function(arm, col, pool_name, first) {
                                 ## ggpattern spaces stripes relative to the plot, and these
                                 ## sub-plots are about a sixth as tall as E-L: 0.30, not 0.07, so
                                 ## the stripes come out at the same pitch.
-                                pattern_spacing = 0.30, pattern_key_scale_factor = 0.6) +
+                                pattern_spacing = 0.60, pattern_key_scale_factor = 0.6) +
     ggpattern::scale_pattern_identity() +
     geom_text(aes(label = sprintf("%.2f", value)), hjust = -0.15, size = 2.4) +
     scale_fill_manual(values = c("antiGen" = ANTIGEN_BLUE,
@@ -322,7 +322,9 @@ row5 <- plot_grid(NULL, NULL,
                   plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
                   nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "", ""))   # K, then O; own figure since s169
 ## Panel K's row, sized so its bars come out the same height as C-J's.
-M_IN <- 1.05
+## Measured on the render: 0.71 gives Q the same bar height and pitch as C-N (32 px bars
+## on a 35.6 px pitch at 300 dpi); 1.05 drew them twice as tall.
+M_IN <- 0.71
 
 ## MAIN LAYOUT (user, s165). Under C-F, supp_cd1's A-D (G-J); then the 2021 row, led
 ## by supp_cd1_min100_2021's de novo pair (K-L) in place of the all-escape pair, with
@@ -390,9 +392,11 @@ if (VARIANT == "main") {
     ncol = 1, rel_heights = c(1, 0.1, 0.07))
   ## The fixed-split panel back in the main figure, as its bottom row Q (user): each
   ## external model fit once at a fixed date, against the base antiGen at that cutoff.
-  blk_fs <- hdr_block("Fixed splits",
+  ## No row header (user); the header gutter stays empty so Q lines up with C-N.
+  blk_fs <- plot_grid(NULL,
                       plot_grid(NULL, plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
-                                nrow = 1, rel_widths = c(0.035, 1), labels = c("Q", "")))
+                                nrow = 1, rel_widths = c(0.035, 1), labels = c("Q", "")),
+                      nrow = 1, rel_widths = c(HDR_W, 1))
 }
 save_figure(
   plot_grid(plotlist = if (VARIANT == "main") list(row1, blk_2023, blk_2021, NULL, blk_var, NULL, blk_fs)
