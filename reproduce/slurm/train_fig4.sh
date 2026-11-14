@@ -10,10 +10,10 @@
 #   ARM=single9_xformer  --array=0-89
 #   ARM=joint9_esm650    --array=0-9
 #   ARM=joint49_esm650   --array=0-9
-#   ARM=endemic          --array=0-59   3 trees x {xformer, esm35m_ft} x 10 seeds
+#   ARM=endemic          --array=0-29   3 trees x 10 seeds
 #   ARM=casestudy        --array=0
 set -euo pipefail
-source "${REPO:-$(cd "$(dirname "$0")/../.." && pwd)}/reproduce/config.sh"
+source "${REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}/reproduce/config.sh"
 export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 NOATTACH=${FIG4_CORPORA:-$CORPORA/fig4-noattach}
 ROOT=${FIG4_CKPT:-$CKPT/fig4}/$ARM
@@ -41,16 +41,10 @@ case "$ARM" in
     MODEL=("${ESM650[@]}" --val-sources "${PANEL9[@]}") ;;
   endemic)
     TREES=(denv2 h3n2 rsv_a); CUTS=(2019-10-01 2022-10-01 2023-10-01); DIRS=(denv2 h3n2 rsv-a)
-    V=$((I / 20)); SEED=$((I % 10)); TREE=${TREES[$V]}; CUT=${CUTS[$V]}
+    V=$((I / 10)); SEED=$((I % 10)); TREE=${TREES[$V]}; CUT=${CUTS[$V]}
     EXAMPLES=("$TREE=$CORPORA/${DIRS[$V]}-$CUT/train/examples_${CUT}_cur.txt")
-    if [ $(((I % 20) / 10)) = 0 ]; then
-        declare -A EP=([h3n2]=32 [denv2]=460 [rsv_a]=120)
-        MODEL=("${XFORMER[@]}" --epochs "${EP[$TREE]}"); NAME=${TREE}_xformer_s$SEED
-    else
-        declare -A EP=([h3n2]=16 [denv2]=230 [rsv_a]=60)
-        MODEL=(--model-type esm2 --esm2-model-name facebook/esm2_t12_35M_UR50D --epochs "${EP[$TREE]}")
-        NAME=${TREE}_esm35m_ft_s$SEED
-    fi ;;
+    declare -A EP=([h3n2]=32 [denv2]=460 [rsv_a]=120)
+    MODEL=("${XFORMER[@]}" --epochs "${EP[$TREE]}"); NAME=${TREE}_xformer_s$SEED ;;
   casestudy)
     SEED=0; NAME=h3n2_xformer_s0; VAL_FRAC=0.2
     EXAMPLES=("h3n2=$CORPORA/h3n2-2022-10-01/train/examples_2022-10-01_cur.txt")

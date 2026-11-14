@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Rank each RBD step of a named evolutionary path among all RBD substitutions.
+"""Rank each step of a named evolutionary path among all substitutions in an eval range (default the RBD).
 
 **The question panel D asks.** Walking BA.2.86 -> KP.3 one observed substitution at a
 time: given the genotype the lineage actually had when that substitution happened,
@@ -20,8 +20,8 @@ in this figure.
 strictly higher; `rank_mean` is the midpoint of the tied block. They differ by hundreds
 of places for a coarse predictor, and one argsort rank would hide that.
 
-Only steps whose position falls in the RBD are scored; the rest of the path is carried
-through to the output with a blank rank so the trajectory stays whole.
+Only steps whose position falls in the eval range are scored; the rest of the path is
+carried through to the output with a blank rank so the trajectory stays whole.
 """
 from __future__ import annotations
 
@@ -72,30 +72,43 @@ def main():
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--alphabet", default="ACDEFGHIKLMNPQRSTVWY")
     ap.add_argument("--qtile", type=float, default=0.1)
+    ap.add_argument("--eval-range", default="rbd",
+                    help="'rbd' (eval_utils.RBD_RANGE), 'whole' (the whole protein) or 'LO-HI' 1-based inclusive")
+    ap.add_argument("--parent-id-col", default="parent_example_id",
+                    help="path-csv column holding the integer EXAMPLE_ID of each step's parent")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
     aas = args.alphabet
     E = len(aas)
-    eval_range = RBD_RANGE
-    R = len(eval_range)
-    rbd_lo1, rbd_hi1 = eval_range[0] + 1, eval_range[-1] + 1
-
+    pid = args.parent_id_col
     steps = list(csv.DictReader(open(args.path_csv)))
-    scored = [s for s in steps
-              if s["position_1based"] and rbd_lo1 <= int(s["position_1based"]) <= rbd_hi1]
-    print(f"{len(steps)} step(s), {len(scored)} in the RBD ({rbd_lo1}-{rbd_hi1})")
-    if not scored:
-        raise SystemExit("no step falls in the RBD")
+    with_pos = [s for s in steps if s["position_1based"]]
+    if args.eval_range == "whole":
+        seqs = read_sequences(args.examples, [int(s[pid]) for s in with_pos])
+        eval_range = list(range(len(next(iter(seqs.values())))))
+    elif args.eval_range == "rbd":
+        eval_range = RBD_RANGE
+    else:
+        lo, hi = (int(x) for x in args.eval_range.split("-"))
+        eval_range = list(range(lo - 1, hi))
+    R = len(eval_range)
+    lo1, hi1 = eval_range[0] + 1, eval_range[-1] + 1
+    flag = "in_rbd" if args.eval_range == "rbd" else "in_pool"
 
-    parents = [int(s["parent_example_id"]) for s in scored]
+    scored = [s for s in with_pos if lo1 <= int(s["position_1based"]) <= hi1]
+    print(f"{len(steps)} step(s), {len(scored)} in the eval range ({lo1}-{hi1})")
+    if not scored:
+        raise SystemExit("no step falls in the eval range")
+
+    parents = [int(s[pid]) for s in scored]
     seqs = read_sequences(args.examples, parents)
     seq_len = len(next(iter(seqs.values())))
 
     # The parent must actually carry the FROM residue, or the step is being scored
     # against a background it did not happen on.
     for s in scored:
-        p, pos0, frm = int(s["parent_example_id"]), int(s["position_0based"]), s["from_aa"]
+        p, pos0, frm = int(s[pid]), int(s["position_0based"]), s["from_aa"]
         have = seqs[p][pos0]
         if have != frm:
             raise SystemExit(
@@ -146,18 +159,17 @@ def main():
             "score": f"{float(scores[b, r, j]):.8f}",
         }
 
-    fields = ["step", "mutation_1based", "from_aa", "position_1based", "to_aa",
-              "parent_example_id", "example_id", "in_rbd",
-              "rank_best", "rank_mean", "n_tied", "n_candidates", "pct_from_top",
-              "in_top_decile", "score"]
+    carry = [c for c in ("step", "mutation_1based", "from_aa", "position_1based", "to_aa", "gene",
+                         "gene_position", "parent_example_id", "example_id", "child_subclade",
+                         "child_date") if c in steps[0]]
+    fields = carry + [flag, "rank_best", "rank_mean", "n_tied", "n_candidates", "pct_from_top",
+                      "in_top_decile", "score"]
     with open(args.output, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields)
         w.writeheader()
         for st in steps:
-            row = {k: st.get(k, "") for k in
-                   ("step", "mutation_1based", "from_aa", "position_1based", "to_aa",
-                    "parent_example_id", "example_id")}
-            row["in_rbd"] = int(st["step"] in by_step)
+            row = {k: st[k] for k in carry}
+            row[flag] = int(st["step"] in by_step)
             row.update(by_step.get(st["step"], {}))
             w.writerow(row)
     print(f"wrote {args.output}")
