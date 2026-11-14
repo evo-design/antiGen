@@ -306,6 +306,14 @@ def main():
                          "pool -- under it this must reproduce the published CSV.")
     ap.add_argument('--skip-perquery', action='store_true',
                     help="do not also report the published per-query pool convention")
+    ap.add_argument('--cd1', action='store_true',
+                    help="the one-nucleotide cell sets (rbd_cd1_*, <list>_cd1_*) instead "
+                         "of the usual ones: a cell's hosts count only where its alt residue "
+                         "is one nucleotide from that host's own residue (the 1-nt rule of "
+                         "list_macro --cd1-variants, applied per host), and a cell needs at "
+                         "least --min-hosts such hosts. Controls and the common pool are "
+                         "unchanged, so a query-blind map still scores exactly 0. Write it to "
+                         "its own --output-dir.")
     ap.add_argument('--n-boot', type=int, default=10000)
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
@@ -345,6 +353,20 @@ def main():
             usable[cell] = (hq, cq)
     print(f"{len(sets)} cells hosted; {len(usable)} with >={args.min_hosts} host(s) and "
           f">={args.min_controls} controls")
+    if args.cd1:
+        from antiGen.models.codon_fitness_predictor import build_codon_lookup
+        reach1 = (build_codon_lookup(allowed_aas, pseudocount=0.01)
+                  > float(np.log(0.01)) + 1e-4).numpy()
+        np.fill_diagonal(reach1, False)
+        kept = {}
+        for cell, (hq, cq) in usable.items():
+            r, a = pos_of[cell[0] - 1], allowed_aas.index(cell[1])
+            hq1 = [q for q in hq if reach1[allowed_aas.index(queries[q]["eval_seq"][r]), a]]
+            if len(hq1) >= args.min_hosts:
+                kept[cell] = (hq1, cq)
+        print(f"--cd1: {len(kept)} of {len(usable)} cells keep >={args.min_hosts} host(s) one "
+              f"nucleotide from the host's residue")
+        usable = kept
 
     def is_denovo(cell):
         return not seen[cell[0] - 1, allowed_aas.index(cell[1])]
@@ -354,10 +376,13 @@ def main():
 
     cellsets = {}
     for label, members in lists.items():
+        if args.cd1:
+            label = f"{label}_cd1"
         cellsets[f"{label}_all"] = [c for c in usable if c in members]
         cellsets[f"{label}_unseen"] = [c for c in usable if c in members and is_denovo(c)]
-    cellsets["rbd_all"] = [c for c in usable if no_indel(c)]
-    cellsets["rbd_unseen"] = [c for c in usable if no_indel(c) and is_denovo(c)]
+    tag = "rbd_cd1" if args.cd1 else "rbd"
+    cellsets[f"{tag}_all"] = [c for c in usable if no_indel(c)]
+    cellsets[f"{tag}_unseen"] = [c for c in usable if no_indel(c) and is_denovo(c)]
     for name, cells in cellsets.items():
         print(f"  cellset {name}: {len(cells)} cells")
 

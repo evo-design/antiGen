@@ -55,10 +55,11 @@ committed.
 | `sc2_results_revised2_supp` | as C–J and O/P | as above |
 | `supp_min100_2021` | `…_2021_allcells_min100/` | `cd1_2021_allcells`, `postcutoff_counts` |
 | `supp_fullspike` | `gating_macro_aa20_fullspike/<D>/`, `…_2023-01-01_fullspike/`, `…_2023-01-01_fullspike_cd1/` | `cutoff_spike`, `fullspike_2023` |
-| `supp_query_adapt` | `evals_sc2_background_aa20{,_eventwtd}/`, `…_2023-01-01{,_eventwtd}/` | `background_2021`, `background_2023` |
+| `supp_query_adapt` | `evals_sc2_background_aa20_2023-01-01{,_eventwtd}/` (all RBD), `…_2023-01-01_cd1{,_eventwtd}/` (1 nt) | `background_2023` |
 | `supp_dms_revised2` | `sc2_aa20/`, `sc2_aa20_extra/` (+ `baselines/`, `dms/`) | `list2021`, `dms_dumps` |
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
 | `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
+| `supp_cv10_loss` | `cv10_loss_2023-01-01/loss_by_epoch.csv` | none: read from the training logs by `reproduce/stage/stage_cv10_loss.py` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
 | `fig4_endemic_and_multitree` A–F | `fig4/fig4_af_panels.csv`, `fig4/fig4_extra_rungs.csv` | figure 4 chain (below) |
 | ″ G (H3N2 case study) | `fig4/h3n2_j2_to_k_ranks.csv`, `cartoons/h3n2_j2_to_k.png` | ″ |
