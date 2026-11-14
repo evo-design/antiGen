@@ -41,7 +41,9 @@ dpath () {  # $1=tree
 EXAMPLES=()
 for t in "${PANEL[@]}"; do f=$(dpath "$t"); [ -f "$f" ] || { echo "MISSING: $f" >&2; exit 1; }; EXAMPLES+=("${t}=${f}"); done
 
-OUT=/large_storage/hielab/aakarsh/multitree/fc13_joint_650m/joint13_${ARM}_recallsel_s0
+SEED=${2:-0}
+EPOCHS=${3:-30}
+OUT=/large_storage/hielab/aakarsh/multitree/fc13_joint_650m/joint13_${ARM}_recallsel_s${SEED}
 mkdir -p "$OUT" "$(dirname "$OUT")/logs"
 echo "START $(date)  node $(hostname)  arm=$ARM  job=${SLURM_JOB_ID:-none}"
 echo "sources (${#EXAMPLES[@]}): ${EXAMPLES[*]}"
@@ -50,9 +52,9 @@ echo "sources (${#EXAMPLES[@]}): ${EXAMPLES[*]}"
     --model-type esm2 --alphabet 'ACDEFGHIKLMNPQRSTVWY*-' \
     --esm2-model-name facebook/esm2_t33_650M_UR50D "${FT[@]}" \
     --examples "${EXAMPLES[@]}" \
-    --val-mode random --val-frac 0.1 --split-seed 0 --seed 42 \
+    --val-mode random --val-frac 0.1 --split-seed "$SEED" --seed "$((42 + SEED))" \
     --ignore-dead-ends \
-    --epochs 30 --batch-size 8 --max-batch-tokens 8192 --lr 1e-4 \
+    --epochs "$EPOCHS" --batch-size 8 --max-batch-tokens 8192 --lr 1e-4 \
     --save-best --save-best-per-source --save-every-epoch --early-stop-patience 3 \
     --select-metric recall10_macro --mask-gap-stop \
     --experiment "forecast@${D}" --output-dir "$OUT"

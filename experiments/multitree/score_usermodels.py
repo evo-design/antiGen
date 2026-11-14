@@ -54,18 +54,23 @@ def recall_for(model, train_ex, test_ex, bs=16):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--data', default="/home/ivan.specht/antiGen/experiments/multitree/data/forecast")
+    ap.add_argument('--train-data', default=None,
+                    help='Fit the baselines on the train files in THIS dir instead of --data, '
+                         'so the fitting corpus (attach vs no-attach) can differ from the test set.')
     ap.add_argument('--date', default="2025-01-01")
     ap.add_argument('--trees', nargs='+', required=True)
     ap.add_argument('--out', default=None)
     a = ap.parse_args()
+    train_data = a.train_data or a.data
     MODELS = ['occ_pssm', 'site_prop', 'cpssm_k0', 'cpssm_dir', 'cpssm_kinf']
     res = {}
     for sub, suffix in [('all', 'test'), ('novel', 'novel')]:
         res[sub] = {}
         for t in a.trees:
             tp = f"{a.data}/examples_{t}@{a.date}_{suffix}.txt"
-            trp = f"{a.data}/examples_{t}@{a.date}_train.txt"
+            trp = f"{train_data}/examples_{t}@{a.date}_train.txt"
             if not os.path.exists(tp) or os.path.getsize(tp) == 0: continue
+            if not os.path.exists(trp): continue
             te = load_examples(tp, ALPHABET, None, source=t)
             tr = load_examples(trp, ALPHABET, None, source=t)
             if not te: continue

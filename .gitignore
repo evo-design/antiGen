@@ -77,6 +77,9 @@ nextstrain/
 runs/
 tree_pulled_*.json
 experiments/multitree/data/**/*.txt
+# Fetched @2025-01-01 snapshot builds for the core-virus training corpus; re-fetched by
+# build_core_corpus.py (manifests trees_core_*.json are tracked).
+experiments/multitree/data/core_snapshots/
 # Analysis intermediates from the s14 scripts (rank_agreement, gate_search,
 # fuse_*, seed_curve, zeroshot_eval). Every one is reproduced by rerunning its
 # script; the numbers that matter are transcribed into NOTES.md, and the only

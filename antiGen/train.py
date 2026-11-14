@@ -1032,14 +1032,18 @@ def main():
                                               nll_per_mutation=pooled)
                         print(f"  Dumped per-cell maps for epoch {epoch} to "
                               f"{cells_path} ({n_bytes / 1e6:.1f} MB uncompressed)")
-                if getattr(args, 'save_every_epoch', False):
-                    torch.save(
-                        build_checkpoint(model, model_config, args, run_prefix,
-                                         seq_len_by_source, source_summary, epoch,
-                                         global_step, avg_train_loss, None),
-                        os.path.join(args.output_dir,
-                                     f"fitness_{run_prefix}_epoch{epoch}.pt"))
                 del dumper
+
+            # Per-epoch checkpoints are independent of validation: they must be
+            # written even when there is no val split (--val-mode file with an
+            # all-training corpus), so this sits outside the `if val_loaders` block.
+            if getattr(args, 'save_every_epoch', False):
+                torch.save(
+                    build_checkpoint(model, model_config, args, run_prefix,
+                                     seq_len_by_source, source_summary, epoch,
+                                     global_step, avg_train_loss, None),
+                    os.path.join(args.output_dir,
+                                 f"fitness_{run_prefix}_epoch{epoch}.pt"))
 
             if args.max_batches is not None and global_step >= args.max_batches:
                 break

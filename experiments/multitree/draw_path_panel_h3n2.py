@@ -47,7 +47,7 @@ from matplotlib.patches import ArrowStyle, FancyArrowPatch, Rectangle
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import render_surface as rs
 
-W_IN, H_IN = 9.6, 8.7   # condensed canvas for fig-4 panel G (+0.4 top strip for the chain key)
+W_IN, H_IN = 9.6, 7.7   # condensed canvas for fig-4 panel G (+0.4 top strip for the chain key); rank chart 1in shorter
 
 BODY = "#bdd7f2"      # HA1 body (chain A): a light blue
 FADED_KEY = "#cdd1d6"  # the other two protomers as they render (faded grey, semi-transparent)
@@ -59,6 +59,9 @@ TERM = "#8e7cc3"      # a disordered HA1 terminus: in the sequence, absent from 
 GRAY_SITE = "#5f666c"  # a site introduced at an EARLIER state: greyed on later glyphs
 # Per-label vertical nudges (glyph-image px; + moves the label DOWN) to relieve crowding.
 LABEL_NUDGE = {"Q173R": 45, "K276E": 95}   # K276E pushed DOWN, clear of the J->J.2 arrow
+# Labels drawn with NO leader line (the label sits right beside its patch). Q173R's patch
+# is directly adjacent, so a leader only overruns the shaded site.
+NO_LEADER = {"Q173R"}
 BAND = "#eef2f7"      # the top-decile region: a whisper of cool grey, a reference zone
 TEXT = "#1a1a1a"
 MUTED = "#6b6b6b"
@@ -199,7 +202,7 @@ def main():
     # Bound the glyph row to the rank-chart's x-extent below (ax_l..ax_r), so the
     # structures sit within the graph rather than overhanging it, and keep them small.
     gspan_l, gspan_r = 1.4, 9.5
-    gh, gy = 1.95, 6.0                         # glyph box ~matches the trimer aspect (no letterbox)
+    gh, gy = 1.95, 5.0                         # glyph box ~matches the trimer aspect (no letterbox)
     gap = 0.75
     gw = ((gspan_r - gspan_l) - (n - 1) * gap) / n
     lefts = [gspan_l + i * (gw + gap) for i in range(n)]
@@ -246,12 +249,12 @@ def main():
                 for r, ly in zip(grp, lys):
                     px, py = pts[r["pos"]]
                     ly += LABEL_NUDGE.get(r["mutation_1based"], 0)
+                    arrow = None if r["mutation_1based"] in NO_LEADER else dict(
+                        arrowstyle="-", color=TEXT, lw=1.1, shrinkA=1, shrinkB=2)
                     t = axg.annotate(r["mutation_1based"], xy=(px, py), xytext=(lx, ly),
                                      ha="right" if side < 0 else "left", va="center",
-                                     fontsize=12, color=r["color"],
-                                     annotation_clip=False,
-                                     arrowprops=dict(arrowstyle="-", color=r["color"],
-                                                     lw=1.1, shrinkA=1, shrinkB=9))
+                                     fontsize=12, color=TEXT,
+                                     annotation_clip=False, arrowprops=arrow)
                     t.set_path_effects([pe.withStroke(linewidth=3.0, foreground="white")])
         bg.text(lf + gw / 2, gy + gh + 0.05, lab, ha="center", va="bottom",
                 fontsize=15, fontweight="bold", color=TEXT)
@@ -286,7 +289,7 @@ def main():
                                      joinstyle="round", capstyle="round"))
 
     # --- the percentile scatter (bottom) ---------------------------------------
-    ax_l, ax_r, ax_t, ax_b = 1.6, 9.5, 5.0, 1.4
+    ax_l, ax_r, ax_t, ax_b = 1.6, 9.5, 4.0, 1.4   # vertically compressed rank chart (was ax_t 5.0)
     ax = fig.add_axes([ax_l / W_IN, 0.0, (ax_r - ax_l) / W_IN, 1.0])
     PMAX = 126                                    # 0..100 percentile + a right label margin
     ax.set_xlim(0, PMAX); ax.set_ylim(0, H_IN)

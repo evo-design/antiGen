@@ -19,20 +19,23 @@ FD="/home/ivan.specht/antiGen/experiments/multitree/data/forecast"; D="2025-01-0
 A="ACDEFGHIKLMNPQRSTVWY*-"
 dev=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def micro_test(model, trees):
+def micro_test(model, trees, data=None):
+    data=data or FD
     out={}
     for sub,suf in [('all','test'),('novel','novel')]:
-        num_r=den=num_l=0.0
+        num_r=den=0.0; per=[]
         for t in trees:
-            p=f"{FD}/examples_{t}@{D}_{suf}.txt"
+            p=f"{data}/examples_{t}@{D}_{suf}.txt"
             if not os.path.exists(p) or os.path.getsize(p)==0: continue
             te=load_examples(p,A,None,source=t)
             if not te: continue
             ld={t:DataLoader(MutationDataset(te),batch_size=16,shuffle=False)}
             r=validate_per_source(model, ld, dev, qtiles=(0.1,), mask_gap_stop=True)['per_source'][t]
-            n=r['n_mutations']; num_r+=r['hit_rate']['0.1']*n; num_l+=r['nll_per_mutation']*n; den+=n
-        out[f"test_recall10_{sub}"]=num_r/den if den else float('nan')
-        out[f"test_nll_{sub}"]=num_l/den if den else float('nan')
+            n=r['n_mutations']
+            if n:
+                num_r+=r['hit_rate']['0.1']*n; den+=n; per.append(r['hit_rate']['0.1'])
+        out[f"test_recall10_{sub}"]=num_r/den if den else float('nan')          # micro
+        out[f"test_recall10_{sub}_macro"]=sum(per)/len(per) if per else float('nan')
     return out
 
 def val_from_log(run):
@@ -51,6 +54,7 @@ def val_from_log(run):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('run_dir')
     ap.add_argument('--trees',nargs='+',required=True); ap.add_argument('--out',default=None)
+    ap.add_argument('--data',default=FD)
     a=ap.parse_args()
     vlog=val_from_log(a.run_dir)
     cks=sorted(glob.glob(a.run_dir+"/fitness_*_epoch*.pt"),
@@ -61,10 +65,11 @@ def main():
         cap,cfg=load_checkpoint(ck,map_location='cpu')
         m=create_model(cfg,torch.device('cpu')); m.load_state_dict(cap['model_state_dict'],strict=False)
         m=m.to(dev).eval(); del cap
-        row=micro_test(m,a.trees); row.update(vlog.get(ep,{}))
+        row=micro_test(m,a.trees,a.data); row.update(vlog.get(ep,{}))
         res[ep]=row
         print(f"epoch {ep}: val_r10={row.get('val_recall10',float('nan')):.3f} "
-              f"test_r10_all={row['test_recall10_all']:.3f} test_r10_novel={row['test_recall10_novel']:.3f}",flush=True)
+              f"all_macro={row['test_recall10_all_macro']:.3f} novel_macro={row['test_recall10_novel_macro']:.3f} "
+              f"(micro all={row['test_recall10_all']:.3f} novel={row['test_recall10_novel']:.3f})",flush=True)
         del m
         if dev.type=='cuda': torch.cuda.empty_cache()
     if a.out: json.dump(res,open(a.out,'w'),indent=2); print("wrote",a.out)

@@ -8762,3 +8762,153 @@ score_fig4_*.py, ...) should import it rather than carry a 'linear' copy.
 
 ### Code
 * `experiments/multitree/score_perevent.py` -- the one-line interpolation change.
+
+## 69. H3N2 structure case study: the J.2 -> K drift (2026-11-02)
+
+The influenza counterpart to is-multitree's Panel D (the BA.2.86 -> KP.3 RBD panel, s88-s90).
+Same question, a different virus: walk the real H3N2 HA lineage from clade **J.2** to the
+current clade **K** one observed substitution at a time, and ask where a checkpoint that
+was trained with a 2022-10-01 cutoff -- *before J.2 existed* -- ranks each substitution
+among all HA substitutions available from the genotype just before it.
+
+### The path, from the newer tree
+
+`antiGen-figures/trees/h3n2.json` (Nextstrain seasonal-flu H3N2 HA, updated 2026-04-02,
+tips to 2026.19) is the first H3N2 tree here that carries the J.2 and K subclades.
+`experiments/multitree/extract_tree_path.py` reconstructs every node's genotype from
+`root_sequence` (mature HA = HA1 329 + HA2 221 = 550, no signal peptide, to match the
+fig4 example corpus) plus the branch aa mutations -- the same reconstruction
+`make_tree_examples.py` does -- and walks J.2's defining node (NODE_0000545, dated
+**2022.95**, i.e. just past the 2022-10-01 cutoff) down to K (NODE_0000635, 2025.16).
+
+**The whole path post-dates the cutoff, so every rank is a forecast, not a memory.** The
+path carries **9 HA1 substitutions + 1 HA2**, no reversions, all at distinct positions.
+**Source: this tree build's per-branch ancestral aa reconstruction** (`branch_attrs.
+mutations`), NOT an external clade-definition list. Of the 10, only **5 are subclade-
+defining** (the tree's `Subclade` branch label marks them); the other 5 fixed along the
+lineage inside those clades. Do not call all ten "clade-defining":
+
+| subclade | **defining** (tree `Subclade` label) | accumulated on the lineage |
+|---|---|---|
+| J.2   | HA1 K276E                 | HA1 K189R |
+| J.2.4 | HA1 T135K                 | HA1 S144N, N158D, I160K, T328A |
+| K     | HA1 K2N, Q173R; HA2 S49N  | -- |
+
+135/144 are antigenic site A, 158/160/189 site B, 173 site D -- the classic H3 head. The
+case study's point is forecasting the substitutions that *drove* the drift, defining or
+not; branch placement of individual mutations is specific to this tree build.
+
+**Background = the branch's PARENT NODE, not a made-up single-mutation intermediate.**
+The SC2 path decomposed multi-mutation branches into a chain of reconstructed
+intermediates in a seeded order; here the positions never collide on a path branch, so
+each substitution is scored on the last *observed* ancestor before its branch (the four
+J.2.4 steps all on NODE_0000624). No invented order, no invented background.
+(`--split-branches` restores the SC2-style chain if ever wanted.) Empty branches collapse
+on the mature-HA frame, so "parent node" genotype == true tree-parent genotype.
+
+### The ranks
+
+`rank_path_cells.py` brought over from is-multitree and **generalized, not forked**:
+`--eval-range {whole,rbd,LO-HI}`, `--parent-id-col`, and the 22-letter alphabet
+`ACDEFGHIKLMNPQRSTVWY*-` with gap/stop masking (the fig4 H3N2 arm's alphabet). All arms
+trained with **cutoff 2022-10-01** (`experiment: forecast@2022-10-01`, on
+`examples_h3n2@2022-10-01_train.txt`, 9,614 train / 2,404 val); J.2 is dated 2022.95, so
+the path is post-cutoff. Pool = the **whole HA** (10,450 cells = 550x20 - 550 - gap/stop;
+user-confirmed), consistent with the H3N2 recall metric, which scores the whole protein.
+
+**Model: the FROM-SCRATCH transformer is canonical, to match is-multitree's Panel D.**
+That panel used `fitness_simple_d128_n2` (a small transformer trained from scratch), NOT
+ESM. The H3N2 counterpart is `fig4_h3n2_vf02/xformer_s0` = `fitness_simple_d512_n4`
+(d512, 4 layers, from scratch on H3N2 only). It puts **all 10 steps in the top decile**
+(s0: K276E 243, T135K 22, I160K 34, HA2-S49N 24 best; worst K2N 617 = 5.9%), and **10/10
+in every one of the 5 seeds** -- a cleaner result than the pretrained arm.
+
+The pretrained **ESM-2 650M partial-4 fine-tune** (`esm650m_p4`, frozen backbone + top 4
+layers + fitness head -- NOT from scratch) is the alternative, in
+`*_ranks_*_esm650m.csv`: 9/10 (s0; N158D 1,048 = 10.0% the one miss), 8/10 in every seed
+(per-seed 9/8/10/9/10, mean 9.2), N158D (2/5) and K2N (4/5) marginal. So the headline is
+robust to the backbone -- from-scratch is slightly stronger AND is the SC2-consistent
+choice. HA1-only pool (6,251 cells, ESM) gave 7/9. Seed tables:
+`data/casestudy/h3n2_j2_to_k_ranks_seeds_{xformer,esm650m}.csv`.
+
+### The drawing
+
+`render_surface.py` (the is-multitree raycast surface; `read_chains` added to read
+several chains into one global residue frame -- the "rbd" in the old file name was
+historical) + `draw_path_panel_h3n2.py` -> `antiGen-figures/cartoons/h3n2_j2_to_k.png`.
+Four glyphs (**J, J.2, J.2.4, K** -- all real subclades; the FROM glyph is the query the
+first step K276E arose on, node NODE_0001845, subclade **J** / clade 2a.3a.1, dated
+~2022-10, NOT a coined "pre-J.2") are the **4O5N HA protomer** (chain A HA1 at concat
+1-329 in light blue, chain B HA2 at 330+ in warm gold -- two HUES, not light-vs-dark,
+which just reads as shading; A/Victoria/361/2011, H3 mature numbering: 287/317 chain-A
+residues match the J.2-era HA1, the rest are the real 2011->2022 drift). Head up, stem
+down (PCA sign is set so the HA1 head lands at the smaller world-y, which is the image
+top under imshow). Sites light up when they change; the rank axis below is linear with
+the top decile shaded.
+
+**Three categories, so the two reasons a step leaves the head are kept apart:** an HA1
+head site resolved on the glyph (red); the HA2 stem site S49N -- a *different chain*, now
+also rendered and resolved (teal); and two HA1 steps at the disordered N/C termini that
+no HA crystal resolves (K2N, T328A, purple, `*`). All ten are on the rank axis regardless.
+(The first drawing rendered chain A alone and lumped stem + termini as one "off glyph"
+class; rendering the full protomer splits them and brings S49N -- the best rank -- onto
+the structure.)
+
+### None of the 10 steps are DE NOVO -- and counting is competitive
+
+The exact (position, target-AA) cell of all 10 steps was a training target in the
+pre-cutoff corpus (16-227x each; I160K seen 227x). H3N2 drift is intensely recurrent
+(homoplasy), so this panel is a forecast of RECURRENT drift -- the J.2/J.2.4/K clades are
+new to the model, the substitutions are not. A strict de-novo panel for J.2->K is empty
+(every target would be struck from the pool). Ties to s-recurrence: models barely beat
+counting on well-seen substitutions.
+
+`rank_path_baselines.py` ranks the same steps under the count baselines on the identical
+whole-HA pool (`count_baselines.fit` on the model's training file; `frequency`="Event
+Counts", `cpssm_dir`="Smoothed Counts"). Both put all 10 in the top decile, and often
+BEAT the from-scratch antiGen: I160K counts=1 vs antiGen=34; N158D Event=72/Smoothed=50
+vs antiGen=595; S144N Event=123/Smoothed=39 vs antiGen=282. So on this recurrent path
+antiGen tracks the real drivers but does NOT clearly beat counting -- the honest stress
+test. Overlay figures `h3n2_j2_to_k_vs_{events,smoothed}.png` draw antiGen (circle) vs the
+baseline (grey diamond) per step; data `data/.../h3n2_j2_to_k_ranks_whole_{frequency,
+cpssm_dir}.csv`. draw_path_panel_h3n2 gained `--baseline-ranks LABEL=path`; the asterisk
+was dropped from the termini (the purple colour already marks them).
+
+### Official composite: fig4_endemic_and_multitree
+
+`antiGen-figures/figures/fig4_endemic_and_multitree.R` (copied from
+`fig5_multitree_noattach_sp4e0_withbars.R`, re-laid-out) places the antiGen-only case
+study as NEW panel **G** and reflows into TWO COLUMNS, wider than tall (22x13in):
+**A-G on the LEFT (~2/3 width: A-C all / D-F de novo / G case study, G given the big
+height share so A-F compress), H-L on the RIGHT (~1/3: H/I ladders, J/K forests, L
+scatter), full-height grey divider between.** Panel-letter shift from the old single-
+column figure: old G/H ladders -> H/I, old I/J forests -> J/K, old K scatter -> L. A
+SHARED header band (DENV2/RSV/H3N2 headers on the left, "13 Virus Panel" on the right)
+sits above both body columns, and both bodies use the SAME 3-row height split -- so H
+matches A-C and I matches D-F exactly, with legend+J+K+L on the right compressed to sum to
+G's height share (GH). The case study PNG is re-drawn large and WIDE (9.6x5.2in,
+aspect ~1.85 to match the G cell so there is no side letterbox; HA protomers spread full
+width, legend as a block filling the rank-axis right) and embedded with `png::readPNG` +
+`grid::rasterGrob` (cowplot `draw_image` needs magick, absent). The compressed J/K/L get
+ac_panel's top headroom (`+ theme(plot.margin = margin(t=22..))`; make_forest ships only
+t=12, which let the inline letter sit on the plot) and L's letter is nudged right of its
+y-axis title -- a letter STRIP above the plot instead squashes the glyph and must not be
+used. Output `figs/fig4_endemic_and_multitree.png` (+ pdf).
+
+**R setup (how the figures actually render here):** `/home/aakarsh/miniconda/envs/rfig/bin/
+Rscript` (R 4.5.3, ggplot2 + cowplot present; NO magick/png/dplyr). `png` had to be built
+from source -- it needs the conda toolchain on PATH (`PATH=.../envs/rfig/bin:$PATH`) AND a
+`libz.so` dev symlink that was missing (`ln -sf libz.so.1.3.2 .../envs/rfig/lib/libz.so`).
+Run figure scripts from `antiGen-figures/` (they `source("R/common.R")`).
+
+### Open choices (reversible)
+* Pool = whole HA vs HA1-only. Whole is the figure's convention; HA1-only is the tighter
+  "antigenic domain" analog of the SC2 RBD. Both computed; whole is drawn.
+* Structure = 4O5N (clean, standard H3 numbering) vs a J.2/K-era HA model (none on disk;
+  would need building). 4O5N's 6 core antigenic sites are all present.
+
+### Code / data (all new or generalized on av-multitree)
+* `experiments/multitree/extract_tree_path.py`, `rank_path_cells.py` (generalized),
+  `rank_path_seeds.py`, `render_surface.py`, `draw_path_panel_h3n2.py`.
+* `experiments/multitree/data/casestudy/h3n2_j2_to_k*.{csv,txt}`;
+  `antiGen-figures/{ref/4O5N.pdb, data/h3n2_j2_to_k_*.csv, cartoons/h3n2_j2_to_k.png}`.
