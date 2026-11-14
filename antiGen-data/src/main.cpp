@@ -102,6 +102,11 @@ const char* kUsage =
     "                     its own cutoff. Give the whole series here on the test\n"
     "                     tree, which holds every sequence and so can answer for\n"
     "                     every cutoff at once\n"
+    "  --post-cutoff-edges with one --post-cutoff D: write the test set by edge\n"
+    "                     instead. Each record is a stand-alone query listing only\n"
+    "                     the child edges every observed date below which is at or\n"
+    "                     after D, so the step from a pre-D genotype into a new\n"
+    "                     clade is a target too\n"
     "  --out-counts <p>   for 'prepare' and 'place': a (site x 20) count matrix over\n"
     "                     the sequences that got through the filters, one increment\n"
     "                     per standard residue. Missing data counts for nothing\n"
@@ -168,6 +173,7 @@ struct Options {
     std::string variant;                   // for 'sets'/'place': the clade to flag
     std::vector<std::string> postCutoffs;  // for 'sets'/'place': the POST_CUTOFF dates;
                                            // empty means the field is written empty
+    bool        postCutoffEdges = false;   // for 'sets'/'place': test targets by child edge
     int         alphabet  = 20;   // 20, 22, or 4 for nuc; 22 makes '-' and '*' states
     int         maxGapRun = -1;   // for 'prepare' with --alphabet 22; < 0 means
                                   // the default, kDefaultMaxGapRun
@@ -205,7 +211,8 @@ void reportGenes(const GeneLayout& layout) {
 // root and nothing downstream could read it as one.
 ExampleOptions exampleOptions(const Options& opt, const std::vector<RawNode>& raw) {
     ExampleOptions eo;
-    eo.seed = opt.seed;
+    eo.seed   = opt.seed;
+    eo.byEdge = opt.postCutoffEdges;
     for (const std::string& d : opt.postCutoffs) {
         const int32_t code = parseDateCode(d.c_str(), d.size());
         if (!code) throw std::runtime_error("--post-cutoff wants YYYY-MM-DD, got '" + d + "'");
@@ -1260,6 +1267,7 @@ int main(int argc, char** argv) {
                 for (const std::string& d : splitCommas(v)) opt.postCutoffs.push_back(d);
             }
         }
+        else if (a == "--post-cutoff-edges") opt.postCutoffEdges = true;
         else if (a == "--alphabet") {
             std::string val;
             ok = needValue(argc, argv, i++, "--alphabet", val);
@@ -1427,6 +1435,11 @@ int main(int argc, char** argv) {
     // in it is --variant, and which matrix a sequence lands in is --post-cutoff.
     // Without either there is nothing to write, and writing nothing quietly is
     // the failure mode this whole option exists to avoid.
+    if (opt.postCutoffEdges && (opt.postCutoffs.size() != 1 || opt.outExamples.empty())) {
+        std::fprintf(stderr, "error: --post-cutoff-edges needs --out-examples and exactly one "
+                             "--post-cutoff\n\n%s", kUsage);
+        return 1;
+    }
     if (!opt.outVariantCounts.empty()) {
         if (opt.command != "place") {
             std::fprintf(stderr, "error: --out-variant-counts is for 'place', not '%s'\n\n%s",

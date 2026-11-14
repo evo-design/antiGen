@@ -12,13 +12,12 @@ from antiGen.eval_utils import (fit_substitution_baseline, frequency_baseline_sc
                                 positional_marginal_counts)
 from antiGen.load import load_examples
 from antiGen.models.factory import create_model
-from fig4_common import (CKPT, CORPORA, ENDEMIC_CORPORA, OUT, REPO, SEEDS, A, E, best_ckpt, dev,
+from fig4_common import (CKPT, ENDEMIC_CORPORA, OUT, REPO, SEEDS, A, E, best_ckpt, dev, endemic_test,
                          events_of, load_model, per_event_weights, pool_1nt, seen_mask)
 
-TREES = {"denv2": ("denv2-2019-10-01", "2019-10-01", "dengue"),
-         "rsv_a": ("rsv-a-2023-10-01", "2023-10-01", "rsv_a"),
-         "h3n2": ("h3n2-2022-10-01", "2022-10-01", "flu")}
-TEST = os.environ.get("FIG4_ENDEMIC_TEST", os.path.join(os.path.dirname(CORPORA), "endemic"))
+TREES = {"denv2": ("denv2", "2019-10-01", "dengue"),
+         "rsv_a": ("rsv-a", "2023-10-01", "rsv_a"),
+         "h3n2": ("h3n2", "2022-10-01", "flu")}
 EVE = os.path.join(REPO, "antiGen-figures", "data", "fig4", "eve")
 ARMS = [("antiGen", "ensemble"), ("S×S–MCM Interp.", "cpssm_dir"), ("MCM", "frequency"),
         ("S×S", "site_prop"), ("S×M", "where_times_which"), ("PFM", "pssm"),
@@ -96,8 +95,9 @@ def main():
     rng = np.random.default_rng(0)
     rows = []
     for tree, (build, cut, virus) in TREES.items():
-        train = load_examples(f"{ENDEMIC_CORPORA}/{build}/train/examples_{cut}_cur.txt", A, None, source=tree)
-        test = load_examples(f"{TEST}/examples_{tree}@{cut}_test.txt", A, None, source=tree)
+        train = load_examples(f"{ENDEMIC_CORPORA}/{build}-{cut}/train/examples_{cut}_cur.txt", A, None,
+                              source=tree)
+        test = endemic_test(build, cut, tree)
         L = len(train[0].aa_idx)
         seen = seen_mask(train)
         recs = []

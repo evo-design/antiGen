@@ -24,7 +24,7 @@ ENSEMBLES = {"joint": "joint49_esm650/s{s}", "joint9": "joint9_esm650/s{s}",
 COUNTS = ["cpssm_dir", "site_prop", "where_times_which", "pssm", "frequency"]
 LADDER = list(ENSEMBLES) + ["cpssm_dir", "site_prop", "where_times_which", "codon_blosum",
                             "pssm", "frequency", "zeroshot"]
-SUBSETS = (("all", "test"), ("novel", "novel"))
+SUBSETS = ("all", "novel")
 CONVS = ("baseline", "onent")
 FORESTS = (("single", "single"), ("smoothed", "cpssm_dir"))
 
@@ -32,11 +32,10 @@ FORESTS = (("single", "single"), ("smoothed", "cpssm_dir"))
 def tree_data(t):
     """Train corpus, seen mask, per-subset (aa_idx, events) and the unique parent sequences."""
     train = corpus(t, "train")
-    subs = {}
-    for sub, split in SUBSETS:
-        ent = [(ex.aa_idx, ev) for ex in corpus(t, split) if (ev := events_of(ex))]
-        if ent:
-            subs[sub] = ent
+    seen = seen_mask(train)
+    test = [(ex.aa_idx, events_of(ex)) for ex in corpus(t, "test")]
+    subs = {"all": [(aa, ev) for aa, ev in test if ev],
+            "novel": [(aa, nv) for aa, ev in test if (nv := [(p, a) for p, a in ev if not seen[p, a]])]}
     index, seqs = {}, []
     for ent in subs.values():
         for aa, _ in ent:
@@ -44,7 +43,7 @@ def tree_data(t):
             if k not in index:
                 index[k] = len(seqs)
                 seqs.append(aa)
-    return dict(train=train, seen=seen_mask(train), subs=subs, index=index, seqs=seqs)
+    return dict(train=train, seen=seen, subs=subs, index=index, seqs=seqs)
 
 
 def weights(td, map_of):
@@ -200,12 +199,12 @@ def build():
     with open(f"{OUT}/ladder_fig4_j9.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["rung", "subset", "est", "lo", "hi", "n_virus"])
-        for sub, _ in SUBSETS:
+        for sub in SUBSETS:
             w.writerows([r[0], sub, *r[1:]] for r in ladder_rows(sub, "baseline"))
     with open(f"{OUT}/ladder_fig4_j9_1nt.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["rung", "subset", "convention", "est", "lo", "hi", "n_virus"])
-        for sub, _ in SUBSETS:
+        for sub in SUBSETS:
             for conv in CONVS:
                 w.writerows([r[0], sub, conv, *r[1:]] for r in ladder_rows(sub, conv))
 
@@ -216,7 +215,7 @@ def build():
                 continue
             pooled = {}
             for t in PANEL9:
-                for sub, _ in SUBSETS:
+                for sub in SUBSETS:
                     k = f"{t}__{sub}__{conv}"
                     if k not in W["joint"] or k not in W[comp]:
                         continue

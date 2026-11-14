@@ -1,23 +1,15 @@
 """EVE MSAs for the PANEL9 trees: the root and every tip genotype of the training snapshot."""
+import csv
 import gzip
 import json
 import os
 import sys
 
-from fig4_common import D, PANEL9
+from fig4_common import D, PANEL9, REPO, TREES
 from fig4_extra import EVE_DIR
 
-SNAPSHOTS = os.environ.get("FIG4_SNAPSHOTS", "/large_storage/hielab/ispecht/multitree/wide")
-NCOV_REF = f"{SNAPSHOTS}/ncov_open_global_all-time@2026-05-01_root-sequence.json"
 AA = frozenset("ACDEFGHIKLMNPQRSTVWY")
-TREES = {"h5nx": ("avian-flu/h5nx/ha/all-time", ["HA"]),
-         "ncov": ("ncov/open/global/all-time", ["S"]),
-         "rsv_a": ("rsv/a/F/all-time", ["F"]), "rsv_b": ("rsv/b/F/all-time", ["F"]),
-         "measles": ("measles/genome/global", ["H"]),
-         "h3n2_ha": ("seasonal-flu/h3n2/ha/12y", ["SigPep", "HA1", "HA2"]),
-         "h1n1pdm_ha": ("seasonal-flu/h1n1pdm/ha/12y", ["SigPep", "HA1", "HA2"]),
-         "vic_ha": ("seasonal-flu/vic/ha/12y", ["SigPep", "HA1", "HA2"]),
-         "hmpv_a_g": ("hmpv/a/G", ["G"])}
+GENES = {r["tree"]: r["genes"].split(",") for r in csv.DictReader(open(f"{REPO}/reproduce/fig4_trees.tsv"), delimiter="\t")}
 
 
 def load(path):
@@ -69,9 +61,10 @@ def tips(tree, ref_seq, genes, offsets):
 def main(trees):
     os.makedirs(f"{EVE_DIR}/msa", exist_ok=True)
     for t in trees:
-        path, genes = TREES[t]
-        tj = load(f"{SNAPSHOTS}/{path.replace('/', '_')}@{D}.json")
-        ref_seq, offsets = reference(load(NCOV_REF) if t == "ncov" else tj["root_sequence"], genes)
+        genes = GENES[t]
+        tj = load(f"{TREES}/{t}@{D}.json")
+        side = f"{TREES}/{t}@{D}_root-sequence.json"
+        ref_seq, offsets = reference(load(side) if os.path.exists(side) else tj["root_sequence"], genes)
         root, leaves = tips(tj["tree"], ref_seq, genes, offsets)
         with open(f"{EVE_DIR}/msa/{t}.fasta", "w") as fh:
             fh.write(f">ROOT_{t}\n{root}\n")

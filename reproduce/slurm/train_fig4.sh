@@ -37,7 +37,7 @@ case "$ARM" in
     MODEL=("${ESM650[@]}") ;;
   joint49_esm650)
     SEED=$I; NAME=s$SEED
-    EXAMPLES=(); while read -r t; do EXAMPLES+=("$(na "$t")"); done < "$REPO/reproduce/fig4_joint49.txt"
+    EXAMPLES=(); while read -r t; do EXAMPLES+=("$(na "$t")"); done < <(tail -n +2 "$REPO/reproduce/fig4_trees.tsv" | cut -f1)
     MODEL=("${ESM650[@]}" --val-sources "${PANEL9[@]}") ;;
   endemic)
     TREES=(denv2 h3n2 rsv_a); CUTS=(2019-10-01 2022-10-01 2023-10-01); DIRS=(denv2 h3n2 rsv-a)

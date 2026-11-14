@@ -13,6 +13,7 @@ from antiGen.models.factory import create_model
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENDEMIC_CORPORA = os.environ.get("CORPORA", "/home/ivan.specht/antiGen-data-revised/output")
 CORPORA = os.environ.get("FIG4_CORPORA", f"{ENDEMIC_CORPORA}/fig4-noattach")
+TREES = os.environ.get("FIG4_TREES", f"{ENDEMIC_CORPORA}/fig4-trees")
 CKPT = os.environ.get("FIG4_CKPT", os.environ.get("CKPT", "/large_storage/hielab/ispecht/fitness-inference") + "/fig4")
 FIGDATA = os.environ.get("FIGDATA", os.path.join(REPO, "antiGen-figures", "data"))
 OUT = os.path.join(FIGDATA, "fig4")
@@ -28,11 +29,17 @@ dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def corpus(tree, split):
-    """Examples for a panel tree; split is train, test (all post-D events) or novel."""
-    p = f"{CORPORA}/examples_{tree}@{D}_{split}.txt"
-    if not os.path.exists(p) or os.path.getsize(p) == 0:
-        return []
-    return load_examples(p, A, None, source=tree)
+    """A multi-tree corpus: the training snapshot (train) or the post-D queries (test)."""
+    ex = load_examples(f"{CORPORA}/examples_{tree}@{D}_{split}.txt", A, None, source=tree,
+                       split_date=D if split == "test" else None)
+    return ex if split == "train" else [e for e in ex if not e.is_training]
+
+
+def endemic_test(build, cut, tree):
+    """The post-cutoff records of an A-F test tree."""
+    ex = load_examples(f"{ENDEMIC_CORPORA}/{build}-test/examples_all_cur.txt", A, None, source=tree,
+                       split_date=cut)
+    return [e for e in ex if not e.is_training]
 
 
 def best_ckpt(run_dir):

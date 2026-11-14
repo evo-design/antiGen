@@ -410,13 +410,30 @@ ExampleStats writeExamples(const Tree& t, const AlleleSets& sets, const std::str
     // it. Nothing becomes unrecoverable -- its sequence is its parent's with the
     // mutation the parent already lists applied. The root goes the same way if it
     // has no children, which only happens on a tree with no mutations at all.
+    std::vector<ResMut> kept;
+    long long           edgeId = 0;
+    auto emit = [&](long long id, long long parentId, const ResMut* fromParent, char fromAa,
+                    const std::vector<ResMut>& toChildren, const std::vector<int>& kids,
+                    double minDate, bool desc, bool isVariantRoot) {
+        if (!opt.byEdge) {
+            writeRecord(id, parentId, fromParent, fromAa, toChildren, minDate, desc, isVariantRoot);
+            return;
+        }
+        const double when = opt.cutoffs[0].when;
+        kept.clear();
+        for (size_t k = 0; k < kids.size(); ++k) {
+            if (dated(rMin[kids[k]]) && rMin[kids[k]] >= when) kept.push_back(toChildren[k]);
+        }
+        if (!kept.empty()) writeRecord(edgeId++, -1, nullptr, 0, kept, when, desc, isVariantRoot);
+    };
+
     const std::vector<ResMut> rootHeads = headsOf(0);
     long long rootId = -1;
     if (rootHeads.empty()) {
         ++st.leafRecords;
     } else {
         rootId = nextId++;
-        writeRecord(rootId, -1, nullptr, 0, rootHeads, rMin[0], rDesc[0], rIsRoot[0]);
+        emit(rootId, -1, nullptr, 0, rootHeads, R.children[0], rMin[0], rDesc[0], rIsRoot[0]);
     }
     wstack.push_back({0, rootId, 0, 0});
 
@@ -454,7 +471,7 @@ ExampleStats writeExamples(const Tree& t, const AlleleSets& sets, const std::str
                 // An inferred ancestor of c on c's own edge: it stands above
                 // everything c stands above, so it carries c's own cutoff flags,
                 // and it is inside the variant only if the edge started inside it.
-                writeRecord(myId, parentId, &ms[i], from, one, rMin[c], rDesc[r], false);
+                emit(myId, parentId, &ms[i], from, one, {c}, rMin[c], rDesc[r], false);
                 parentId = myId;
             } else {
                 const std::vector<ResMut> h = headsOf(c);
@@ -463,8 +480,8 @@ ExampleStats writeExamples(const Tree& t, const AlleleSets& sets, const std::str
                     myId = -1;  // nothing hangs below it, so no record refers to it
                 } else {
                     myId = nextId++;
-                    writeRecord(myId, parentId, &ms[i], from, h, rMin[c], rDesc[c],
-                                rIsRoot[c]);
+                    emit(myId, parentId, &ms[i], from, h, R.children[c], rMin[c], rDesc[c],
+                         rIsRoot[c]);
                 }
             }
         }
