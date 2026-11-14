@@ -218,7 +218,12 @@ $PYTHON -u antiGen/background_contrast.py --background-dir $o --root-counts $(co
     --mutation-list coguk=$COGUK --reference-query \$REF --min-hosts 1 --min-controls 1
 $PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir $o/check_unweighted --weight none --check
 $PYTHON reproduce/tools/background_event_weighted.py --background-dir $o --output-dir ${o}_eventwtd --weight hosts
-cp $o/background_cellsets.csv ${o}_eventwtd/"
+cp $o/background_cellsets.csv ${o}_eventwtd/
+# The 1-nt row of supp_query_adapt: the same maps, hosts restricted to one nucleotide.
+$PYTHON -u antiGen/background_contrast.py --background-dir $o --output-dir ${o}_cd1 --root-counts $(counts $D) \
+    --mutation-list coguk=$COGUK --reference-query \$REF --min-hosts 1 --min-controls 1 --cd1
+$PYTHON reproduce/tools/background_event_weighted.py --background-dir ${o}_cd1 --output-dir ${o}_cd1_eventwtd --weight hosts
+cp ${o}_cd1/background_cellsets.csv ${o}_cd1_eventwtd/"
 }
 
 # antiGen-data seed study (supp_dataseed): antiGen (CV x10) retrained on the 2023-01-01

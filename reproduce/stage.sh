@@ -90,6 +90,8 @@ background() {
         for f in $(ls "${d}_eventwtd"); do cp "${s}_eventwtd/$f" "${d}_eventwtd/"; done
         echo "  ${pair##*:}{,_eventwtd}"
     done
+    have "$OUT/background_2023-01-01_cd1/background_summary.csv" && \
+        $PYTHON $X/stage_bg_cd1.py "$OUT/background_2023-01-01_cd1"
 }
 fixedsplit() {
     for D in $FIXED_SPLITS; do
