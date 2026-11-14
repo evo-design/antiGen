@@ -60,6 +60,26 @@ committed.
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
 | `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
+| `fig4_endemic_and_multitree` A–F | `fig4/fig4_af_panels.csv`, `fig4/fig4_extra_rungs.csv` | figure 4 chain (below) |
+| ″ G (H3N2 case study) | `fig4/h3n2_j2_to_k_ranks.csv`, `cartoons/h3n2_j2_to_k.png` | ″ |
+| ″ H–K (nine-virus multi-tree) | `fig4/{ladder,forest}_fig4_j9.csv`, `fig4/fig4_extra_rungs.csv` | ″ |
+| `supp_fig4_endemic_and_multitree` | `fig4/fig4_1nt_panels.csv`, `fig4/*_1nt.csv` | ″ |
+
+### Figure 4 chain
+
+Figure 4 runs outside `eval.sh`, from its own Slurm recipes. Inputs, set in the environment:
+`FIG4_CORPORA`, the multi-tree corpora `examples_<tree>@2025-01-01_{train,test,novel}.txt`
+(default `$CORPORA/fig4-noattach`); `FIG4_ENDEMIC_TEST`, the A–F test sets
+`examples_<tree>@<D>_{test,novel}.txt` (A–F and G train on `$CORPORA/{denv2,h3n2,rsv-a}-<D>/`);
+`FIG4_CKPT` (default `$CKPT/fig4`); `FIG4_EVE` (default beside `FIG4_CKPT`).
+
+| step | command | output |
+|---|---|---|
+| train | `ARM=<arm> sbatch --array=… reproduce/slurm/train_fig4.sh` (arms and arrays in its header) | `$FIG4_CKPT/<arm>/` |
+| EVE | `sbatch reproduce/slurm/eval_fig4_eve.sh` (MSA from the 2025-01-01 snapshot tips, then pretraining) | `$FIG4_EVE` |
+| H–K | `sbatch reproduce/slurm/eval_fig4_multitree.sh` | `data/fig4/{ladder,forest}_fig4_j9{,_1nt}.csv` |
+| extra rungs | `sbatch reproduce/slurm/eval_fig4_extra.sh` (after EVE) | `data/fig4/fig4_extra_rungs{,_1nt}.csv` |
+| A–F, G | `sbatch reproduce/slurm/eval_fig4_endemic.sh` | `data/fig4/fig4_{af,1nt}_panels.csv`, the panel G ranks and cartoon |
 
 Retired to `figs/old/` (no longer rendered): `supp_cd1`, `supp_cd1_min100`, `supp_cd1_min100_2021`,
 `supp_cd1_series`, `supp_lm_cd1`.
