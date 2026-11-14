@@ -5,9 +5,10 @@
 ## Sourced by fig_sc2_revised2.R and figS_query_adapt.R, so the query-adaptability
 ## supplement draws exactly the roster E-L draw.
 ## ---------------------------------------------------------------------------
+## S×M and S×M-MCM interp. are drawn again (user, after the train-only refit put
+## S×M ahead of S×S on the de novo panels).
 DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (bars only)
                "MSA_Transformer_BA2", "MSA_Transformer_XFG",
-               "where_times_which", "wxw_dirichlet",      # S×M, S×M-MCM interp.
                "mcm",
                "BA2_escape_LYCoV1404",
                "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), untrained
