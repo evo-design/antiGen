@@ -16,12 +16,7 @@ RSCRIPT=${RSCRIPT:-Rscript}
 declare -A CMD=(
   [sc2_results_revised2]="figures/fig_sc2_revised2.R"
   [sc2_results_revised2_supp]="REVISED2_VARIANT=supp figures/fig_sc2_revised2.R"
-  [supp_cd1]="figures/figS_cd1.R"
-  [supp_cd1_min100]="FIG_ARM=2023 figures/figS_cd1_min100.R"
-  [supp_cd1_min100_2021]="FIG_ARM=2021 figures/figS_cd1_min100.R"
   [supp_min100_2021]="FIG_ARM=2021full figures/figS_cd1_min100.R"
-  [supp_cd1_series]="figures/figS_cd1_series.R"
-  [supp_lm_cd1]="figures/figS_lm_cd1.R"
   [supp_fullspike]="figures/figS_fullspike.R"
   [supp_query_adapt]="figures/figS_query_adapt.R"
   [supp_dms_revised2]="figures/figS_dms_revised2.R"
@@ -29,10 +24,8 @@ declare -A CMD=(
   [supp_usher_benchmark]="figures/figS_usher_benchmark.R"
   [supp_dataseed]="figures/figS_dataseed.R"
 )
-ORDER=(sc2_results_revised2 sc2_results_revised2_supp supp_cd1 supp_cd1_min100
-       supp_cd1_min100_2021 supp_min100_2021 supp_cd1_series supp_lm_cd1 supp_fullspike
-       supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark
-       supp_dataseed)
+ORDER=(sc2_results_revised2 sc2_results_revised2_supp supp_min100_2021 supp_fullspike
+       supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark supp_dataseed)
 [ $# -gt 0 ] && ORDER=("$@")
 
 for fig in "${ORDER[@]}"; do

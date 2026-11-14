@@ -53,17 +53,16 @@ committed.
 | ″ model-type key | `evals_sc2_lists_macro_aa20/` | `list2021` |
 | `sc2_results_revised2` Q (fixed splits) | `evals_fixedsplit_{2022-01-01,2023-10-01,2024-10-01}/` | `fixedsplit` (+ CoVFit per query, §4) |
 | `sc2_results_revised2_supp` | as C–J and O/P | as above |
-| `supp_cd1` | `evals_sc2_lists_macro_aa20_cd1/`, `…_2023-01-01_cd1/` | `cd1_2021`, `rbd_2023` |
-| `supp_cd1_min100` (2023) | `evals_sc2_lists_macro_aa20_2023-01-01_cd1_min100/` | `rbd_2023` |
-| `supp_cd1_min100_2021`, `supp_min100_2021` | `…_2021_allcells_cd1_min100/`, `…_2021_allcells_min100/` | `cd1_2021_allcells`, `postcutoff_counts` |
-| `supp_cd1_series` | `gating_cd1_dn_min100/<D>/`, `gating_cd1_rare100_min100/<D>/` | `cd1_series_denovo`, `cd1_series_rare100`, `postcutoff_counts` |
-| `supp_lm_cd1` | `gating_macro_aa20_cd1/<D>/` (+ `gating_macro_aa20/`) | `cd1_series_rare100` |
+| `supp_min100_2021` | `…_2021_allcells_min100/` | `cd1_2021_allcells`, `postcutoff_counts` |
 | `supp_fullspike` | `gating_macro_aa20_fullspike/<D>/`, `…_2023-01-01_fullspike/`, `…_2023-01-01_fullspike_cd1/` | `cutoff_spike`, `fullspike_2023` |
 | `supp_query_adapt` | `evals_sc2_background_aa20{,_eventwtd}/`, `…_2023-01-01{,_eventwtd}/` | `background_2021`, `background_2023` |
 | `supp_dms_revised2` | `sc2_aa20/`, `sc2_aa20_extra/` (+ `baselines/`, `dms/`) | `list2021`, `dms_dumps` |
 | `supp_gate_units` | `gate_units_aa20/`, `gating_aa20/`, `gating_macro_aa20/` | `gate_units`, `cutoff_eval`, `cutoff_rbd` |
 | `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
+
+Retired to `figs/old/` (no longer rendered): `supp_cd1`, `supp_cd1_min100`, `supp_cd1_min100_2021`,
+`supp_cd1_series`, `supp_lm_cd1`.
 
 `<D>` runs over the sixteen quarterly cutoffs 2020-04-01 … 2024-01-01; the de novo 1-nt
 arm uses 2020-04-01 … 2021-10-01, and its stopping rule draws the first six.
