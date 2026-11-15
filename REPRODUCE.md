@@ -180,13 +180,15 @@ targets before linking.
 | `data/baselines/MSA_Transformer{,_BA2,_XFG}.csv` | `reproduce/slurm/msa_transformer_spike{,_ba2,_xfg}.sh` |
 | `data/baselines/BloomNeher_2023-10-01.csv` | `reproduce/tools/bloom_neher_to_baseline.py` |
 | `data/baselines/BA2_escape_LYCoV1404.csv` | `reproduce/tools/make_escape_baseline.py` |
+| `data/baselines/pyr0.csv` | `reproduce/tools/pyr0_to_baseline.py` (pyro-cov `paper/mutations.tsv`, commit f11fc53641, 2022-02-02; byte-identical) |
+| `data/baselines/EVEscape.csv` | `reproduce/tools/evescape_to_baseline.py` (EVEscape `spike_rbd_evescape.csv`; equal to 1e-15) |
 | CoVFit per-query maps (fixed split 2024-10-01) | `reproduce/slurm/submit_covfit_perquery.sh` with `STAGE=gate`, `score`, `eval` |
 | `reproduce/rules/rules_drawn5.json`, `rules_mean3_8.json` | the ensemble rule definitions (the members and how they combine); `rules_vs10_2021.json` is the CV ×10 rule alone, for `dms_dumps` |
 | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (`run_n.sbatch` per size, then `bench/plot.py`) |
 | `ref/all_{rbd,spike}_cells_aa20_incl_ref.csv` | every (site, residue) cell, reference allele included |
 
-Fixed inputs with no producer in the repository: EVEscape, the Omicron DMS maps and pyr0
-in `data/baselines/`; `data/ba286_to_kp3_path.csv` (the case-study path);
+Fixed inputs with no producer in the repository: the Omicron DMS maps in
+`data/baselines/`; `data/ba286_to_kp3_path.csv` (the case-study path);
 `ref/6M0J.pdb`; the pseudovirus assay tables under `antiGen-figures/experiments/`.
 
 ## 5. What has been checked, and what is known to differ

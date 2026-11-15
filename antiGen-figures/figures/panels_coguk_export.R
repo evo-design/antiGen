@@ -123,7 +123,7 @@ if (nzchar(BG_DIR_ENV)) {
 }
 
 ## THE FULL ROSTER (NOTES s141): REVISED2_FULL=1, set by sc2_results_revised2's supp
-## variant, keeps the antiGen Finetunes (brown) and adds the three static mean rules
+## variant, keeps the base antiGen rung (the Finetunes are dropped everywhere) and the mean rules
 ## over the nine-member family (orange) beside the CV bar. The rule ids hash the rule
 ## and its member NAMES, so the 2021 and 2023 rules share them.
 FULL <- nzchar(Sys.getenv("REVISED2_FULL"))
@@ -175,7 +175,9 @@ options(coguk.fig_main = "scratch_revised_coguk",
           "CoVFit", "pyr0",                       # the published defaults
           ## Base antiGen: kept only on panel H, except in the full roster (user, s143).
           if (!FULL) "simple_d128_n2_lr0.0001",
-          if (!FULL) FT_KEYS,
+          ## The fine-tunes are dropped from every roster, the supplement's too (PI,
+          ## 2026-11-14: "we can drop them entirely").
+          FT_KEYS,
           ## The MAIN sc2_results_revised2 prunes further (NOTES s128); its supplement
           ## copy passes nothing here and keeps the full roster.
           strsplit(Sys.getenv("REVISED2_DROP"), ",", fixed = TRUE)[[1]]))

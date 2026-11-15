@@ -240,15 +240,16 @@ dataseed() {
     done
 }
 
-# Fixed train/test splits (supp_fixed_split_revised2): the base antiGen of cutoff D
-# against the fixed external maps, COG-UK list. At 2024-10-01 the per-query CoVFit maps
-# join if built (reproduce/slurm/submit_covfit_perquery.sh STAGE=gate|score|eval).
+# Fixed train/test splits (sc2_results_revised2 Q): the base antiGen of cutoff D
+# against the fixed external maps, every RBD cell (the COG-UK list rows are kept too). At 2024-10-01 the per-query CoVFit maps
+# join if built at $OUT/covfit_perquery_<D>/covfit_query.npz (covfit_perquery.py
+# select | fasta | build; select with the all-RBD list, as Q uses).
 fixedsplit() {
     for D in "$@"; do
         local q=""; [ -f "$OUT/covfit_perquery_$D/covfit_query.npz" ] && q="--query-maps CoVFit_query=$OUT/covfit_perquery_$D/covfit_query.npz"
         submit fixedsplit_$D 06:00:00 gpu 1 "$PYTHON -u antiGen/list_macro.py --dataset sc2 --alphabet $ALPHABET \
             $(split_args "$D") --checkpoint-dir $CKPT/cutoff_series/$D/base --output-dir $OUT/fixedsplit/$D \
-            --mutation-list coguk=$COGUK $q"
+            --mutation-list coguk=$COGUK --mutation-list allcells=$RBD_CELLS $q"
     done
 }
 

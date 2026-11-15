@@ -52,10 +52,9 @@ stopifnot(VARIANT %in% c("main", "supp"))
 source("figures/revised2_roster.R")
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
-} else c("REVISED2_FULL=1",   # finetunes + the three mean rules (NOTES s141)
-         ## FOR NOW (user, s173): the ESM-2 650M full FT is still training at 2023, so
-         ## it is hidden at both cutoffs.
-         "REVISED2_DROP=esm2_esm2_t33_650M_UR50D_lr1e-05_full",
+} else c("REVISED2_FULL=1",   # the full roster less the fine-tunes (NOTES s141, s194)
+         ## The MSA Transformer scored on BA.2 / XFG queries is not drawn (user).
+         "REVISED2_DROP=MSA_Transformer_BA2,MSA_Transformer_XFG",
          ## No mean-rule ensembles (user, s177): their margin is too small to matter.
          "REVISED2_NO_MEAN_RULES=1")
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
@@ -73,8 +72,8 @@ run_export <- function(script, rds, extra_env = character(0)) {
   readRDS(rds)
 }
 
-message("  [1/4] exporting coguk_list_aa20 panels ...")
-cg <- run_export("figures/panels_coguk_export.R", RS("coguk"), BAR_ENV)
+## No COG-UK export any more (user: the list is deprecated). The model-type key, its
+## only remaining use, comes from the 2023 all-RBD export `ca` below.
 message("  [2/4] exporting sc2_results_aa20 panels ...")
 sc <- run_export("figures/panels_sc2_export.R", RS("sc2"))
 message("  [3/4] exporting the per-cell cutoff panel ...")
@@ -125,8 +124,6 @@ if (VARIANT == "main") {
 ## The check after the walk covers every panel, whichever mechanism renamed it.
 source("figures/revised2_labels.R")
 for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt", "legend"))
-  cg[[k]] <- relabel_grob(cg[[k]])
-for (k in c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt"))
   ca[[k]] <- relabel_grob(ca[[k]])
 NEW_KEYS <- c("decile_all_pc", "decile_all_evt", "decile_dn_pc", "decile_dn_evt",
               "decile_dn_pc_named")
@@ -139,10 +136,8 @@ if (VARIANT == "main") for (k in NEW_KEYS) {
 ## show an old name, and that is an error.
 left <- grep(REVISED2_STALE,
              unlist(lapply(c(gm[c("gate_macro", "gate_legend")], sc["gate_pm"],
-                             cg[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
-                                  "decile_dn_evt", "legend")],
                              ca[c("decile_all_pc", "decile_all_evt", "decile_dn_pc",
-                                  "decile_dn_evt")],
+                                  "decile_dn_evt", "legend")],
                              c1[NEW_KEYS], if (VARIANT == "main") c(m21[NEW_KEYS], f21[NEW_KEYS])), grob_text)),
              value = TRUE, perl = TRUE)
 if (length(left)) stop("old names survived the relabel: ",
@@ -249,9 +244,9 @@ GAP_IN <- 0.25
 ## The gap above Q is smaller: the O/P block already ends in padding under its key, so
 ## 0.10 leaves the same white space (0.32 in, measured) as above O/P.
 FS_GAP_IN <- 0.10
-key_row <- plot_grid(NULL, cg$legend, nrow = 1, rel_widths = c(HDR_W, 1))
+key_row <- plot_grid(NULL, ca$legend, nrow = 1, rel_widths = c(HDR_W, 1))
 row4 <- if (VARIANT == "main") {
-  with_header("Escape, 2021 cutoff", bar_block(cg, BAR_LETTERS[5:8]))
+  NULL   # the main figure's 2021 row is built from f21 / m21 in its layout block below
 } else {
   ## THE SUPP MIRRORS MAIN C-J (user, s178): its second row is the 2023 all-RBD bars at
   ## codon distance 1 on the full roster, replacing the 2021 escape row.
@@ -261,7 +256,7 @@ row4 <- if (VARIANT == "main") {
 
 ## PANEL K (main only, NOTES s130; M before s150): supp_fixed_split brought in. The three baselines that
 ## were fit ONCE, at a fixed date, each scored against antiGen at its own cutoff on the
-## CoG-UK list, both poolings. Six small sub-plots under one letter; each names its
+## every RBD cell, both poolings. Six small sub-plots under one letter; each names its
 ## baseline, cutoff and pooling. Drawn here rather than exported because the data are two
 ## rows per sub-plot, and in E-L's style: horizontal bars, the same type colours, the
 ## external baseline hatched. The antiGen bar is the BASE model -- the only antiGen
@@ -275,7 +270,8 @@ FS_ARMS <- list(
 fs_panel <- function(arm, col, pool_name, first) {
   f <- file.path("data", paste0("evals_fixedsplit_", arm$date), "list_macro_summary.csv")
   d <- read.csv(f)
-  d <- d[d$variant == "list_coguk_fullpool" & abs(d$qtile - 0.1) < 1e-9, ]
+  ## Every RBD cell (user): the COG-UK list is no longer the object of any panel.
+  d <- d[d$variant == "list_allcells_fullpool" & abs(d$qtile - 0.1) < 1e-9, ]
   want <- c("simple_d128_n2_lr0.0001", arm$raw)
   stopifnot(all(want %in% d$model))
   d <- d[match(want, d$model), ]
@@ -321,9 +317,6 @@ fs_pair <- function(arm) {
     ncol = 1, rel_heights = c(0.16, 1))
 }
 ## No row header for K (user, s131), but the same left gutter, so K lines up with C-J.
-row5 <- plot_grid(NULL, NULL,
-                  plot_grid(plotlist = lapply(FS_ARMS, fs_pair), nrow = 1),
-                  nrow = 1, rel_widths = c(HDR_W, 0.035, 1), labels = c("", "", ""))   # K, then O; own figure since s169
 ## Panel K's row, sized so its bars come out the same height as C-J's.
 ## Measured on the render: 0.71 gives Q the same bar height and pitch as C-N (32 px bars
 ## on a 35.6 px pitch at 300 dpi); 1.05 drew them twice as tall.
@@ -385,7 +378,7 @@ if (VARIANT == "main") {
   blk_2023 <- hdr_block("RBD mutations, 2023 cutoff",
                         plot_grid(row3, row3b, ncol = 1, rel_heights = c(ROW_IN[3], ROW3B_IN)))
   blk_2021 <- hdr_block("Novel & prevalent RBD mutations, 2021 cutoff",
-                        plot_grid(row4, cg$legend, ncol = 1, rel_heights = c(ROW_IN[4], LEG_IN)))
+                        plot_grid(row4, ca$legend, ncol = 1, rel_heights = c(ROW_IN[4], LEG_IN)))
   ## The line key stays under O/P, outside the header's span.
   blk_var <- plot_grid(
     hdr_block("RBD mutations, variable cutoffs",
