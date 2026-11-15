@@ -5,12 +5,19 @@
 #SBATCH --gpus=1
 #SBATCH --mem=96G
 
-# Figure 4 A-F (full + single-nt pools) and panel G (H3N2 J.2 -> K). STEPS picks a subset.
+# Figure 4 A-F (full + single-nt pools) and panel G (H3N2 J.2 -> K). STEPS picks a subset;
+# STEPS=eve EVE_TREES=<tree> fits one virus's EVE (run before af).
 set -euo pipefail
 source "${REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}/reproduce/config.sh"
 export PYTHONPATH="$REPO:$REPO/reproduce/tools${PYTHONPATH:+:$PYTHONPATH}"
 export FIG4_CKPT=${FIG4_CKPT:-$CKPT/fig4} FIGDATA CORPORA
 cd "$REPO"
+
+eve() {
+    for t in ${EVE_TREES:-denv2 rsv_a h3n2}; do
+        "$PYTHON" reproduce/tools/fig4_endemic.py eve "$t"
+    done
+}
 
 af() {
     "$PYTHON" reproduce/tools/fig4_endemic.py

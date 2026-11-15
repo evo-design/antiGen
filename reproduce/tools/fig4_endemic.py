@@ -1,6 +1,7 @@
 """Figure 4 A-F: per-virus recall@10% (all + de novo) on the full and the single-nucleotide pool."""
 import csv
 import os
+import sys
 
 import numpy as np
 import torch
@@ -12,13 +13,13 @@ from antiGen.eval_utils import (fit_substitution_baseline, frequency_baseline_sc
                                 positional_marginal_counts)
 from antiGen.load import load_examples
 from antiGen.models.factory import create_model
-from fig4_common import (CKPT, ENDEMIC_CORPORA, OUT, REPO, SEEDS, A, E, best_ckpt, dev, endemic_test,
+from fig4_common import (CKPT, ENDEMIC_CORPORA, OUT, SEEDS, A, E, best_ckpt, dev, endemic_test,
                          events_of, load_model, per_event_weights, pool_1nt, seen_mask)
 
 TREES = {"denv2": ("denv2", "2019-10-01", "dengue"),
          "rsv_a": ("rsv-a", "2023-10-01", "rsv_a"),
          "h3n2": ("h3n2", "2022-10-01", "flu")}
-EVE = os.path.join(REPO, "antiGen-figures", "data", "fig4", "eve")
+EVE_DIR = os.environ.get("FIG4_EVE", os.path.join(os.path.dirname(CKPT), "eve"))
 ARMS = [("antiGen", "ensemble"), ("S×S–MCM Interp.", "cpssm_dir"), ("MCM", "frequency"),
         ("S×S", "site_prop"), ("S×M", "where_times_which"), ("PFM", "pssm"),
         ("Codon-aware B62", "codon_blosum"), ("ESM-2 zero-shot", "zeroshot"), ("EVE", "eve"),
@@ -84,11 +85,33 @@ def map_fn(kind, train, L, tree):
         freq = torch.log(frequency_baseline_scores(train, L, E))
         return lambda aa: freq
     if kind == "eve":
-        eve = torch.tensor(np.genfromtxt(f"{EVE}/{tree}.csv", delimiter=",", skip_header=1),
-                           dtype=torch.float32)
-        assert eve.shape == (L, E)
-        return lambda aa: eve
+        p = f"{EVE_DIR}/af_{tree}.pt"
+        if not os.path.exists(p):
+            return None
+        eve = torch.load(p)
+        return lambda aa: eve[aa.numpy().tobytes()]
     return lambda aa: sb.score_map(kind, st, aa.unsqueeze(0)).squeeze(0)
+
+
+def eve_scores(tree):
+    """Pretrain frozen EVE on the training tree's MSA and save its score matrix for each test query."""
+    from antiGen.config import EVEConfig
+    build, cut, _ = TREES[tree]
+    L = len(endemic_test(build, cut, tree)[0].aa_idx)
+    cfg = ModelConfig(model_type=ModelType.EVE, seq_len=L, alphabet=AlphabetConfig(amino_acids=A),
+                      eve=EVEConfig(msa_path=f"{ENDEMIC_CORPORA}/{build}-{cut}/train/msa_{cut}_cur.fasta",
+                                    freeze_backbone=True))
+    model = create_model(cfg, dev).eval()
+    out = {}
+    for ex in endemic_test(build, cut, tree):
+        k = ex.aa_idx.numpy().tobytes()
+        if k not in out:
+            with torch.no_grad():
+                m = model(ex.aa_idx.unsqueeze(0).to(dev)).float().squeeze(0).cpu()
+            m[torch.isinf(m)] = float("nan")
+            out[k] = m
+    os.makedirs(EVE_DIR, exist_ok=True)
+    torch.save(out, f"{EVE_DIR}/af_{tree}.pt")
 
 
 def main():
@@ -145,4 +168,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    eve_scores(sys.argv[2]) if sys.argv[1:2] == ["eve"] else main()

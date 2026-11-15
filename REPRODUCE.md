@@ -88,6 +88,7 @@ the test events at cells never seen in training.
 | EVE | `sbatch reproduce/slurm/eval_fig4_eve.sh` (MSA from the 2025-01-01 snapshot tips, then pretraining) | `$FIG4_EVE` |
 | H–K | `sbatch reproduce/slurm/eval_fig4_multitree.sh` | `data/fig4/{ladder,forest}_fig4_j9{,_1nt}.csv` |
 | extra rungs | `sbatch reproduce/slurm/eval_fig4_extra.sh` (after EVE) | `data/fig4/fig4_extra_rungs{,_1nt}.csv` |
+| A–F EVE | `STEPS=eve EVE_TREES=<tree> sbatch reproduce/slurm/eval_fig4_endemic.sh` per tree (pretrained on the training tree's `msa_<cut>_cur.fasta`, as for SARS-CoV-2) | `$FIG4_EVE/af_<tree>.pt` |
 | A–F, G | `sbatch reproduce/slurm/eval_fig4_endemic.sh` | `data/fig4/fig4_{af,1nt}_panels.csv`, the panel G ranks and cartoon |
 
 Retired to `figs/old/` (no longer rendered): `supp_cd1`, `supp_cd1_min100`, `supp_cd1_min100_2021`,
