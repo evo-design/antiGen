@@ -61,6 +61,35 @@ committed.
 | `supp_dataseed` | `dataseed_2023-01-01/seed_summary.csv` | `dataseed` |
 | `supp_cv10_loss` | `cv10_loss_2023-01-01/loss_by_epoch.csv` | none: read from the training logs by `reproduce/stage/stage_cv10_loss.py` |
 | `supp_usher_benchmark` | `runtime/usher_benchmark_results.csv` | antiGen-data `bench/` (§4) |
+| `fig4_endemic_and_multitree` A–F | `fig4/fig4_af_panels.csv`, `fig4/fig4_extra_rungs.csv` | figure 4 chain (below) |
+| ″ G (H3N2 case study) | `fig4/h3n2_j2_to_k_ranks.csv`, `cartoons/h3n2_j2_to_k.png` | ″ |
+| ″ H–K (nine-virus multi-tree) | `fig4/{ladder,forest}_fig4_j9.csv`, `fig4/fig4_extra_rungs.csv` | ″ |
+| `supp_fig4_endemic_and_multitree` | `fig4/fig4_1nt_panels.csv`, `fig4/*_1nt.csv` | ″ |
+
+### Figure 4 chain
+
+Figure 4 runs outside `eval.sh`, from its own Slurm recipes. `FIG4_TREES` holds the Nextstrain
+trees of [`reproduce/fig4_trees.tsv`](reproduce/fig4_trees.tsv): `<tree>@2025-01-01.json` for every
+tree, and `<tree>@current.json` (fetched 2026-10-13 to 10-17) for the nine evaluated ones, each with
+a `_root-sequence.json` sidecar where the tree does not embed one. `FIG4_CORPORA` (default
+`$CORPORA/fig4-noattach`), `FIG4_CKPT` (default `$CKPT/fig4`) and `FIG4_EVE` (default beside
+`FIG4_CKPT`) are where the steps write. A–F and G train on `$CORPORA/{denv2,h3n2,rsv-a}-<D>/` and
+test on `$CORPORA/{denv2,h3n2,rsv-a}-test/`.
+
+The multi-tree training corpus is each tree's 2025-01-01 snapshot (`antigen sets`); its test set is
+every edge of the current tree whose sequences below are all dated on or after 2025-01-01, queried
+from its parent (`antigen sets --post-cutoff 2025-01-01 --post-cutoff-edges`). De novo events are
+the test events at cells never seen in training.
+
+| step | command | output |
+|---|---|---|
+| corpora | `python reproduce/tools/fig4_corpora.py` (CPU, seconds) | `$FIG4_CORPORA/examples_<tree>@2025-01-01_{train,test}.txt` |
+| train | `ARM=<arm> sbatch --array=… reproduce/slurm/train_fig4.sh` (arms and arrays in its header) | `$FIG4_CKPT/<arm>/` |
+| EVE | `sbatch reproduce/slurm/eval_fig4_eve.sh` (MSA from the 2025-01-01 snapshot tips, then pretraining) | `$FIG4_EVE` |
+| H–K | `sbatch reproduce/slurm/eval_fig4_multitree.sh` | `data/fig4/{ladder,forest}_fig4_j9{,_1nt}.csv` |
+| extra rungs | `sbatch reproduce/slurm/eval_fig4_extra.sh` (after EVE) | `data/fig4/fig4_extra_rungs{,_1nt}.csv` |
+| A–F EVE | `STEPS=eve EVE_TREES=<tree> sbatch reproduce/slurm/eval_fig4_endemic.sh` per tree (pretrained on the training tree's `msa_<cut>_cur.fasta`, as for SARS-CoV-2) | `$FIG4_EVE/af_<tree>.pt` |
+| A–F, G | `sbatch reproduce/slurm/eval_fig4_endemic.sh` | `data/fig4/fig4_{af,1nt}_panels.csv`, the panel G ranks and cartoon |
 
 Retired to `figs/old/` (no longer rendered): `supp_cd1`, `supp_cd1_min100`, `supp_cd1_min100_2021`,
 `supp_cd1_series`, `supp_lm_cd1`.

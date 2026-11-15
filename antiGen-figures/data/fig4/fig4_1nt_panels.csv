@@ -1,0 +1,67 @@
+virus,tree,subset,convention,method,n_events,recall,ci_lo,ci_hi
+dengue,denv2,all,onent,antiGen,755,0.6517,0.6185,0.6861
+dengue,denv2,denovo,onent,antiGen,207,0.3575,0.2947,0.4251
+dengue,denv2,all,onent,S×S–MCM Interp.,755,0.6609,0.6278,0.6940
+dengue,denv2,denovo,onent,S×S–MCM Interp.,207,0.2995,0.2367,0.3623
+dengue,denv2,all,onent,MCM,755,0.6122,0.5782,0.6446
+dengue,denv2,denovo,onent,MCM,207,0.1000,0.1000,0.1000
+dengue,denv2,all,onent,S×S,755,0.5748,0.5391,0.6093
+dengue,denv2,denovo,onent,S×S,207,0.2995,0.2415,0.3623
+dengue,denv2,all,onent,S×M,755,0.5166,0.4795,0.5510
+dengue,denv2,denovo,onent,S×M,207,0.3140,0.2512,0.3768
+dengue,denv2,all,onent,PFM,755,0.4903,0.4566,0.5237
+dengue,denv2,denovo,onent,PFM,207,0.1731,0.1426,0.2080
+dengue,denv2,all,onent,Codon-aware B62,755,0.3884,0.3539,0.4214
+dengue,denv2,denovo,onent,Codon-aware B62,207,0.2582,0.2029,0.3188
+dengue,denv2,all,onent,ESM-2 zero-shot,755,0.2053,0.1762,0.2358
+dengue,denv2,denovo,onent,ESM-2 zero-shot,207,0.1256,0.0821,0.1739
+dengue,denv2,all,onent,EVE,755,0.5007,0.4636,0.5364
+dengue,denv2,denovo,onent,EVE,207,0.2657,0.2077,0.3238
+dengue,denv2,all,onent,Codon-B62 Mixture,755,0.4152,0.3797,0.4488
+dengue,denv2,denovo,onent,Codon-B62 Mixture,207,0.3000,0.2372,0.3623
+dengue,denv2,all,onent,Uniform,0,0.1000,0.1000,0.1000
+dengue,denv2,denovo,onent,Uniform,0,0.1000,0.1000,0.1000
+rsv_a,rsv_a,all,onent,antiGen,431,0.6636,0.6195,0.7077
+rsv_a,rsv_a,denovo,onent,antiGen,121,0.3554,0.2727,0.4463
+rsv_a,rsv_a,all,onent,S×S–MCM Interp.,431,0.6821,0.6357,0.7262
+rsv_a,rsv_a,denovo,onent,S×S–MCM Interp.,121,0.3140,0.2314,0.3967
+rsv_a,rsv_a,all,onent,MCM,431,0.6488,0.6103,0.6900
+rsv_a,rsv_a,denovo,onent,MCM,121,0.1000,0.1000,0.1000
+rsv_a,rsv_a,all,onent,S×S,431,0.6265,0.5824,0.6683
+rsv_a,rsv_a,denovo,onent,S×S,121,0.3140,0.2314,0.3967
+rsv_a,rsv_a,all,onent,S×M,431,0.5151,0.4664,0.5615
+rsv_a,rsv_a,denovo,onent,S×M,121,0.2479,0.1736,0.3306
+rsv_a,rsv_a,all,onent,PFM,431,0.4989,0.4545,0.5433
+rsv_a,rsv_a,denovo,onent,PFM,121,0.1432,0.1129,0.1806
+rsv_a,rsv_a,all,onent,Codon-aware B62,431,0.3389,0.2950,0.3817
+rsv_a,rsv_a,denovo,onent,Codon-aware B62,121,0.2066,0.1322,0.2810
+rsv_a,rsv_a,all,onent,ESM-2 zero-shot,431,0.1717,0.1369,0.2088
+rsv_a,rsv_a,denovo,onent,ESM-2 zero-shot,121,0.1488,0.0909,0.2149
+rsv_a,rsv_a,all,onent,EVE,431,0.4339,0.3875,0.4826
+rsv_a,rsv_a,denovo,onent,EVE,121,0.2397,0.1570,0.3223
+rsv_a,rsv_a,all,onent,Codon-B62 Mixture,431,0.3995,0.3529,0.4447
+rsv_a,rsv_a,denovo,onent,Codon-B62 Mixture,121,0.2036,0.1375,0.2772
+rsv_a,rsv_a,all,onent,Uniform,0,0.1000,0.1000,0.1000
+rsv_a,rsv_a,denovo,onent,Uniform,0,0.1000,0.1000,0.1000
+flu,h3n2,all,onent,antiGen,19257,0.7058,0.6994,0.7122
+flu,h3n2,denovo,onent,antiGen,616,0.4756,0.4351,0.5146
+flu,h3n2,all,onent,S×S–MCM Interp.,19257,0.6601,0.6535,0.6666
+flu,h3n2,denovo,onent,S×S–MCM Interp.,616,0.2987,0.2646,0.3377
+flu,h3n2,all,onent,MCM,19257,0.6598,0.6534,0.6662
+flu,h3n2,denovo,onent,MCM,616,0.1000,0.1000,0.1000
+flu,h3n2,all,onent,S×S,19257,0.5848,0.5776,0.5916
+flu,h3n2,denovo,onent,S×S,616,0.2987,0.2614,0.3344
+flu,h3n2,all,onent,S×M,19257,0.5349,0.5277,0.5414
+flu,h3n2,denovo,onent,S×M,616,0.2727,0.2386,0.3068
+flu,h3n2,all,onent,PFM,19257,0.5731,0.5659,0.5803
+flu,h3n2,denovo,onent,PFM,616,0.1840,0.1636,0.2060
+flu,h3n2,all,onent,Codon-aware B62,19257,0.3540,0.3472,0.3606
+flu,h3n2,denovo,onent,Codon-aware B62,616,0.2592,0.2249,0.2935
+flu,h3n2,all,onent,ESM-2 zero-shot,19257,0.2642,0.2580,0.2701
+flu,h3n2,denovo,onent,ESM-2 zero-shot,616,0.2192,0.1851,0.2533
+flu,h3n2,all,onent,EVE,19257,0.5610,0.5538,0.5683
+flu,h3n2,denovo,onent,EVE,616,0.2484,0.2143,0.2841
+flu,h3n2,all,onent,Codon-B62 Mixture,19257,0.3791,0.3725,0.3861
+flu,h3n2,denovo,onent,Codon-B62 Mixture,616,0.2108,0.1799,0.2446
+flu,h3n2,all,onent,Uniform,0,0.1000,0.1000,0.1000
+flu,h3n2,denovo,onent,Uniform,0,0.1000,0.1000,0.1000

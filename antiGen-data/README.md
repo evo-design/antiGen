@@ -37,7 +37,9 @@ The options that matter most:
   `--min-covered` relax the filters.
 * `place --prepared <prepare's output> --out-examples <file>`;
   `--post-cutoff d1,d2,…` labels each record with the cutoffs every sequence below it is
-  at or after (the test tree); `--variant BA.2` flags a clade root; `--out-counts` and
+  at or after (the test tree); with one cutoff, `--post-cutoff-edges` writes the test set by
+  edge instead, each record listing only its child edges whose sequences below all date after
+  it; `--variant BA.2` flags a clade root; `--out-counts` and
   `--out-variant-counts` write (site × 20) residue count matrices.
 * `--alphabet 20|22|nuc`, `--threads`, `--seed`.
 

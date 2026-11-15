@@ -1,0 +1,67 @@
+virus,tree,subset,convention,method,n_events,recall,ci_lo,ci_hi
+dengue,denv2,all,baseline,antiGen,784,0.7487,0.7181,0.7793
+dengue,denv2,denovo,baseline,antiGen,231,0.5238,0.4589,0.5887
+dengue,denv2,all,baseline,S×S–MCM Interp.,784,0.7449,0.7156,0.7755
+dengue,denv2,denovo,baseline,S×S–MCM Interp.,231,0.4694,0.4069,0.5353
+dengue,denv2,all,baseline,MCM,784,0.7083,0.6767,0.7411
+dengue,denv2,denovo,baseline,MCM,231,0.1000,0.1000,0.1000
+dengue,denv2,all,baseline,S×S,784,0.7130,0.6824,0.7449
+dengue,denv2,denovo,baseline,S×S,231,0.4688,0.4065,0.5325
+dengue,denv2,all,baseline,S×M,784,0.6719,0.6388,0.7046
+dengue,denv2,denovo,baseline,S×M,231,0.4918,0.4286,0.5576
+dengue,denv2,all,baseline,PFM,784,0.5720,0.5404,0.6073
+dengue,denv2,denovo,baseline,PFM,231,0.1659,0.1386,0.1971
+dengue,denv2,all,baseline,Codon-aware B62,784,0.5797,0.5449,0.6153
+dengue,denv2,denovo,baseline,Codon-aware B62,231,0.4632,0.4026,0.5238
+dengue,denv2,all,baseline,ESM-2 zero-shot,784,0.2730,0.2423,0.3036
+dengue,denv2,denovo,baseline,ESM-2 zero-shot,231,0.1732,0.1254,0.2251
+dengue,denv2,all,baseline,EVE,784,0.6505,0.6173,0.6837
+dengue,denv2,denovo,baseline,EVE,231,0.4329,0.3680,0.4935
+dengue,denv2,all,baseline,Codon-B62 Mixture,784,0.6097,0.5765,0.6441
+dengue,denv2,denovo,baseline,Codon-B62 Mixture,231,0.4472,0.3823,0.5108
+dengue,denv2,all,baseline,Uniform,0,0.1000,0.1000,0.1000
+dengue,denv2,denovo,baseline,Uniform,0,0.1000,0.1000,0.1000
+rsv_a,rsv_a,all,baseline,antiGen,444,0.8063,0.7703,0.8423
+rsv_a,rsv_a,denovo,baseline,antiGen,132,0.5227,0.4394,0.6061
+rsv_a,rsv_a,all,baseline,S×S–MCM Interp.,444,0.7928,0.7545,0.8289
+rsv_a,rsv_a,denovo,baseline,S×S–MCM Interp.,132,0.4924,0.4015,0.5758
+rsv_a,rsv_a,all,baseline,MCM,444,0.7162,0.6733,0.7571
+rsv_a,rsv_a,denovo,baseline,MCM,132,0.1000,0.1000,0.1000
+rsv_a,rsv_a,all,baseline,S×S,444,0.7635,0.7230,0.8018
+rsv_a,rsv_a,denovo,baseline,S×S,132,0.4924,0.4091,0.5758
+rsv_a,rsv_a,all,baseline,S×M,444,0.6825,0.6398,0.7252
+rsv_a,rsv_a,denovo,baseline,S×M,132,0.4697,0.3864,0.5530
+rsv_a,rsv_a,all,baseline,PFM,444,0.5045,0.4628,0.5461
+rsv_a,rsv_a,denovo,baseline,PFM,132,0.1402,0.1128,0.1744
+rsv_a,rsv_a,all,baseline,Codon-aware B62,444,0.5542,0.5098,0.6002
+rsv_a,rsv_a,denovo,baseline,Codon-aware B62,132,0.4056,0.3219,0.4870
+rsv_a,rsv_a,all,baseline,ESM-2 zero-shot,444,0.2545,0.2140,0.2928
+rsv_a,rsv_a,denovo,baseline,ESM-2 zero-shot,132,0.1970,0.1288,0.2652
+rsv_a,rsv_a,all,baseline,EVE,444,0.5856,0.5405,0.6306
+rsv_a,rsv_a,denovo,baseline,EVE,132,0.3106,0.2348,0.3939
+rsv_a,rsv_a,all,baseline,Codon-B62 Mixture,444,0.6110,0.5653,0.6530
+rsv_a,rsv_a,denovo,baseline,Codon-B62 Mixture,132,0.4470,0.3636,0.5303
+rsv_a,rsv_a,all,baseline,Uniform,0,0.1000,0.1000,0.1000
+rsv_a,rsv_a,denovo,baseline,Uniform,0,0.1000,0.1000,0.1000
+flu,h3n2,all,baseline,antiGen,19434,0.8995,0.8953,0.9036
+flu,h3n2,denovo,baseline,antiGen,671,0.6572,0.6200,0.6930
+flu,h3n2,all,baseline,S×S–MCM Interp.,19434,0.8615,0.8566,0.8662
+flu,h3n2,denovo,baseline,S×S–MCM Interp.,671,0.6155,0.5782,0.6542
+flu,h3n2,all,baseline,MCM,19434,0.8686,0.8639,0.8731
+flu,h3n2,denovo,baseline,MCM,671,0.1000,0.1000,0.1000
+flu,h3n2,all,baseline,S×S,19434,0.8096,0.8043,0.8152
+flu,h3n2,denovo,baseline,S×S,671,0.6155,0.5768,0.6513
+flu,h3n2,all,baseline,S×M,19434,0.7671,0.7611,0.7729
+flu,h3n2,denovo,baseline,S×M,671,0.5369,0.4996,0.5734
+flu,h3n2,all,baseline,PFM,19434,0.7765,0.7707,0.7822
+flu,h3n2,denovo,baseline,PFM,671,0.1776,0.1588,0.1977
+flu,h3n2,all,baseline,Codon-aware B62,19434,0.5545,0.5477,0.5615
+flu,h3n2,denovo,baseline,Codon-aware B62,671,0.5485,0.5098,0.5859
+flu,h3n2,all,baseline,ESM-2 zero-shot,19434,0.4085,0.4017,0.4155
+flu,h3n2,denovo,baseline,ESM-2 zero-shot,671,0.3308,0.2951,0.3696
+flu,h3n2,all,baseline,EVE,19434,0.7488,0.7428,0.7551
+flu,h3n2,denovo,baseline,EVE,671,0.5097,0.4724,0.5455
+flu,h3n2,all,baseline,Codon-B62 Mixture,19434,0.5818,0.5746,0.5886
+flu,h3n2,denovo,baseline,Codon-B62 Mixture,671,0.4828,0.4453,0.5204
+flu,h3n2,all,baseline,Uniform,0,0.1000,0.1000,0.1000
+flu,h3n2,denovo,baseline,Uniform,0,0.1000,0.1000,0.1000

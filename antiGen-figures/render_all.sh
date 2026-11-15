@@ -24,10 +24,12 @@ declare -A CMD=(
   [supp_usher_benchmark]="figures/figS_usher_benchmark.R"
   [supp_dataseed]="figures/figS_dataseed.R"
   [supp_cv10_loss]="figures/figS_cv10_loss.R"
+  [fig4_endemic_and_multitree]="figures/fig4_endemic_and_multitree.R"
+  [supp_fig4_endemic_and_multitree]="FIG_POOL=1nt figures/fig4_endemic_and_multitree.R"
 )
 ORDER=(sc2_results_revised2 sc2_results_revised2_supp supp_min100_2021 supp_fullspike
        supp_query_adapt supp_dms_revised2 supp_gate_units supp_usher_benchmark supp_dataseed
-       supp_cv10_loss)
+       supp_cv10_loss fig4_endemic_and_multitree supp_fig4_endemic_and_multitree)
 [ $# -gt 0 ] && ORDER=("$@")
 
 for fig in "${ORDER[@]}"; do

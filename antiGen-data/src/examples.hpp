@@ -68,6 +68,10 @@ struct ExampleOptions {
     // only ever turns True into False. The writer relies on that and stops at
     // the first cutoff the record misses.
     std::vector<Cutoff> cutoffs;
+    // --post-cutoff-edges: each record stands alone (no parent) and lists only the
+    // child edges whose earliest observed date below is at or after the one cutoff;
+    // records left with none are not written.
+    bool        byEdge = false;
     // The variant root, as a tree node id, or -1 for no variant at all. Its
     // record carries IS_VARIANT_ROOT, and it and everything below it carry
     // IS_DESCENDED_FROM_VARIANT, both as "<label>,True".
