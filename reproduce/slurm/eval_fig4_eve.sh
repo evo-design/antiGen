@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --partition=gpu_batch
 #SBATCH --job-name=f4_eve
 #SBATCH --time=06:00:00
 #SBATCH --cpus-per-task=4

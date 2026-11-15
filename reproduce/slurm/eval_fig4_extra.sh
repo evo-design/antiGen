@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --partition=cpu_batch
 #SBATCH --job-name=f4_extra
 #SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=8

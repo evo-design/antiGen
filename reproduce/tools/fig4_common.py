@@ -5,7 +5,7 @@ import os
 import torch
 
 from antiGen.config import STANDARD_AAS
-from antiGen.eval_utils import load_checkpoint
+from antiGen.eval_utils import load_checkpoint, top_q_weights
 from antiGen.load import load_examples
 from antiGen.models.codon_blosum_fitness_predictor import _codon_conditional
 from antiGen.models.factory import create_model
@@ -71,28 +71,18 @@ def pool_1nt(aa_idx):
 
 
 def per_event_weights(scores, aa_idx, events, strike=None, pool=None, q=Q):
-    """Fractional top-q hit weight of each event, with compute_hit_rate's tie-break.
+    """Fractional top-q hit weight of each event, by the shared rule (eval_utils.top_q_weights).
 
-    Wild-type cells, `strike` cells and cells outside `pool` are removed from the
-    candidates before the top-q boundary is drawn.
+    The candidate pool is every non-wild-type cell, less `strike` and outside `pool`. A cell
+    in the pool the model cannot score (NaN or -inf) ranks last, stays in the pool and is
+    never credited; the boundary selects exactly q * n cells, ties split fractionally.
     """
-    s = scores.detach().float().cpu().clone()
-    s[torch.arange(len(aa_idx)), aa_idx] = float("nan")
+    s = scores.detach().float().cpu()
+    cand = torch.ones(s.shape, dtype=torch.bool)
+    cand[torch.arange(len(aa_idx)), aa_idx] = False
     if strike is not None:
-        s[strike] = float("nan")
+        cand &= ~strike.cpu()
     if pool is not None:
-        s[~pool] = float("nan")
-    flat = s.flatten()
-    valid = ~torch.isnan(flat)
-    nv = int(valid.sum())
-    if nv == 0:
-        return [0.0] * len(events)
-    vb = torch.nanquantile(flat, 1.0 - q, interpolation="lower")
-    n_above = int(((flat > vb) & valid).sum())
-    n_tie = int(((flat == vb) & valid).sum())
-    frac = max(0.0, q * nv - n_above) / n_tie if n_tie else 0.0
-    w = []
-    for pos, aa in events:
-        v = s[pos, aa]
-        w.append(0.0 if torch.isnan(v) else 1.0 if v > vb else frac if v == vb else 0.0)
-    return w
+        cand &= pool.cpu()
+    w, _ = top_q_weights(s, q, pool_mask=cand)
+    return [float(w[pos, aa]) for pos, aa in events]

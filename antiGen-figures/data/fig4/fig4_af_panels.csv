@@ -7,7 +7,7 @@ dengue,denv2,all,baseline,MCM,784,0.7083,0.6767,0.7411
 dengue,denv2,denovo,baseline,MCM,231,0.1000,0.1000,0.1000
 dengue,denv2,all,baseline,S×S,784,0.7130,0.6824,0.7449
 dengue,denv2,denovo,baseline,S×S,231,0.4688,0.4065,0.5325
-dengue,denv2,all,baseline,S×M,784,0.6719,0.6388,0.7046
+dengue,denv2,all,baseline,S×M,784,0.6716,0.6387,0.7044
 dengue,denv2,denovo,baseline,S×M,231,0.4918,0.4286,0.5576
 dengue,denv2,all,baseline,PFM,784,0.5720,0.5404,0.6073
 dengue,denv2,denovo,baseline,PFM,231,0.1659,0.1386,0.1971
@@ -60,7 +60,7 @@ flu,h3n2,denovo,baseline,Codon-aware B62,671,0.5485,0.5098,0.5859
 flu,h3n2,all,baseline,ESM-2 zero-shot,19434,0.4085,0.4017,0.4155
 flu,h3n2,denovo,baseline,ESM-2 zero-shot,671,0.3308,0.2951,0.3696
 flu,h3n2,all,baseline,EVE,19434,0.7488,0.7428,0.7551
-flu,h3n2,denovo,baseline,EVE,671,0.5097,0.4724,0.5455
+flu,h3n2,denovo,baseline,EVE,671,0.5089,0.4709,0.5455
 flu,h3n2,all,baseline,Codon-B62 Mixture,19434,0.5818,0.5746,0.5886
 flu,h3n2,denovo,baseline,Codon-B62 Mixture,671,0.4828,0.4453,0.5204
 flu,h3n2,all,baseline,Uniform,0,0.1000,0.1000,0.1000

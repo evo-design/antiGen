@@ -150,6 +150,56 @@ def topq_boundary(p, q, dim=-1):
     return torch.where(n > 0, vb, torch.full_like(vb, float('nan')))
 
 
+def top_q_weights(scores_2d, qtile, pool_mask=None):
+    """Fractional membership of each cell in the top-q of ``scores_2d``.
+
+    1.0 strictly inside, ``frac`` on the boundary block, 0 elsewhere -- the expected
+    membership under random tie-breaking, which is what makes the metric seed-free and
+    fair to coarse-valued predictors. NaN cells are never selected and never counted in
+    the pool.
+
+    NB on ``-inf``: with a ``pool_mask``, ``-inf`` and NaN cells inside the pool are
+    both unscorable -- ranked last, counted in ``n_valid``, never credited -- the
+    same rule as ``compute_hit_rate``. Without one, only NaN leaves the pool.
+
+    ``pool_mask`` is the COMMON CANDIDATE POOL -- see ``compute_hit_rate``.
+    It matters more here than anywhere else in the figure, because ``n_valid`` is this
+    metric's DENOMINATOR: without it a model that declines to score the gap and stop
+    columns is scored against a top decile 10% smaller, and so can catch strictly fewer
+    listed cells than a rival and still report a higher yield. Measured: the nine-member
+    mean of log-probs catches 98.0 listed cells to EVE full FT's 94.0 and scored 0.2322
+    against 0.2461. A cell in the pool that the model cannot score ranks last.
+    """
+    p = scores_2d.float()
+    filled = None
+    if pool_mask is not None:
+        pm = pool_mask.to(p.device)
+        unscorable = (torch.isnan(p) | torch.isneginf(p)) & pm
+        filled = unscorable.clone()
+        if unscorable.any():
+            finite = p[torch.isfinite(p)]
+            floor = (finite.min() - 1.0) if finite.numel() else torch.zeros((), dtype=p.dtype)
+            p = torch.where(unscorable, torch.full_like(p, float(floor)), p)
+        p = torch.where(pm, p, torch.full_like(p, float('nan')))
+    valid = ~torch.isnan(p)
+    n_valid = int(valid.sum())
+    if n_valid == 0:
+        return torch.zeros_like(p), 0
+    vb = topq_boundary(p.reshape(-1), qtile).reshape(())   # exact q * n (NOTES s161)
+    above = p > vb
+    at = p == vb
+    n_above = float(above.sum())
+    n_at = max(float(at.sum()), 1.0)
+    frac = min(max((qtile * n_valid - n_above) / n_at, 0.0), 1.0)
+    w = above.float() + frac * at.float()
+    if filled is not None and filled.any():
+        # Ranked last is not never-selected: the filled cells are one tie block, so a
+        # large enough q puts the boundary inside it. See rank_fractions' return_filled.
+        w = torch.where(filled & valid, torch.zeros_like(w), w)
+    return w, n_valid
+
+
+
 def compute_hit_rate(scores, target_batch, aa_batch, qtile=0.1, eval_range=None,
                      per_cell=False, pool_mask=None, wt_pool_mask=None):
     """Hit mass of the top-q of ``scores``, against ``target_batch``.
@@ -937,7 +987,7 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
     fewer emerged cells than a rival and still report the higher precision. With one,
     a cell inside the pool that the map cannot score is filled one step below the
     minimum -- it ranks LAST, stays in ``n_valid``, and is never selected. Same
-    treatment as ``list_variant_recall.top_q_weights``, which is where it was first
+    treatment as ``top_q_weights``, which is where it was first
     measured; carried here by s68.
 
     The pool is the caller's to build, and it must be exactly this spec's candidate
@@ -969,7 +1019,7 @@ def variant_hit_rates(prob_2d, wt_mask, pssm_variant_list, threshold_count=100,
         at = pf == vb
         # The tie fraction is taken over the WHOLE boundary block, filled cells
         # included -- they occupy top-q slots, they simply cannot be credited --
-        # which is how `list_variant_recall.top_q_weights` computes it.
+        # which is how `top_q_weights` computes it.
         n_above = above.sum().item()
         n_at = max(at.sum().item(), 1)
         frac = min(max((n_needed - n_above) / n_at, 0.0), 1.0)

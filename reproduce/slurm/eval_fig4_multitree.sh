@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --partition=gpu_batch
 #SBATCH --job-name=fig4_multitree
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=4

@@ -15,9 +15,9 @@ single,h1n1pdm_ha,all,0.013274,-0.030973,0.061947,0
 single,h1n1pdm_ha,novel,0.117647,-0.014706,0.250000,0
 single,vic_ha,all,0.007634,-0.030534,0.045802,0
 single,vic_ha,novel,0.000000,-0.285714,0.238095,0
-single,hmpv_a_g,all,-0.002398,-0.026379,0.021643,0
+single,hmpv_a_g,all,-0.001679,-0.024221,0.023747,0
 single,hmpv_a_g,novel,-0.012987,-0.103896,0.077922,0
-single,POOLED,all,0.025459,0.008739,0.042179,1
+single,POOLED,all,0.025539,0.008819,0.042258,1
 single,POOLED,novel,0.066845,0.007585,0.126105,1
 sxm_mcm,h5nx,all,0.023747,0.000000,0.050132,0
 sxm_mcm,h5nx,novel,0.250000,0.075000,0.425000,0
@@ -29,7 +29,7 @@ sxm_mcm,rsv_b,all,0.029412,-0.044118,0.117647,0
 sxm_mcm,rsv_b,novel,0.444444,0.222222,0.666667,0
 sxm_mcm,measles,all,-0.033569,-0.107098,0.036765,0
 sxm_mcm,measles,novel,-0.094265,-0.226029,0.036496,0
-sxm_mcm,h3n2_ha,all,0.064982,0.028881,0.101083,0
+sxm_mcm,h3n2_ha,all,0.066245,0.029057,0.102378,0
 sxm_mcm,h3n2_ha,novel,0.265823,0.164241,0.367089,0
 sxm_mcm,h1n1pdm_ha,all,0.026549,-0.022124,0.075221,0
 sxm_mcm,h1n1pdm_ha,novel,0.147059,0.014706,0.279412,0
@@ -37,5 +37,5 @@ sxm_mcm,vic_ha,all,0.015267,-0.015458,0.053435,0
 sxm_mcm,vic_ha,novel,0.190476,-0.047619,0.428571,0
 sxm_mcm,hmpv_a_g,all,0.035971,0.002338,0.074341,0
 sxm_mcm,hmpv_a_g,novel,0.129870,0.012987,0.246753,0
-sxm_mcm,POOLED,all,0.025714,0.006986,0.044442,1
+sxm_mcm,POOLED,all,0.025854,0.007113,0.044595,1
 sxm_mcm,POOLED,novel,0.165518,0.104490,0.226545,1

@@ -35,7 +35,7 @@ sxm_mcm,h1n1pdm_ha,all,0.060380,0.016520,0.104240,0
 sxm_mcm,h1n1pdm_ha,novel,0.185714,0.071429,0.300000,0
 sxm_mcm,vic_ha,all,0.007519,-0.030075,0.045113,0
 sxm_mcm,vic_ha,novel,0.173913,-0.043478,0.391304,0
-sxm_mcm,hmpv_a_g,all,0.057143,0.028571,0.085714,0
+sxm_mcm,hmpv_a_g,all,0.058810,0.030238,0.087381,0
 sxm_mcm,hmpv_a_g,novel,0.233766,0.129545,0.350649,0
-sxm_mcm,POOLED,all,0.024155,0.005614,0.042697,1
+sxm_mcm,POOLED,all,0.024341,0.005799,0.042882,1
 sxm_mcm,POOLED,novel,0.160147,0.104287,0.216007,1

@@ -30,7 +30,7 @@ published row. Until that holds, no ensemble row is written. ``--gate-only`` run
 that check.
 
 **The -inf convention, reconciled rather than assumed.** ``compute_hit_rate`` folds -inf
-into NaN and drops it from ``n_valid``; ``list_variant_recall.top_q_weights`` tests only
+into NaN and drops it from ``n_valid``; ``eval_utils.top_q_weights`` tests only
 ``isnan`` and so keeps -inf in the pool, despite a docstring that says otherwise. The two
 therefore disagree on the top-decile denominator for any member that emits -inf. Measured
 on the nine antiGen-family members: **none of them emits a single -inf cell**, so the two
