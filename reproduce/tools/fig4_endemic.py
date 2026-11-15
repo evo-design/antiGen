@@ -39,7 +39,7 @@ def ensemble_runs(tree):
     runs = []
     for s in SEEDS:
         try:
-            runs.append(best_ckpt(f"{CKPT}/endemic/{tree}_xformer_s{s}"))
+            runs.append(best_ckpt(f"{CKPT}/endemic/{tree}/antigen_vs_s{s}"))
         except StopIteration:
             pass
     return runs

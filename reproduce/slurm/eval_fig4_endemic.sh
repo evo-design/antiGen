@@ -17,10 +17,10 @@ af() {
 }
 
 panel_g() {
-    local ck path=antiGen-figures/data/fig4/h3n2_j2_to_k_path
-    ck=$(find "$FIG4_CKPT/casestudy/h3n2_xformer_s0" -maxdepth 1 -name 'fitness_*_best.pt' ! -name '*_best_*.pt' | head -1)
+    local path=antiGen-figures/data/fig4/h3n2_j2_to_k_path
+    mapfile -t ck < <(find "$FIG4_CKPT/endemic/h3n2" -name 'fitness_*_best.pt' | sort)
     "$PYTHON" reproduce/tools/rank_path_cells.py --path-csv $path.csv --examples $path.examples.txt \
-        --checkpoint "$ck" --eval-range whole --parent-id-col parent_example_id_int \
+        --checkpoint "${ck[@]}" --eval-range whole --parent-id-col parent_example_id_int \
         --output "$FIGDATA/fig4/h3n2_j2_to_k_ranks.csv"
     "$PYTHON" reproduce/tools/draw_path_panel_h3n2.py --ranks "$FIGDATA/fig4/h3n2_j2_to_k_ranks.csv" \
         --pdb antiGen-figures/ref/4O5N.pdb --output antiGen-figures/cartoons/h3n2_j2_to_k.png

@@ -69,7 +69,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--path-csv", required=True)
     ap.add_argument("--examples", required=True)
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", required=True, nargs="+",
+                    help="one checkpoint, or several averaged as mean log-softmax over each query's grid")
     ap.add_argument("--alphabet", default="ACDEFGHIKLMNPQRSTVWY")
     ap.add_argument("--qtile", type=float, default=0.1)
     ap.add_argument("--eval-range", default="rbd",
@@ -117,20 +118,24 @@ def main():
     print(f"  all {len(scored)} parents carry the expected from-residue")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt, model_config = load_checkpoint(args.checkpoint, map_location=device)
-    model = create_model(model_config, device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.eval()
-    gap_idx = aas.find("-") if "-" in aas else None
-    stop_idx = aas.find("*") if "*" in aas else None
-    mm = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
-
     aa_batch = torch.tensor([[aas.index(c) for c in seqs[p]] for p in parents],
                             dtype=torch.long)
-    with torch.no_grad():
-        s = model(aa_batch.to(device)).float()
+    gap_idx = aas.find("-") if "-" in aas else None
+    stop_idx = aas.find("*") if "*" in aas else None
+    outs = []
+    for path in args.checkpoint:
+        ckpt, model_config = load_checkpoint(path, map_location=device)
+        model = create_model(model_config, device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        model.eval()
+        mm = build_model_gap_stop_mask(model, seq_len, E, gap_idx, stop_idx).to(device)
+        with torch.no_grad():
+            s = model(aa_batch.to(device)).float()
+        if len(args.checkpoint) > 1:
+            s = torch.log_softmax(s.flatten(1), -1).view_as(s)
         s[:, mm] = float("nan")
-    scores = s.cpu()[:, eval_range, :]
+        outs.append(s.cpu())
+    scores = torch.stack(outs).mean(0)[:, eval_range, :]
 
     pool_mask = eu.real_substitution_mask(R, aas)
     wt_pool = eu.real_wildtype_mask(aa_batch[:, eval_range], aas)
