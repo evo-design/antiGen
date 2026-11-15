@@ -54,7 +54,9 @@ BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
 } else c("REVISED2_FULL=1",   # the full roster less the fine-tunes (NOTES s141, s194)
          ## The MSA Transformer scored on BA.2 / XFG queries is not drawn (user).
-         "REVISED2_DROP=MSA_Transformer_BA2,MSA_Transformer_XFG",
+         ## The LY-CoV1404 escape DMS is not drawn either (user): it measures 53% of RBD
+         ## cells, so about a fifth of the targets are misses it cannot avoid.
+         "REVISED2_DROP=MSA_Transformer_BA2,MSA_Transformer_XFG,BA2_escape_LYCoV1404",
          ## No mean-rule ensembles (user, s177): their margin is too small to matter.
          "REVISED2_NO_MEAN_RULES=1")
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
