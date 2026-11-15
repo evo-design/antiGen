@@ -52,11 +52,9 @@ stopifnot(VARIANT %in% c("main", "supp"))
 source("figures/revised2_roster.R")
 BAR_ENV <- if (VARIANT == "main") {
   paste0("REVISED2_DROP=", paste(DROP_MAIN, collapse = ","))
-} else c("REVISED2_FULL=1",   # finetunes + the three mean rules (NOTES s141)
-         ## FOR NOW (user, s173): the ESM-2 650M full FT is still training at 2023, so
-         ## it is hidden at both cutoffs.
+} else c("REVISED2_FULL=1",   # the full roster less the fine-tunes (NOTES s141, s194)
          ## The MSA Transformer scored on BA.2 / XFG queries is not drawn (user).
-         "REVISED2_DROP=esm2_esm2_t33_650M_UR50D_lr1e-05_full,MSA_Transformer_BA2,MSA_Transformer_XFG",
+         "REVISED2_DROP=MSA_Transformer_BA2,MSA_Transformer_XFG",
          ## No mean-rule ensembles (user, s177): their margin is too small to matter.
          "REVISED2_NO_MEAN_RULES=1")
 RS <- function(n) file.path(tempdir(), paste0("revised2_panels_", VARIANT, "_", n, ".rds"))
