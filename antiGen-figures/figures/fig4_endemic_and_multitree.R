@@ -7,7 +7,7 @@ apply_paper_defaults()
 
 POOL_1NT <- identical(Sys.getenv("FIG_POOL", "full"), "1nt")
 OUT_NAME <- if (POOL_1NT) "supp_fig4_endemic_and_multitree" else "fig4_endemic_and_multitree"
-POOL_TAG <- if (POOL_1NT) " (single-nt pool)" else ""
+POOL_TAG <- ""
 DIR      <- "data/fig4"
 SFX      <- if (POOL_1NT) "_1nt" else ""
 
@@ -255,8 +255,8 @@ Ip <- plot_grid(ladder_panel("novel", FALSE) + labs(subtitle = "De novo only") +
                 labels = LET[2], label_x = 0.04, label_y = 0.985)
 Jp <- plot_grid(forest_panel("single") + ggtitle("49-tree versus single-tree") + mm_lab + ttl_sty,
                 labels = LET[3], label_x = 0.015, label_y = 0.995)
-Kp <- plot_grid(forest_panel("smoothed") + theme(axis.text.y = element_blank()) +
-                  ggtitle("49-tree versus S×S–MCM Interp.") + mm_nol + ttl_sty,
+Kp <- plot_grid(forest_panel("sxm_mcm") + theme(axis.text.y = element_blank()) +
+                  ggtitle("49-tree versus S×M–MCM Interp.") + mm_nol + ttl_sty,
                 labels = LET[4], label_x = 0.015, label_y = 0.995)
 panel_row <- plot_grid(plot_grid(Hp, Ip, nrow = 1, rel_widths = c(1.32, 1)),
                        plot_grid(Jp, Kp, nrow = 1, rel_widths = c(1.30, 1)), nrow = 1)

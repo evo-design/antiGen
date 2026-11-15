@@ -15,6 +15,7 @@ from antiGen.eval_utils import fit_substitution_baseline, frequency_baseline_sco
 from antiGen.models.factory import create_model
 from fig4_common import (A, CKPT, E, OUT, PANEL9, Q, REACH_1NT, SEEDS, best_ckpt, corpus, dev,
                          events_of, load_model, per_event_weights, pool_1nt, seen_mask)
+from fig4_extra import fit, rung_map
 
 SCORES = os.environ.get("FIG4_SCORES", f"{CKPT}/scores/multitree")
 NBOOT = 2000
@@ -26,7 +27,7 @@ LADDER = list(ENSEMBLES) + ["cpssm_dir", "site_prop", "where_times_which", "codo
                             "pssm", "frequency", "zeroshot"]
 SUBSETS = ("all", "novel")
 CONVS = ("baseline", "onent")
-FORESTS = (("single", "single"), ("smoothed", "cpssm_dir"))
+FORESTS = (("single", "single"), ("sxm_mcm", "sxm_mcm"))
 
 
 def tree_data(t):
@@ -116,6 +117,9 @@ def codon_blosum(L):
 def count_maps(td, rung):
     train = td["train"]
     L = len(train[0].aa_idx)
+    if rung == "sxm_mcm":
+        f = fit(train)
+        return lambda aa: rung_map(rung, aa, f)
     if rung == "frequency":
         f = torch.log(frequency_baseline_scores(train, L, E))
         return lambda aa: f
@@ -183,13 +187,14 @@ def fmt(x):
 
 
 def build():
-    W = {r: dict(np.load(f"{SCORES}/{r}.npz")) for r in LADDER if os.path.exists(f"{SCORES}/{r}.npz")}
+    W = {r: dict(np.load(f"{SCORES}/{r}.npz")) for r in LADDER + ["sxm_mcm"]
+         if os.path.exists(f"{SCORES}/{r}.npz")}
     print("missing rungs:", [r for r in LADDER if r not in W], flush=True)
     os.makedirs(OUT, exist_ok=True)
 
     def ladder_rows(sub, conv):
         rows = []
-        for r in W:
+        for r in (r for r in W if r in LADDER):
             rv = [(float(v.mean()), *boot_ci(v)) for t in PANEL9
                   if len(v := W[r].get(f"{t}__{sub}__{conv}", np.array([])))]
             if rv:
@@ -234,6 +239,6 @@ def build():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("step", choices=["score", "build"])
-    ap.add_argument("--rungs", nargs="+", default=LADDER, choices=LADDER)
+    ap.add_argument("--rungs", nargs="+", default=LADDER + ["sxm_mcm"], choices=LADDER + ["sxm_mcm"])
     a = ap.parse_args()
     score(a.rungs) if a.step == "score" else build()
