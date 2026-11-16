@@ -13,8 +13,8 @@ dengue,denv2,all,baseline,PFM,784,0.5720,0.5404,0.6073
 dengue,denv2,denovo,baseline,PFM,231,0.1659,0.1386,0.1971
 dengue,denv2,all,baseline,Codon-aware B62,784,0.5797,0.5449,0.6153
 dengue,denv2,denovo,baseline,Codon-aware B62,231,0.4632,0.4026,0.5238
-dengue,denv2,all,baseline,ESM-2 zero-shot,784,0.2730,0.2423,0.3036
-dengue,denv2,denovo,baseline,ESM-2 zero-shot,231,0.1732,0.1254,0.2251
+dengue,denv2,all,baseline,ESM-2 (650M) zero-shot,784,0.2730,0.2423,0.3036
+dengue,denv2,denovo,baseline,ESM-2 (650M) zero-shot,231,0.1732,0.1254,0.2251
 dengue,denv2,all,baseline,EVE,784,0.6505,0.6173,0.6837
 dengue,denv2,denovo,baseline,EVE,231,0.4329,0.3680,0.4935
 dengue,denv2,all,baseline,Codon-B62 Mixture,784,0.6097,0.5765,0.6441
@@ -35,8 +35,8 @@ rsv_a,rsv_a,all,baseline,PFM,444,0.5045,0.4628,0.5461
 rsv_a,rsv_a,denovo,baseline,PFM,132,0.1402,0.1128,0.1744
 rsv_a,rsv_a,all,baseline,Codon-aware B62,444,0.5542,0.5098,0.6002
 rsv_a,rsv_a,denovo,baseline,Codon-aware B62,132,0.4056,0.3219,0.4870
-rsv_a,rsv_a,all,baseline,ESM-2 zero-shot,444,0.2545,0.2140,0.2928
-rsv_a,rsv_a,denovo,baseline,ESM-2 zero-shot,132,0.1970,0.1288,0.2652
+rsv_a,rsv_a,all,baseline,ESM-2 (650M) zero-shot,444,0.2545,0.2140,0.2928
+rsv_a,rsv_a,denovo,baseline,ESM-2 (650M) zero-shot,132,0.1970,0.1288,0.2652
 rsv_a,rsv_a,all,baseline,EVE,444,0.5856,0.5405,0.6306
 rsv_a,rsv_a,denovo,baseline,EVE,132,0.3106,0.2348,0.3939
 rsv_a,rsv_a,all,baseline,Codon-B62 Mixture,444,0.6110,0.5653,0.6530
@@ -57,8 +57,8 @@ flu,h3n2,all,baseline,PFM,19434,0.7765,0.7707,0.7822
 flu,h3n2,denovo,baseline,PFM,671,0.1776,0.1588,0.1977
 flu,h3n2,all,baseline,Codon-aware B62,19434,0.5545,0.5477,0.5615
 flu,h3n2,denovo,baseline,Codon-aware B62,671,0.5485,0.5098,0.5859
-flu,h3n2,all,baseline,ESM-2 zero-shot,19434,0.4085,0.4017,0.4155
-flu,h3n2,denovo,baseline,ESM-2 zero-shot,671,0.3308,0.2951,0.3696
+flu,h3n2,all,baseline,ESM-2 (650M) zero-shot,19434,0.4085,0.4017,0.4155
+flu,h3n2,denovo,baseline,ESM-2 (650M) zero-shot,671,0.3308,0.2951,0.3696
 flu,h3n2,all,baseline,EVE,19434,0.7488,0.7428,0.7551
 flu,h3n2,denovo,baseline,EVE,671,0.5089,0.4709,0.5455
 flu,h3n2,all,baseline,Codon-B62 Mixture,19434,0.5818,0.5746,0.5886

@@ -487,8 +487,8 @@ MODEL_LABEL <- c(
   ## (NOTES s64).
   BA2_escape_LYCoV1404                       = "BA.2 DMS (LY-CoV1404 escape)",
   EVEscape                                   = "EVEscape",
-  esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), untrained",
-  esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), untrained",
+  esm2_esm2_t12_35M_UR50D_lr0.001_noft       = "ESM 2 (35M), zero-shot",
+  esm2_esm2_t33_650M_UR50D_lr0.001_noft      = "ESM 2 (650M), zero-shot",
   blosum62                                   = "BLOSUM62",
   codon_blosum_k4                            = "Codon-aware B62",
   codon                                      = "Codon table"

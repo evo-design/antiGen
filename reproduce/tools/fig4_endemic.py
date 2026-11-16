@@ -22,7 +22,7 @@ TREES = {"denv2": ("denv2", "2019-10-01", "dengue"),
 EVE_DIR = os.environ.get("FIG4_EVE", os.path.join(os.path.dirname(CKPT), "eve"))
 ARMS = [("antiGen", "ensemble"), ("S×S–MCM Interp.", "cpssm_dir"), ("MCM", "frequency"),
         ("S×S", "site_prop"), ("S×M", "where_times_which"), ("PFM", "pssm"),
-        ("Codon-aware B62", "codon_blosum"), ("ESM-2 zero-shot", "zeroshot"), ("EVE", "eve"),
+        ("Codon-aware B62", "codon_blosum"), ("ESM-2 (650M) zero-shot", "zeroshot"), ("EVE", "eve"),
         ("Codon-B62 Mixture", "mixture")]
 COLS = ["virus", "tree", "subset", "convention", "method", "n_events", "recall", "ci_lo", "ci_hi"]
 B = 2000

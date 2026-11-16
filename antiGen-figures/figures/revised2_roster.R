@@ -11,7 +11,7 @@ DROP_MAIN <- c("gated_static_xfmr_pssm_lr0.0001",        # antiGen / PFM gate (b
                "MSA_Transformer_BA2", "MSA_Transformer_XFG",
                "mcm",
                "BA2_escape_LYCoV1404",
-               "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), untrained
+               "esm2_esm2_t33_650M_UR50D_lr0.001_noft",   # ESM 2 (650M), zero-shot
                ## Second pass (s129):
                "pssm_root_position",                      # PFM Conservation
                "Omicron_BA1_bind", "Omicron_BA2_bind",    # the two DMS (bind)

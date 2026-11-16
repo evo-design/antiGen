@@ -21,7 +21,7 @@ RUNG_LABELS <- c(joint = "antiGen-ESM-2 (49 trees)", joint9 = "antiGen-ESM-2 (9 
                  single = "antiGen-ESM-2 (1 tree)", pssm = "PFM", frequency = "MCM",
                  site_prop = "S×S", where_times_which = "S×M", cpssm_dir = "S×S–MCM Interp.",
                  sxm_mcm = "S×M–MCM Interp.", mixture = "Codon-B62 Mixture", eve = "EVE",
-                 codon_blosum = "Codon-aware B62", zeroshot = "ESM-2 zero-shot")
+                 codon_blosum = "Codon-aware B62", zeroshot = "ESM-2 (650M) zero-shot")
 TREE_ORDER  <- c("ncov", "h5nx", "h3n2_ha", "h1n1pdm_ha", "vic_ha", "rsv_a", "rsv_b",
                  "measles", "hmpv_a_g")
 TREE_LABELS <- c(ncov = "SARS-CoV-2 S", h5nx = "H5Nx HA", h3n2_ha = "H3N2 HA",
@@ -36,11 +36,11 @@ ESM_PURPLE  <- "#292a75"
 TYPE_COLORS <- c("antiGen" = ANTIGEN_BLUE, "antiGen-ESM-2" = ESM_PURPLE, CAT_COLORS)
 BAR_ORDER <- c("antiGen-ESM-2 (49 trees)", "antiGen-ESM-2 (9 trees)", "antiGen-ESM-2 (1 tree)",
                "antiGen", "MCM", "S×S", "S×M", "S×S–MCM Interp.", "S×M–MCM Interp.",
-               "Codon-B62 Mixture", "PFM", "EVE", "Codon-aware B62", "ESM-2 zero-shot")
+               "Codon-B62 Mixture", "PFM", "EVE", "Codon-aware B62", "ESM-2 (650M) zero-shot")
 BAR_TYPE <- c(setNames(rep("antiGen-ESM-2", 3), BAR_ORDER[1:3]), antiGen = "antiGen",
               setNames(rep(CAT_TREE, 7), BAR_ORDER[5:11]),    # MCM ... Codon-B62 Mixture, PFM
               setNames(CAT_MSA, BAR_ORDER[12]),               # EVE
-              setNames(rep(CAT_ZERO, 2), BAR_ORDER[13:14]))   # Codon-aware B62, ESM-2 zero-shot
+              setNames(rep(CAT_ZERO, 2), BAR_ORDER[13:14]))   # Codon-aware B62, ESM-2 (650M) zero-shot
 BAR_OURS  <- c(BAR_ORDER[1:10], "Codon-aware B62")
 BAR_FLOOR <- 0.10
 
@@ -198,7 +198,7 @@ vtitle <- function(p, txt) p + ggtitle(txt) +
   theme(plot.title = element_text(face = "bold", size = 10, hjust = 0.5, margin = margin(b = 4)),
         plot.title.position = "panel", plot.margin = margin(t = 6, r = 6, b = 4, l = 4))
 VIRUSES <- c(flu = "H3N2 HA", dengue = "DENV2 E", rsv_a = "RSV A F")
-RW <- if (POOL_1NT) c(0.26, 1, 1, 1) else c(0.44, 1, 1, 1)
+RW <- if (POOL_1NT) c(0.29, 1, 1, 1) else c(0.48, 1, 1, 1)
 row_all <- plot_grid(plotlist = c(list(ylab_col(6)),
                                   lapply(names(VIRUSES), function(v) vtitle(ac_panel(v, "all"), VIRUSES[[v]]))),
                      nrow = 1, labels = c("A", "", "B", "C"), rel_widths = RW, align = "h", axis = "tb")

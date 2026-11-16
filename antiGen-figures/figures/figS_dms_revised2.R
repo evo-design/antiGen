@@ -34,7 +34,7 @@ ROSTER <- tibble::tribble(
   "tranception_frozen_both",              "Tranception",             "Pandemic Data in Training Window",   FALSE, "data/sc2_aa20",
   "Omicron_BA1_expr",                     "BA.1 DMS (expression)",   "Deep Mutational Scans",              FALSE, "baselines",
   "EVEscape",                             "EVEscape",                "Pre-Pandemic Data Only",             FALSE, "baselines",
-  "esm2_esm2_t12_35M_UR50D_lr0.001_noft", "ESM 2 (35M), untrained",  "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
+  "esm2_esm2_t12_35M_UR50D_lr0.001_noft", "ESM 2 (35M), zero-shot",  "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
   "blosum62",                             "BLOSUM62",                "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
   "codon",                                "Codon table",             "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20_extra")
 ## The shared categories (R/common.R CAT_*): PFM is fitted to the training tree, and the
