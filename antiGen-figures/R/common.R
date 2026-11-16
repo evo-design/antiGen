@@ -85,6 +85,20 @@ MODEL_TYPE_COLORS_SUPP <- c("#023e8a", "#443333", "#c6bbbb", "#888f88", "#555560
 FINETUNE_COLORS <- c("#ccccbb", "#bba3bb", "#99aaaa", "#0077b6", "#886988")
 
 ANTIGEN_BLUE <- "#023e8a"
+
+## MODEL CATEGORIES (user, 2026-11-15): one axis -- what each model learns from -- shared by
+## sc2_results_revised2, figure 4 and their supplements. Hatching stays "ours vs previous".
+CAT_TREE <- "Fit to the training tree"           # count-based models on antiGen's own training tree
+CAT_MSA  <- "MSA-based models"                   # learned from aligned SARS-CoV-2 sequences
+CAT_DMS  <- "Experimental (DMS)"                 # laboratory measurements
+CAT_ZERO <- "Zero-shot / no SARS-CoV-2 data"     # general protein models, substitution matrices, the code
+CAT_COLORS <- setNames(c("#a9c9e3", "#888f88", "#c6bbbb", "#555560"),
+                       c(CAT_TREE, CAT_MSA, CAT_DMS, CAT_ZERO))
+## The drawer's legacy group names, and the category each one now reads as.
+CAT_RENAME <- c("Pandemic Data in Training Window" = CAT_MSA,
+                "Deep Mutational Scans"            = CAT_DMS,
+                "Pre-Pandemic Data Only"           = CAT_ZERO,
+                "Statistical models"               = CAT_TREE)
 GATE_BLUE    <- "#0077b6"
 
 

@@ -225,10 +225,17 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
   ## fitted, moved out of "Pandemic Data in Training Window" into their own type, drawn
   ## pale blue and placed directly under the antiGen bars. Matched by KEY through
   ## MODEL_LABEL, so the revised2 renames applied later cannot unmatch them.
-  STAT <- "Statistical models"
+  ## CATEGORIES (user, 2026-11-15; R/common.R CAT_*): "Fit to the training tree" holds
+  ## every count-based model fitted to antiGen's own training tree -- the four
+  ## factorisations, MCM, the Codon-B62 mixture, PFM and PFM conservation. The drawer's
+  ## other groups are renamed through CAT_RENAME.
+  STAT <- CAT_TREE
   STAT_KEYS <- c("where_times_which", "site_substitution",
                  "wxw_dirichlet", "mcm_interpolation")
   STAT_LABELS <- unname(MODEL_LABEL[intersect(STAT_KEYS, names(MODEL_LABEL))])
+  PFM_LABELS  <- unname(MODEL_LABEL[intersect(c("pssm_root", "pssm_root_position"), names(MODEL_LABEL))])
+  TREE_LABELS <- c(STAT_LABELS, getOption("coguk.mcm_label", "MCM"),
+                   unname(MODEL_LABEL[intersect("substitution", names(MODEL_LABEL))]), PFM_LABELS)
   ## Base antiGen, drawn in the full roster only (s143), is named so it cannot be read
   ## as the CV bar above it -- panel M's "antiGen (base)".
   BASE_LABEL <- "antiGen (base)"
@@ -238,11 +245,12 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
     g <- as.character(df$group)
     g[as.character(df$model) %in% CV_LABEL] <- "antiGen"
     g[as.character(df$model) %in% GATE_RUNG_LABEL] <- HYBRID
-    g[as.character(df$model) %in% STAT_LABELS] <- STAT
-    lev <- c("antiGen", HYBRID, STAT,
-             setdiff(levels(df$group), c("antiGen", unique(as.character(df$group[
-               as.character(df$model) %in% CV_LABEL])))))
-    df$group <- factor(g, levels = unique(lev))
+    g[as.character(df$model) %in% TREE_LABELS] <- STAT
+    hit <- g %in% names(CAT_RENAME)
+    g[hit] <- unname(CAT_RENAME[g[hit]])
+    lev <- c("antiGen", HYBRID, STAT, CAT_MSA, CAT_DMS, CAT_ZERO,
+             setdiff(unique(g), c("antiGen", HYBRID, STAT, CAT_MSA, CAT_DMS, CAT_ZERO)))
+    df$group <- factor(g, levels = intersect(lev, unique(g)))
     ## BAR ORDER: the drawer orders bars by the `model` factor's levels (after putting
     ## coguk.top_model first), so the statistical rungs move to just after the antiGen
     ## bars -- the CV bar and, where drawn, the gate -- keeping their own relative order.
@@ -259,16 +267,17 @@ if (nzchar(Sys.getenv("REVISED2_LABELS"))) {
     if (!FULL) ft_ <- character(0)
     ens_ <- intersect(ml, unname(MEAN_RULES))
     mcm_ <- intersect(ml, getOption("coguk.mcm_label", "MCM"))
-    front <- c(head_, stat_, ft_, ens_, mcm_, cb62_)
+    pfm_ <- intersect(ml, PFM_LABELS)
+    front <- c(head_, stat_, ft_, ens_, mcm_, cb62_, pfm_)
     df$model <- factor(as.character(df$model), levels = c(front, setdiff(ml, front)))
     df
   }
-  GROUP_COLORS[[STAT]] <- "#a9c9e3"
+  for (k in names(CAT_COLORS)) GROUP_COLORS[[k]] <- CAT_COLORS[[k]]
   options(coguk.medal_dark_groups = STAT)
   ## OURS vs NOT (NOTES s128): the approaches this work designed are drawn plain, every
   ## other bar hatched. By key, mapped to the drawer's display labels.
   OURS_KEYS <- c("simple_d128_n2_lr0.0001", "gated_static_xfmr_pssm_lr0.0001",
-                 STAT_KEYS, "substitution", "mcm", FT_KEYS)
+                 STAT_KEYS, "substitution", "mcm", "codon_blosum_k4", FT_KEYS)
   options(coguk.ours_labels = c(ENSEMBLE_LABELS, BASE_LABEL,
                                 unname(MODEL_LABEL[intersect(OURS_KEYS, names(MODEL_LABEL))])))
   recall_q10_df <- regroup(recall_q10_df)

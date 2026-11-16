@@ -280,7 +280,9 @@ fs_panel <- function(arm, col, pool_name, first) {
   df <- data.frame(model = factor(c("antiGen (base)", arm$label),
                                   levels = rev(c("antiGen (base)", arm$label))),
                    value = d[[col]],
-                   group = c("antiGen", "Pandemic Data in Training Window"),
+                   ## Fitted once elsewhere, on pandemic data: none of the shared categories
+                   ## (R/common.R CAT_*) fits, so a neutral grey, named by the sub-header.
+                   group = c("antiGen", "External baseline"),
                    hatch = c("none", "stripe"))
   ggplot(df, aes(y = model, x = value, fill = group)) +
     ggpattern::geom_col_pattern(aes(pattern = hatch), width = 0.9, colour = NA,
@@ -293,7 +295,7 @@ fs_panel <- function(arm, col, pool_name, first) {
     ggpattern::scale_pattern_identity() +
     geom_text(aes(label = sprintf("%.2f", value)), hjust = -0.15, size = 2.4) +
     scale_fill_manual(values = c("antiGen" = ANTIGEN_BLUE,
-                                 "Pandemic Data in Training Window" = MODEL_TYPE_COLORS[3]),
+                                 "External baseline" = "#bdbdbd"),
                       guide = "none") +
     scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1), labels = c("0", "0.5", "1"),
                        expand = expansion(mult = c(0, 0))) +

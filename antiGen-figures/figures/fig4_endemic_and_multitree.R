@@ -31,17 +31,16 @@ SUBSET_LABELS <- c(all = "All substitutions", novel = "De novo only")
 SUBSET_COLORS <- c("All substitutions" = ANTIGEN_BLUE, "De novo only" = "#9bb8d4")
 
 ESM_PURPLE  <- "#292a75"
-TYPE_COLORS <- c("antiGen" = ANTIGEN_BLUE, "antiGen Finetunes" = ESM_PURPLE,
-                 "Statistical models" = "#a9c9e3",
-                 "Pandemic Data in Training Window" = "#888f88",
-                 "Pre-Pandemic Data Only" = "#555560")
+## Categories shared with sc2_results_revised2 (R/common.R CAT_*). The antiGen-ESM-2
+## bars are antiGen trained on more trees, drawn in their own shade of it.
+TYPE_COLORS <- c("antiGen" = ANTIGEN_BLUE, "antiGen-ESM-2" = ESM_PURPLE, CAT_COLORS)
 BAR_ORDER <- c("antiGen-ESM-2 (49 trees)", "antiGen-ESM-2 (9 trees)", "antiGen-ESM-2 (1 tree)",
                "antiGen", "MCM", "S×S", "S×M", "S×S–MCM Interp.", "S×M–MCM Interp.",
                "Codon-B62 Mixture", "PFM", "EVE", "Codon-aware B62", "ESM-2 zero-shot")
-BAR_TYPE <- c(setNames(rep("antiGen", 4), BAR_ORDER[1:4]),
-              setNames(rep("Statistical models", 6), BAR_ORDER[5:10]),
-              setNames(rep("Pandemic Data in Training Window", 2), BAR_ORDER[11:12]),
-              setNames(rep("Pre-Pandemic Data Only", 2), BAR_ORDER[13:14]))
+BAR_TYPE <- c(setNames(rep("antiGen-ESM-2", 3), BAR_ORDER[1:3]), antiGen = "antiGen",
+              setNames(rep(CAT_TREE, 7), BAR_ORDER[5:11]),    # MCM ... Codon-B62 Mixture, PFM
+              setNames(CAT_MSA, BAR_ORDER[12]),               # EVE
+              setNames(rep(CAT_ZERO, 2), BAR_ORDER[13:14]))   # Codon-aware B62, ESM-2 zero-shot
 BAR_OURS  <- c(BAR_ORDER[1:10], "Codon-aware B62")
 BAR_FLOOR <- 0.10
 
@@ -74,7 +73,7 @@ bar_panel <- function(d, xmax, show_y, xlab_txt = NULL) {
   d$group  <- BAR_TYPE[as.character(d$method)]
   d$hatch  <- ifelse(as.character(d$method) %in% BAR_OURS, "none", "stripe")
   d$medal  <- c("1st", "2nd", "3rd")[rank(-d$val, ties.method = "first")]
-  d$medal_col <- ifelse(d$group == "Statistical models", "grey15", "white")
+  d$medal_col <- ifelse(d$group == CAT_TREE, "grey15", "white")
   d$fillcol <- unname(TYPE_COLORS[d$group])
   d$fillcol[grepl("^antiGen-ESM-2", as.character(d$method))] <- ESM_PURPLE
   ggplot(d, aes(y = method, x = val, fill = fillcol)) +
@@ -213,8 +212,7 @@ ac_block <- plot_grid(plot_grid(row_label("All substitutions"), row_label("De no
                       plot_grid(row_all, row_dn, xlab_af, ncol = 1, rel_heights = c(1, 1, 0.08)),
                       nrow = 1, rel_widths = c(0.045, 1))
 ac_block <- plot_grid(ggdraw(), ac_block,
-                      model_type_key(c("antiGen", "antiGen Finetunes", "Statistical models",
-                                       "Pandemic Data in Training Window", "Pre-Pandemic Data Only")),
+                      model_type_key(c("antiGen", "antiGen-ESM-2", CAT_TREE, CAT_MSA, CAT_ZERO)),
                       ncol = 1, rel_heights = c(0.03, 1, 0.085))
 
 ## ---- G -------------------------------------------------------------------

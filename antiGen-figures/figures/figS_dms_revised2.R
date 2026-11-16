@@ -37,12 +37,11 @@ ROSTER <- tibble::tribble(
   "esm2_esm2_t12_35M_UR50D_lr0.001_noft", "ESM 2 (35M), untrained",  "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
   "blosum62",                             "BLOSUM62",                "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20",
   "codon",                                "Codon table",             "Pre-Pandemic Data Only",             FALSE, "data/sc2_aa20_extra")
-## The C-J palette: MODEL_TYPE_COLORS, plus revised2's pale blue for the statistical
-## models (panels_coguk_export.R, NOTES s128).
-GROUPS <- c("antiGen" = MODEL_TYPE_COLORS[1], "Statistical models" = "#a9c9e3",
-            "Deep Mutational Scans" = MODEL_TYPE_COLORS[2],
-            "Pandemic Data in Training Window" = MODEL_TYPE_COLORS[3],
-            "Pre-Pandemic Data Only" = MODEL_TYPE_COLORS[4])
+## The shared categories (R/common.R CAT_*): PFM is fitted to the training tree, and the
+## legacy group names above read through CAT_RENAME.
+ROSTER$group[ROSTER$key == "pssm_root"] <- CAT_TREE
+ROSTER$group <- ifelse(ROSTER$group %in% names(CAT_RENAME), unname(CAT_RENAME[ROSTER$group]), ROSTER$group)
+GROUPS <- c("antiGen" = MODEL_TYPE_COLORS[1], CAT_COLORS)
 
 ## Targets and reference exactly as fig2_sc2_benchmarks.R reads them.
 bind <- as.matrix(read.csv(file.path("dms", "Omicron_BA2_bind.csv"))[RBD_RANGE, ])
