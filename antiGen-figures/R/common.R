@@ -91,7 +91,7 @@ ANTIGEN_BLUE <- "#023e8a"
 CAT_TREE <- "Fit to the training tree"           # count-based models on antiGen's own training tree
 CAT_MSA  <- "MSA-based models"                   # learned from aligned SARS-CoV-2 sequences
 CAT_DMS  <- "Experimental (DMS)"                 # laboratory measurements
-CAT_ZERO <- "Zero-shot / no SARS-CoV-2 data"     # general protein models, substitution matrices, the code
+CAT_ZERO <- "Zero-shot"                          # no training on the virus: general protein models, substitution matrices, the code
 CAT_COLORS <- setNames(c("#a9c9e3", "#888f88", "#c6bbbb", "#555560"),
                        c(CAT_TREE, CAT_MSA, CAT_DMS, CAT_ZERO))
 ## The drawer's legacy group names, and the category each one now reads as.
