@@ -51,8 +51,8 @@ def parse_args():
     parser.add_argument('--cutoff', type=float, default=1.0, help='Train/test cutoff (years since MRCA)')
     parser.add_argument('--ignore-dead-ends', action='store_true', default=False, help='Do not make examples for sequences with no downstream mutants')
 
-    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'codon', 'codon_blosum', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
-                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), codon-aware BLOSUM62 (codon_blosum, eval only), PSSM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors')
+    parser.add_argument('--model-type', type=str, default='transformer', choices=['transformer', 'esm2', 'blosum62', 'codon', 'codon_blosum', 'substitution', 'pfm', 'pssm', 'evcouplings', 'eve', 'tranception', 'gated'],
+                        help='Model architecture: from-scratch transformer, ESM-2 finetune, BLOSUM62 (eval only), codon-aware BLOSUM62 (codon_blosum, eval only), PFM (eval only), EVcouplings (eval only), EVE VAE, Tranception LM, or gated blend of two predictors. The position frequency matrix is "pfm"; "pssm" is its former name and still accepted, and is the spelling kept inside checkpoints and evaluation output.')
     parser.add_argument('--d-model', type=int, default=512, help='Model dimension (transformer only)')
     parser.add_argument('--num-layers', type=int, default=4, help='Number of transformer layers (transformer only)')
     parser.add_argument('--esm2-model-name', type=str, default='facebook/esm2_t12_35M_UR50D',
@@ -205,7 +205,7 @@ def parse_args():
                         choices=['forward', 'backward', 'both'],
                         help='Autoregressive scoring direction for Tranception (default: both)')
     _partner_choices = ['fitness_predictor', 'esm2_fitness_predictor',
-                        'blosum62', 'codon', 'substitution', 'pssm', 'evcouplings', 'eve', 'tranception']
+                        'blosum62', 'codon', 'substitution', 'pfm', 'pssm', 'evcouplings', 'eve', 'tranception']
     parser.add_argument('--gate-partner-a', type=str, default='fitness_predictor',
                         choices=_partner_choices,
                         help='ModelType.value of the first partner for --model-type gated '
@@ -218,15 +218,26 @@ def parse_args():
     # which every other reader takes via --root-counts. This points the partner at a
     # converted copy (reproduce/tools/counts_to_pssm_csv.py) rather than giving
     # the predictor a second format to parse or writing into the data repo.
-    parser.add_argument('--pssm-path', type=str, default=None, metavar='CSV',
-                        help="explicit pssms/root.csv-shaped file for the pssm model "
-                             "or the pssm partner of --model-type gated; overrides "
+    parser.add_argument('--pfm-path', '--pssm-path', type=str, default=None, metavar='CSV',
+                        dest='pssm_path',
+                        help="explicit pssms/root.csv-shaped file for the pfm model "
+                             "or the pfm partner of --model-type gated; overrides "
                              "--data-dir for that partner only.")
     parser.add_argument('--gate-variant', type=str, default='static',
                         choices=['static', 'uncertainty'],
                         help='Gate module: "static" (per-position learnable, data-blind) or '
                              '"uncertainty" (MLP on partner softmax entropies).')
-    return parser.parse_args()
+    args = parser.parse_args()
+    # "pfm" (position frequency matrix) is the name the paper and the figures use; "pssm"
+    # is the same model under its former name. Normalise to "pssm" here and nowhere else,
+    # so the checkpoint's stored model_type, the run prefix and every evaluation key keep
+    # the one spelling they have always had, and old checkpoints still load.
+    if args.model_type == 'pfm':
+        args.model_type = 'pssm'
+    for _p in ('gate_partner_a', 'gate_partner_b'):
+        if getattr(args, _p, None) == 'pfm':
+            setattr(args, _p, 'pssm')
+    return args
 
 
 # ── Run-identity helpers ──────────────────────────────────────────────────────
