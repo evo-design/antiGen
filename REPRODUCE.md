@@ -129,7 +129,7 @@ Most published outputs predate it and are reproduced with `ANTIGEN_TOPQ_LEGACY=1
 "legacy" rows); `eval.sh` sets the flag per step. Regenerating everything under the
 current rule is a follow-up.
 
-**Fitted baselines** (substitution, where × which, PSSM, codon, site × substitution, the
+**Fitted baselines** (substitution, where × which, PFM, codon, site × substitution, the
 MCM rungs) are fitted on the train corpus only, the data every checkpoint was trained
 on. Each step's test set is the test tree's records after the cutoff.
 
@@ -157,7 +157,7 @@ pick one, `--sh` for bare commands). The families:
 
 Inputs beyond a plain `antiGen-train` call:
 
-* **The gate** (`gated_static_xfmr_pssm`) takes the cutoff's root PSSM as a CSV:
+* **The gate** (`gated_static_xfmr_pssm`) takes the cutoff's root PFM as a CSV:
   `reproduce/slurm/train_cutoff_gate.sh <D>` runs `reproduce/tools/counts_to_pssm_csv.py`
   on `counts_<D>_cur.tsv` and then trains (`submit_cutoff_gates.sh` does all sixteen).
 * **EVE and Tranception** train on the cutoff's alignment, built by antiGen-data
@@ -197,7 +197,7 @@ Fixed inputs with no producer in the repository: the Omicron DMS maps in
 * **Staging.** `reproduce/stage.sh` run on the published evaluation outputs (each step
   name pointed at the source in §2) reproduces every committed CSV it writes, compared
   row by row with `reproduce/compare_staged.py`: worst difference 6e-8, on the codon
-  and PSSM rows. The figures draw the same rows.
+  and PFM rows. The figures draw the same rows.
 * **From the checkpoints.** `panel_b` reproduces the case-study ranks and the panel image
   byte for byte, and `gate_units` reproduces its table exactly. GPU spot checks through
   `eval.sh`: `cd1_2021_allcells` reproduces every row exactly, `cutoff_eval 2020-04-01`

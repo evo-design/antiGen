@@ -17,7 +17,7 @@ Quickstart, then Parts 1–5. To regenerate the paper's evaluations and figures,
 Install the modeling package and its command-line tools from PyPI (Python ≥ 3.10):
 
 ```bash
-pip install antigen-model            # core: from-scratch transformer + BLOSUM62 / PSSM / gated (no model downloads)
+pip install antigen-model            # core: from-scratch transformer + BLOSUM62 / PFM / gated (no model downloads)
 pip install "antigen-model[esm]"     # + ESM-2 pretrained language model
 pip install "antigen-model[dca]"     # + EVcouplings (needs external `plmc`)
 ```
@@ -247,7 +247,7 @@ and no stop column, matching antiGen-data's default `--alphabet 20` (Part 1).
 | Codon | `codon` | — (core) | Single-nucleotide accessibility under the standard genetic code (no training, eval only) |
 | Codon-aware BLOSUM62 | `codon_blosum` | — (core) | BLOSUM62 target frequencies restricted to codon-adjacent substitutions (`--codon-blosum-kappa`; fixed constants, no training) |
 | Codon × BLOSUM62 mixture | `substitution` | — (core) | The same two terms as a log-linear model with 25 fitted scalars (κ, the two weights, a per-destination background); position-blind, so one fit covers any number of phylogenies |
-| PSSM | `pssm` | — (core) | Per-position `log(count+1)` from the root PSSM (no training, eval only) |
+| PFM | `pssm` | — (core) | Position frequency matrix: per-position `log(count+1)` of the train corpus's root counts (no training, eval only). The flag and the `--pssm-path` option keep the model's former name, PSSM. |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
 | EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from an MSA via `plmc` (pseudo-likelihood; eval only) |
 | EVE | `eve` | — (core) | EVE VAE (frozen or finetuned) trained on an MSA |
@@ -270,7 +270,7 @@ antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type eve \
     --freeze-backbone --epochs 32 --msa $TRAIN/msa_2023-01-01_cur.fasta --max-seqs 351410 \
     --variant BA.2 --ignore-dead-ends
 
-# gated blend of a from-scratch transformer and the root PSSM of the train corpus
+# gated blend of a from-scratch transformer and the root PFM of the train corpus
 # (pssm_root.csv from reproduce/tools/counts_to_pssm_csv.py on counts_2023-01-01_cur.tsv)
 antiGen-train --examples $TRAIN/examples_2023-01-01_cur.txt --model-type gated \
     --gate-partner-b pssm --pssm-path pssm_root.csv --d-model 128 --num-layers 2 \
