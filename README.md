@@ -34,13 +34,14 @@ cd antiGen
 pip install ".[esm]"                 # optional source install of the same package
 ```
 
-## Score a spike in 30 seconds
+## Scoring a spike with the pretrained model
 
 The package ships a pretrained SARS-CoV-2 spike model trained on the phylogeny of
 sequences dated **before 2023-01-01**. `antiGen-top-decile` ranks every candidate
 substitution of a query in a coordinate range — here the receptor-binding domain,
 201 × 19 = 3,819 cells — and writes the top decile, the pool and cutoff of the paper's
-all-RBD panels. No GPU, no training, no downloads beyond the package.
+all-RBD panels. It runs on a CPU in a few seconds and downloads nothing beyond the
+package.
 
 The query below is `tutorial/BA.2.86_spike.fasta` in a clone of this repository; without
 one, download
