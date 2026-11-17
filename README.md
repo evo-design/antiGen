@@ -4,7 +4,7 @@ Welcome to antiGen, a model that predicts future mutations to viral proteins bas
 
 **The paper.** Specht, Park, Vermani, Chithrananda, Driscoll, Brixi, Palacios and Hie,
 *Forecasting viral evolution from phylogenetic trees*, bioRxiv
-[10.64898/2026.08.27.741102](https://www.biorxiv.org/content/10.64898/2026.08.27.741102v1).
+[10.64898/2026.08.27.741102](https://www.biorxiv.org/content/10.64898/2026.08.27.741102v2).
 
 **Where to start.** To score mutations relative to BA.2.86 (or your own spike) with the
 pretrained model, follow the [tutorial](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md).
