@@ -2,7 +2,7 @@
 # Render every current figure in figs/ (not figs/old/) from the staged data in data/.
 #
 #   cd antiGen-figures && bash render_all.sh            # all figures
-#   bash render_all.sh supp_cd1 supp_lm_cd1             # just these
+#   bash render_all.sh supp_fullspike supp_dataseed     # just these (names: CMD below)
 #
 # Each figure is one Rscript call; the staged data each one reads are committed under
 # data/ (how they are produced from checkpoints: REPRODUCE.md). TRACE_DIR=<dir> plus

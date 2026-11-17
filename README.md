@@ -2,6 +2,10 @@
 
 Welcome to antiGen, a model that predicts future mutations to viral proteins based on inferred phylogenetic trees. This repository is intended for (1) generating training data from phylogenetic trees, (2) training antiGen on said data, (3) querying substitution probabilities predicted by antiGen, (4) running the evaluations reported in the antiGen manuscript, and (5) reproducing the manuscript figures.
 
+**The paper.** Specht, Park, Vermani, Chithrananda, Driscoll, Brixi, Palacios and Hie,
+*Forecasting viral evolution from phylogenetic trees*, bioRxiv
+[10.64898/2026.08.27.741102](https://www.biorxiv.org/content/10.64898/2026.08.27.741102v1).
+
 **Where to start.** To score mutations relative to BA.2.86 (or your own spike) with the
 pretrained model, follow the [tutorial](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md).
 To generate data and train and evaluate your own models, continue with this README: the
@@ -19,9 +23,9 @@ pip install "antigen-model[dca]"     # + EVcouplings (needs external `plmc`)
 ```
 
 Note that the distribution is named `antigen-model`, but the import name and CLIs keep the
-`antiGen` spelling (`import antiGen`; `antiGen-train`/`-infer`/`-eval`). This is
-all you need to train antiGen and score substitutions (Parts 2–3). The
-training-data generator (Part 1, C++/CUDA) and the figure-reproduction code
+`antiGen` spelling (`import antiGen`; `antiGen-train`/`-infer`/`-eval`/`-top-decile`/
+`-validate-examples`). This is all you need to train antiGen and score substitutions
+(Parts 2–3). The training-data generator (Part 1, C++/CUDA) and the figure-reproduction code
 (Part 5, R) are not part of the distribution; they can be obtained by cloning this repo.
 
 ```bash
@@ -29,6 +33,44 @@ git clone https://github.com/evo-design/antiGen.git
 cd antiGen
 pip install ".[esm]"                 # optional source install of the same package
 ```
+
+## Score a spike in 30 seconds
+
+The package ships a pretrained SARS-CoV-2 spike model trained on the phylogeny of
+sequences dated **before 2023-01-01**. `antiGen-top-decile` ranks every candidate
+substitution of a query in a coordinate range — here the receptor-binding domain,
+201 × 19 = 3,819 cells — and writes the top decile, the pool and cutoff of the paper's
+all-RBD panels. No GPU, no training, no downloads beyond the package.
+
+The query below is `tutorial/BA.2.86_spike.fasta` in a clone of this repository; without
+one, download
+[BA.2.86_spike.fasta](https://github.com/evo-design/antiGen/releases/latest/download/BA.2.86_spike.fasta).
+
+```bash
+pip install antigen-model
+antiGen-top-decile tutorial/BA.2.86_spike.fasta --start 331 --end 531 -o top_rbd.csv
+```
+
+```text
+model: antiGen (CV x10), SARS-CoV-2 spike, 2023-01-01 cutoff
+BA.2.86: 3819 candidates in 331-531; top 0.1: 382 listed
+```
+
+```
+query_id,rank,mutation,position,ref_aa,alt_aa,score,prob,percentile
+BA.2.86,1,S446G,446,S,G,-4.289715,7.121325e-02,100.00
+BA.2.86,2,K440N,440,K,N,-4.365720,6.600123e-02,99.97
+BA.2.86,3,N417K,417,N,K,-4.577544,5.340207e-02,99.95
+...
+```
+
+BA.2.86 was first sampled months after that cutoff. R346T, gained on the way to
+JN.1.11.1, ranks 9th here; L455S, the substitution that took BA.2.86 to JN.1, ranks
+114th — both inside the top decile, from a model that saw no post-2022 sequence.
+`antiGen-infer --pretrained sc2-2023-01-01 <query.fasta>` writes the full distribution
+instead of a ranking. The [tutorial](https://github.com/evo-design/antiGen/blob/main/TUTORIAL.md)
+does the same from Python, and runs in
+[Colab](https://colab.research.google.com/github/evo-design/antiGen/blob/main/tutorial/tutorial.ipynb).
 
 ## System requirements
 
@@ -202,6 +244,8 @@ and no stop column, matching antiGen-data's default `--alphabet 20` (Part 1).
 | ESM-2 | `esm2` | `.[esm]` | ESM-2 protein LM (default `esm2_t12_35M_UR50D`), frozen/partial/full finetune |
 | BLOSUM62 | `blosum62` | — (core) | Static BLOSUM62 substitution matrix (no training, eval only) |
 | Codon | `codon` | — (core) | Single-nucleotide accessibility under the standard genetic code (no training, eval only) |
+| Codon-aware BLOSUM62 | `codon_blosum` | — (core) | BLOSUM62 target frequencies restricted to codon-adjacent substitutions (`--codon-blosum-kappa`; fixed constants, no training) |
+| Codon × BLOSUM62 mixture | `substitution` | — (core) | The same two terms as a log-linear model with 25 fitted scalars (κ, the two weights, a per-destination background); position-blind, so one fit covers any number of phylogenies |
 | PSSM | `pssm` | — (core) | Per-position `log(count+1)` from the root PSSM (no training, eval only) |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
 | EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from an MSA via `plmc` (pseudo-likelihood; eval only) |
@@ -311,11 +355,11 @@ committed. From that directory:
 
 ```bash
 bash render_all.sh                    # every current figure -> figs/*.png, figs_vector/*.pdf
-bash render_all.sh supp_cd1_series    # one figure
+bash render_all.sh supp_fullspike     # one figure (names: see the list in the script)
 ```
 
 It needs R (4.5.3 was used) with cowplot, dplyr, forcats, ggpattern, ggplot2, ggtext,
-magick, reshape2, scales, tibble and tidyr.
+gtable, magick, png, reshape2, scales, tibble and tidyr.
 
 ---
 
