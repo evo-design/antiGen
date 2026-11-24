@@ -13,13 +13,10 @@ The same cells are in [`tutorial/tutorial.ipynb`](https://github.com/evo-design/
 and [`tutorial/tutorial.py`](https://github.com/evo-design/antiGen/blob/main/tutorial/tutorial.py)
 (`python tutorial.py`, or cell by cell in an editor that understands `# %%`).
 
-**The query.** Download
-**[BA.2.86_spike.fasta](https://github.com/evo-design/antiGen/releases/latest/download/BA.2.86_spike.fasta)**
-(in a clone of the repository it is `tutorial/BA.2.86_spike.fasta`) and save it in a
-folder named `queries` inside the directory you run the tutorial from, as
-`queries/BA.2.86_spike.fasta`. It is the BA.2.86 spike aligned to the 1,273-residue
-Wuhan-Hu-1 frame (position *i* is spike position *i*), in the 20-letter amino-acid
-alphabet, exactly as the paper scored it.
+**The query.** The BA.2.86 spike ships with the package, so there is nothing to
+download: `pretrained.example_fasta()` returns its path. It is aligned to the
+1,273-residue Wuhan-Hu-1 frame (position *i* is spike position *i*), in the 20-letter
+amino-acid alphabet, exactly as the paper scored it.
 
 ## 1. Install
 
@@ -50,7 +47,8 @@ model, info = pretrained.load("sc2-2023-01-01", device="cpu")
 alphabet = info["alphabet"]
 print(info["description"])
 
-seq = "".join(l.strip() for l in open("queries/BA.2.86_spike.fasta") if not l.startswith(">"))
+query_fasta = pretrained.example_fasta("BA.2.86")   # or the path to your own FASTA
+seq = "".join(l.strip() for l in open(query_fasta) if not l.startswith(">"))
 print(len(seq), "residues")
 ```
 
@@ -138,7 +136,7 @@ print(ranked.set_index("mutation").loc[["L455S", "R346T"], ["rank", "prob", "per
 ```
 
 ```text
-rank      prob  percentile
+          rank      prob  percentile
 mutation                            
 L455S      114  0.000861   97.041110
 R346T        9  0.028749   99.790521
@@ -188,8 +186,8 @@ BA.2.86_H339D rank=10 prob=0.0271
 ## Notes
 
 * **Your own sequence.** Align it to the Wuhan-Hu-1 spike (GenBank NC_045512.2), write
-  it at length 1,273 using only `ACDEFGHIKLMNPQRSTVWY`, save it in `queries/`, and put
-  its file name in section 2. `pretrained.encode` refuses any other character, and the
+  it at length 1,273 using only `ACDEFGHIKLMNPQRSTVWY`, and set `query_fasta` in
+  section 2 to its path. `pretrained.encode` refuses any other character, and the
   model any other length, rather than silently scoring a misaligned sequence.
 * **Gaps and missing data in the query.** The model has no gap or unknown symbol, so
   every position needs a real amino acid. Where your sequence has a gap, an `X` or an
@@ -199,8 +197,14 @@ BA.2.86_H339D rank=10 prob=0.0271
 * **What the scores are not.** antiGen predicts which substitution happens next on the
   query's background, learned from the phylogeny. It is not a measured fitness or
   escape value.
-* **From the command line,** the same two results:
-  `antiGen-infer --pretrained sc2-2023-01-01 queries/BA.2.86_spike.fasta -o ba286_scores.csv`
-  and `antiGen-top-decile queries/BA.2.86_spike.fasta --start 331 --end 531 -o ba286_top_rbd.csv`.
-* **Other cutoffs, other viruses.** Train your own model (README, Parts 1–2) and load it
-  with `antiGen.models.factory.load_model`; every cell above works the same way.
+* **From the command line,** the same two results, on a copy of the query
+  (`tutorial/BA.2.86_spike.fasta` in a clone of the repository, or
+  [download it](https://github.com/evo-design/antiGen/releases/latest/download/BA.2.86_spike.fasta)):
+  `antiGen-infer --pretrained sc2-2023-01-01 BA.2.86_spike.fasta -o ba286_scores.csv`
+  and `antiGen-top-decile BA.2.86_spike.fasta --start 331 --end 531 -o ba286_top_rbd.csv`.
+* **Other cutoffs, other viruses.** Train your own model (README, Parts 1–2) and use it
+  in place of the pretrained one in section 2:
+  `from antiGen.models.factory import load_model`, then
+  `model, _ = load_model("fitness_<run>.pt", device="cpu")` and
+  `alphabet = model.config.alphabet.amino_acids`. Sections 3–5 then run unchanged, on a
+  query aligned to that model's own frame.
