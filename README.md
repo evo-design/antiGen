@@ -249,10 +249,10 @@ and no stop column, matching antiGen-data's default `--alphabet 20` (Part 1).
 | Codon × BLOSUM62 mixture | `substitution` | — (core) | The same two terms as a log-linear model with 25 fitted scalars (κ, the two weights, a per-destination background); position-blind, so one fit covers any number of phylogenies |
 | PFM | `pfm` | — (core) | Position frequency matrix: per-position `log(count+1)` of the train corpus's root counts (no training, eval only). `pssm`, the model's former name, is still accepted, and is the spelling kept inside checkpoints and evaluation output. |
 | MCM | — (`antiGen-eval --mcm-baseline`) | — (core) | Mutation count matrix: per-cell `log N[i,a]`, the number of `i`→`a` mutations in the train corpus (fitted at eval time) |
-| S×S | — (`antiGen-eval --counted-baselines`) | — (core) | Site × substitution: `s_i · M[wt_i, a]`, the site's share of train-corpus mutations times the counted substitution matrix (fitted at eval time) |
+| S×S | — (`antiGen-eval --counted-baselines`) | — (core) | Site × substitution: `s_i · M[wt_i, a]`, the site's share of train-corpus mutations `s_i` times the counted substitution matrix `M` (fitted at eval time) |
 | S×S–MCM Interp. | — (`antiGen-eval --counted-baselines`) | — (core) | `(N[i,a] + κ · s_i · M[wt_i, a]) / (N_total + κ)` with κ = N_total: the MCM counts blended with S×S (fitted at eval time) |
-| S×M | — (`antiGen-eval --multitree-baselines`) | — (core) | Site × mixture: `P(i) · P(a \| wt_i)`, with the codon × BLOSUM62 mixture as `P(a \| wt_i)` (fitted at eval time) |
-| S×M–MCM Interp. | — (`antiGen-eval --multitree-baselines`) | — (core) | The MCM counts blended with S×M as a Dirichlet prior (fitted at eval time) |
+| S×M | — (`antiGen-eval --multitree-baselines`) | — (core) | Site × mixture: `s_i · B[wt_i, a]`, the same `s_i` times the fitted codon × BLOSUM62 mixture `B` in place of `M` (fitted at eval time) |
+| S×M–MCM Interp. | — (`antiGen-eval --multitree-baselines`) | — (core) | `(N[i,a] + κ · s_i · B[wt_i, a]) / (N_total + κ)` with κ = N_total: the MCM counts blended with S×M (fitted at eval time) |
 | Gated | `gated` | — (core) | Learnable per-position blend of two predictors (`--gate-partner-a/-b`, `--gate-variant`) |
 | EVcouplings | `evcouplings` | `.[dca]` + `plmc` | DCA Potts model fit from an MSA via `plmc` (pseudo-likelihood; eval only) |
 | EVE | `eve` | — (core) | EVE VAE (frozen or finetuned) trained on an MSA |
